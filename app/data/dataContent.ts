@@ -2,7 +2,6 @@ export type CardDataItem = {
   category: string;
   title: string;
   src: string;
-
   text?: string;
   imageUrl?: string;
 };
