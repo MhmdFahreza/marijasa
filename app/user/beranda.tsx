@@ -1,4 +1,3 @@
-// app/user/beranda.tsx
 "use client";
 
 import React, { memo } from "react";
@@ -11,9 +10,10 @@ import { cardData, type ContentSection } from "@/app/data/dataContent";
 import { dataReason } from "@/app/data/dataReason";
 import { HoverEffect } from "@/app/components/ui/card-hover-effect";
 import SiteFooter from "@/app/footer";
+import { useRouter } from "next/navigation"; 
 
 type ContentCategoryProps = {
-  sections?: ContentSection[]; // 0..n
+  sections?: ContentSection[];
 };
 
 const ContentCategory = memo(function ContentCategory({ sections = [] }: ContentCategoryProps) {
@@ -33,15 +33,6 @@ const ContentCategory = memo(function ContentCategory({ sections = [] }: Content
               </span>
             </p>
           )}
-          {sec.imageUrl ? (
-            <img
-              src={sec.imageUrl}
-              alt="ilustrasi"
-              height={500}
-              width={500}
-              className="md:w-1/2 md:h-1/2 h-full w-full mx-auto object-contain mt-4"
-            />
-          ) : null}
         </div>
       ))}
     </>
@@ -58,7 +49,6 @@ export function CardHoverEffect() {
 
 function CardCategory() {
   const cards = cardData.map((item, index) => {
-    // fallback bila masih ada field lama text/imageUrl
     const fallbackSections: ContentSection[] =
       (item.text || item.imageUrl)
         ? [{ text: item.text, imageUrl: item.imageUrl }].filter(s => s.text || s.imageUrl)
@@ -90,12 +80,17 @@ function CardCategory() {
 }
 
 export default function Beranda() {
+  const router = useRouter(); 
   const { btnRef, x, y, scale, handleMouseMove, handleMouseLeave } =
     useMagneticButton({
       activationRadius: 180,
       strengthFactor: 0.15,
       scaleFactor: 0.12,
     });
+
+  const handleTemukanJasa = () => {
+    router.push("/jasa"); 
+  };
 
   return (
     <>
@@ -124,6 +119,9 @@ export default function Beranda() {
         <motion.button
           ref={btnRef}
           style={{ x, y, scale }}
+          onClick={handleTemukanJasa}               
+          aria-label="Temukan Jasa"
+          type="button"
           className="mt-6 md:mt-8 shadow-[inset_0_0_0_2px_#0B0B0B]
             text-black dark:text-neutral-200 px-5 py-2.5 md:px-7 md:py-3
             text-sm md:text-base rounded-full tracking-wide md:tracking-widest
