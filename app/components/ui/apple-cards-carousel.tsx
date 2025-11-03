@@ -1,3 +1,4 @@
+// app/components/ui/apple-cards-carousel.tsx
 "use client";
 
 import React, {
@@ -241,6 +242,7 @@ export const Card = ({
                 className="relative z-10 flex h-80 w-56 flex-col items-start justify-start overflow-hidden rounded-3xl bg-gray-100 md:h-[40rem] md:w-96 dark:bg-neutral-900"
             >
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-30 h-full bg-gradient-to-b from-black/50 via-transparent to-transparent" />
+
                 <div className="relative z-40 p-8">
                     <motion.p
                         layoutId={layout ? `category-${card.category}` : undefined}
@@ -248,6 +250,8 @@ export const Card = ({
                     >
                         {card.category}
                     </motion.p>
+
+                    {/* 🔧 Tambahkan kembali title di front card */}
                     <motion.p
                         layoutId={layout ? `title-${card.title}` : undefined}
                         className="mt-2 max-w-xs text-left font-sans text-xl font-semibold [text-wrap:balance] text-white md:text-3xl"
@@ -255,6 +259,7 @@ export const Card = ({
                         {card.title}
                     </motion.p>
                 </div>
+
                 <BlurImage
                     src={card.src}
                     alt={card.title}
@@ -288,10 +293,7 @@ export const BlurImage = ({
             height={height}
             loading="eager"
             decoding="async"
-            className={cn(
-                "h-full w-full object-cover", 
-                className,
-            )}
+            className={cn("h-full w-full object-cover", className)}
         />
     );
 };

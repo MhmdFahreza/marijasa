@@ -34,54 +34,49 @@ export default function SiteFooter() {
                     </div>
 
                     <div>
-                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Product</h4>
+                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Beranda</h4>
                         <div className="mt-3 grid space-y-3 text-sm">
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Pricing</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Changelog</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Docs</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Download</Link></p>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Company</h4>
-                        <div className="mt-3 grid space-y-3 text-sm">
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">About us</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Tentang Kami</Link></p>
                             <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Blog</Link></p>
-                            <p>
-                                <Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Careers</Link>{" "}
-                                <span className="inline text-blue-600 dark:text-blue-400">— We&apos;re hiring</span>
-                            </p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Customers</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Newsroom</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Sitemap</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Visi & Misi</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Download APK</Link></p>
                         </div>
                     </div>
 
                     <div>
-                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Resources</h4>
+                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Transaksi & Pembayaran</h4>
                         <div className="mt-3 grid space-y-3 text-sm">
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Community</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Help &amp; Support</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Metode Pembayaran</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Syarat dan Ketentuan Pembayaran</Link></p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Dukungan & Komunitas</h4>
+                        <div className="mt-3 grid space-y-3 text-sm">
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Pusat Bantuan</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Hubungi Kami</Link></p>
                             <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">eBook</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">What&apos;s New</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Komunitas</Link></p>
                         </div>
                     </div>
 
                     <div>
-                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Developers</h4>
+                        <h4 className="text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Pencari Jasa</h4>
                         <div className="mt-3 grid space-y-3 text-sm">
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Api</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Cara Kerja</Link></p>
                             <p>
-                                <Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">GitHub</Link>{" "}
-                                <span className="inline text-blue-600 dark:text-blue-400">— New</span>
+                                <Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Kategori Jasa Populer</Link>{" "}
+                            </p>
+                            <p>
+                                <Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Testimoni</Link>{" "}
                             </p>
                         </div>
 
-                        <h4 className="mt-7 text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Industries</h4>
+                        <h4 className="mt-7 text-xs font-semibold text-gray-900 dark:text-gray-100 uppercase">Penyedia Jasa</h4>
                         <div className="mt-3 grid space-y-3 text-sm">
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Financial Services</Link></p>
-                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Education</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Daftar sebagai Penyedia</Link></p>
+                            <p><Link className="inline-flex gap-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden" href="#">Panduan Verifikasi</Link></p>
                         </div>
                     </div>
                 </div>

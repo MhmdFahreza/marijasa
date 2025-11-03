@@ -35,9 +35,30 @@ export function InfiniteMovingCardsData() {
 }
 
 const testimonials = [
-  { quote: "It was the best of times, it was the worst of times, ...", name: "Charles Dickens", title: "A Tale of Two Cities" },
-  { quote: "To be, or not to be, that is the question: ...", name: "William Shakespeare", title: "Hamlet" },
-  { quote: "All that we see or seem is but a dream within a dream.", name: "Edgar Allan Poe", title: "A Dream Within a Dream" },
-  { quote: "It is a truth universally acknowledged, ...", name: "Jane Austen", title: "Pride and Prejudice" },
-  { quote: "Call me Ishmael. Some years ago—never mind how long precisely—...", name: "Herman Melville", title: "Moby-Dick" },
+  {
+    quote: "Website MARIJASA benar-benar membantu saya menemukan asisten rumah tangga yang profesional dengan cepat dan mudah. Prosesnya aman dan transparan!",
+    name: "Dewi Anggraini",
+    title: "Ibu Rumah Tangga",
+  },
+  {
+    quote: "Saya sangat puas dengan layanan MARIJASA. Tampilan websitenya simpel, tapi fiturnya lengkap. Sekarang, saya bisa pesan jasa bersih-bersih hanya dalam beberapa klik.",
+    name: "Andi Pratama",
+    title: "Karyawan Kantoran",
+  },
+  {
+    quote: "Pelayanan MARIJASA luar biasa! Mitra jasanya ramah dan hasil kerjanya memuaskan. Cocok sekali untuk keluarga sibuk seperti saya.",
+    name: "Rina Kurnia",
+    title: "Pegawai Negeri",
+  },
+  {
+    quote: "Dari semua platform penyedia jasa rumah tangga yang pernah saya coba, MARIJASA paling praktis. Respons cepat, harga jelas, dan pekerja sangat terpercaya.",
+    name: "Budi Santoso",
+    title: "Wirausaha",
+  },
+  {
+    quote: "Saya sangat terbantu dengan adanya MARIJASA. Website-nya mudah digunakan dan customer service-nya responsif sekali. Terima kasih, MARIJASA!",
+    name: "Siti Nurhaliza",
+    title: "Pengguna Setia MARIJASA",
+  },
 ];
+
