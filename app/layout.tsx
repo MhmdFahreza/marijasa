@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`relative ${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
         <PrelineScriptWrapper />
       </body>
