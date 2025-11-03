@@ -8,6 +8,9 @@
     "start": "next start"
   },
   "dependencies": {
+    "@chakra-ui/react": "^3.28.1",
+    "@emotion/react": "^11.14.0",
+    "@radix-ui/react-slot": "^1.2.3",
     "@tabler/icons-react": "^3.35.0",
     "@tsparticles/engine": "^3.9.1",
     "@tsparticles/react": "^3.0.0",

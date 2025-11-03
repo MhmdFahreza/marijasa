@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Jasa | MARIJASA",
-  description: "Daftar jasa yang tersedia di MARIJASA",
+  title: "Cari Jasa",
+  description: "Mari cari jasamu.",
 };
 
 export default function JasaPage() {

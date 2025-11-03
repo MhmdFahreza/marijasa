@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Navbar,
@@ -13,28 +13,36 @@ import {
   MobileNavMenu,
   LanguageSelector,
 } from "@/app/components/ui/resizable-navbar";
-import Beranda from "@/app/user/beranda"; 
+
 const LANG_STORAGE_KEY = "appLanguage";
 
-export default function Home() {
+export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { t, i18n } = useTranslation();
 
-  const [selectedLanguage, setSelectedLanguage] = useState(
-    i18n.resolvedLanguage || i18n.language || "id"
-  );
+  const initialLang =
+    i18n.resolvedLanguage || i18n.language || "id";
+  const [selectedLanguage, setSelectedLanguage] = useState(initialLang);
 
+  // Sinkronisasi bahasa dari localStorage / state -> i18n + <html lang="">
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
-    if (saved && saved !== selectedLanguage) {
-      i18n.changeLanguage(saved);
-      setSelectedLanguage(saved);
-      document.documentElement.lang = saved;
-    } else {
-      document.documentElement.lang = selectedLanguage;
+    const lang = saved || selectedLanguage;
+
+    if (lang !== i18n.language) {
+      i18n.changeLanguage(lang);
     }
-  }, [i18n, selectedLanguage]);
+    document.documentElement.lang = lang;
+
+    if (!saved) {
+      window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+    }
+  }, []); // sekali saat mount
+
+  useEffect(() => {
+    document.documentElement.lang = selectedLanguage;
+  }, [selectedLanguage]);
 
   const handleSelectLanguage = (language: string) => {
     setSelectedLanguage(language);
@@ -115,7 +123,8 @@ export default function Home() {
         </MobileNav>
       </Navbar>
 
-      <Beranda />
+      {/* Halaman spesifik dirender di bawah Navbar */}
+      {children}
     </div>
   );
 }

@@ -1,22 +1,23 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import ClientPolyfills from "./client-polyfills"; 
+// app/layout.tsx
+import type { Metadata } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
+import './globals.css';
+import PrelineScriptWrapper from './preline/PrelineScriptWrapper';
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
+const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Marijasa",
-  description: "Aplikasi Web Penyedia Jasa Rumah Tangga",
+  title: 'Marijasa',
+  description: 'Aplikasi Web Penyedia Jasa Rumah Tangga',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ClientPolyfills /> 
         {children}
+        <PrelineScriptWrapper />
       </body>
     </html>
   );
