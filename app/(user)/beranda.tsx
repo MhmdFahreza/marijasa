@@ -1,7 +1,7 @@
 "use client";
 
-import React, { memo } from "react";
-import { motion } from "motion/react";
+import React, { memo, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { BackgroundLines } from "@/app/components/ui/background-lines";
 import { useMagneticButton } from "@/app/components/lib/hooks/useMagneticButton";
 import { Carousel, Card } from "@/app/components/ui/apple-cards-carousel";
@@ -10,7 +10,8 @@ import { cardData, type ContentSection } from "@/app/data/dataContent";
 import { dataReason } from "@/app/data/dataReason";
 import { HoverEffect } from "@/app/components/ui/card-hover-effect";
 import SiteFooter from "@/app/footer";
-import { useRouter } from "next/navigation"; 
+import { useRouter } from "next/navigation";
+import { LoaderTwo } from "@/app/components/transition/loader";
 
 type ContentCategoryProps = {
   sections?: ContentSection[];
@@ -80,7 +81,10 @@ function CardCategory() {
 }
 
 export default function Beranda() {
-  const router = useRouter(); 
+  const router = useRouter();
+  const prefersReduced = useReducedMotion();
+  const [leaving, setLeaving] = useState(false);
+
   const { btnRef, x, y, scale, handleMouseMove, handleMouseLeave } =
     useMagneticButton({
       activationRadius: 180,
@@ -88,8 +92,11 @@ export default function Beranda() {
       scaleFactor: 0.12,
     });
 
-  const handleTemukanJasa = () => {
-    router.push("/jasa"); 
+  const handleTemukanJasa = async () => {
+    setLeaving(true);
+    // beri sedikit waktu untuk fade-out sebelum push
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 220));
+    router.push("/jasa");
   };
 
   return (
@@ -100,28 +107,38 @@ export default function Beranda() {
         onMouseLeave={handleMouseLeave}
       >
         <div className="max-w-4xl mx-auto">
-          <h2
+          <motion.h2
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
             className="bg-clip-text text-transparent text-center bg-gradient-to-b
-            from-neutral-900 to-neutral-700 dark:from-neutral-600 dark:to-white
-            text-xl sm:text-2xl md:text-4xl lg:text-5xl xl:text-6xl
-            leading-tight md:leading-tight
-            font-sans py-3 md:py-8 relative z-20 font-bold tracking-tight"
+              from-neutral-900 to-neutral-700 dark:from-neutral-600 dark:to-white
+              text-xl sm:text-2xl md:text-4xl lg:text-5xl xl:text-6xl
+              leading-tight md:leading-tight font-sans py-3 md:py-8 relative z-20 font-bold tracking-tight"
           >
             Temukan Penyedia Jasa Terpercaya, untuk Kebutuhan Rumah Tangga Anda.
-          </h2>
+          </motion.h2>
         </div>
 
-        <p className="max-w-xl mx-auto text-sm md:text-lg text-neutral-700 dark:text-neutral-400 text-center relative z-20">
+        <motion.p
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut", delay: 0.08 }}
+          className="max-w-xl mx-auto text-sm md:text-lg text-neutral-700 dark:text-neutral-400 text-center relative z-20"
+        >
           Dapatkan solusi jasa rumah tangga yang aman, terjangkau, dan terpercaya. Temukan
           penyedia jasa terbaik untuk Anda dengan mengeklik tombol di bawah.
-        </p>
+        </motion.p>
 
         <motion.button
           ref={btnRef}
           style={{ x, y, scale }}
-          onClick={handleTemukanJasa}               
+          onClick={handleTemukanJasa}
           aria-label="Temukan Jasa"
           type="button"
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+          transition={{ type: "spring", stiffness: 350, damping: 22 }}
           className="mt-6 md:mt-8 shadow-[inset_0_0_0_2px_#0B0B0B]
             text-black dark:text-neutral-200 px-5 py-2.5 md:px-7 md:py-3
             text-sm md:text-base rounded-full tracking-wide md:tracking-widest
@@ -134,24 +151,55 @@ export default function Beranda() {
         </motion.button>
       </BackgroundLines>
 
-      <div className="w-full">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-10%" }}
+        transition={{ duration: 0.35 }}
+        className="w-full"
+      >
         <CardCategory />
-      </div>
+      </motion.div>
 
-      <InfiniteMovingCardsData />
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: "-10%" }}
+        transition={{ duration: 0.5 }}
+      >
+        <InfiniteMovingCardsData />
+      </motion.div>
 
       <div className="w-full py-16">
-        <h2
-          className="max-w-7xl px-4 mx-auto text-center
-          text-lg md:text-3xl font-semibold md:font-bold
-          text-neutral-800 dark:text-neutral-200 font-sans"
-        >
+        <h2 className="max-w-7xl px-4 mx-auto text-center text-lg md:text-3xl font-semibold md:font-bold text-neutral-800 dark:text-neutral-200 font-sans">
           Alasan Mengapa MARIJASA Jadi Pilihan Tepat
         </h2>
-        <CardHoverEffect />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.35 }}
+        >
+          <CardHoverEffect />
+        </motion.div>
       </div>
 
       <SiteFooter />
+
+      <AnimatePresence>
+        {leaving && (
+          <motion.div
+            key="route-leave"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: prefersReduced ? 0 : 0.5 }}
+            className="fixed inset-0 bg-white z-[9999]"
+          >
+            <LoaderTwo />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
