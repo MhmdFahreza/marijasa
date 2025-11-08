@@ -138,14 +138,16 @@ export default function FilterBar() {
                     </Select>
                 </div>
 
-                <CitySelect
-                    key={`m-kota-${kota ?? "none"}`}
-                    value={kota}
-                    onValueChange={setKota}
-                    cities={CITIES_ID}
-                    placeholder="Pilih kota"
-                    triggerClassName="h-11 rounded-xl px-4 text-base w-full"
-                />
+                <div className="sm:col-span-2">
+                    <CitySelect
+                        key={`m-kota-${kota ?? "none"}`}
+                        value={kota}
+                        onValueChange={setKota}
+                        cities={CITIES_ID}
+                        placeholder="Pilih kota"
+                        triggerClassName="h-11 rounded-xl px-4 text-base w-full"
+                    />
+                </div>
 
                 <div className="sm:col-span-2">
                     <Select
@@ -190,7 +192,6 @@ export default function FilterBar() {
                         <SelectContent>
                             <SelectItem value="terbaru">Terbaru</SelectItem>
                             <SelectItem value="terdekat">Terdekat</SelectItem>
-                            <SelectItem value="termurah">Harga Termurah</SelectItem>
                             <SelectItem value="rating">Rating Tertinggi</SelectItem>
                         </SelectContent>
                     </Select>
@@ -302,7 +303,6 @@ export default function FilterBar() {
                                     <SelectContent>
                                         <SelectItem value="terbaru">Terbaru</SelectItem>
                                         <SelectItem value="terdekat">Terdekat</SelectItem>
-                                        <SelectItem value="termurah">Harga Termurah</SelectItem>
                                         <SelectItem value="rating">Rating Tertinggi</SelectItem>
                                     </SelectContent>
                                 </Select>

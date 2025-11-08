@@ -5,6 +5,15 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./node_modules/preline/preline.js",
   ],
-  theme: { extend: {} },
-  plugins: [require("preline/plugin")],
+  theme: {
+    extend: {
+      lineClamp: {
+        6: '6', 
+      },
+    },
+  },
+  plugins: [
+    require("preline/plugin"),
+    require('@tailwindcss/line-clamp'), 
+  ],
 };
