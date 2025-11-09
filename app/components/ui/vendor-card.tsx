@@ -1,6 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { Card, CardHeader } from "@/app/components/ui/card";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -10,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/app/components/ui/tooltip";
 import { Separator } from "@/app/components/ui/separator";
 import { Heart, Star, CheckCircle2 } from "lucide-react";
+import { LoaderTwo } from "@/app/components/transition/loader";
 
 type WorkImage = { src: string; alt: string };
 
@@ -26,11 +30,22 @@ export type Vendor = {
 };
 
 export default function VendorCard({ vendor }: { vendor: Vendor }) {
-  const { name, verified, rating, reviewCount, tags, summary, gallery, avatar } = vendor;
+  const { id, name, verified, rating, reviewCount, tags, summary, gallery, avatar } = vendor;
+  const router = useRouter();
+  const prefersReduced = useReducedMotion();
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const handleViewProfile = async () => {
+    setIsNavigating(true);
+    // Beri waktu untuk animasi loader muncul
+    await new Promise((r) => setTimeout(r, prefersReduced ? 100 : 400));
+    router.push(`/jasa/detailjasa/${id}`);
+  };
 
   return (
-    <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl">
-      <CardHeader className="p-4 sm:p-5 md:p-6">
+    <>
+      <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl">
+        <CardHeader className="p-4 sm:p-5 md:p-6">
         {/* Mobile: flex-col, Tablet/Desktop: 2 kolom grid fix */}
         <div
           className="
@@ -134,7 +149,11 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
               {/* Aksi mobile */}
               <div className="mt-3 flex gap-2 md:hidden">
                 <Button className="flex-1 min-w-0 text-xs sm:text-sm">Pesan Sekarang</Button>
-                <Button variant="outline" className="flex-1 min-w-0 text-xs sm:text-sm">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 min-w-0 text-xs sm:text-sm"
+                  onClick={handleViewProfile}
+                >
                   Lihat Profil
                 </Button>
               </div>
@@ -163,7 +182,11 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
             {/* Tombol aksi desktop */}
             <div className="flex gap-2 justify-end w-full">
               <Button className="min-w-[150px] px-4">Pesan Sekarang</Button>
-              <Button variant="outline" className="min-w-[130px] px-4">
+              <Button 
+                variant="outline" 
+                className="min-w-[130px] px-4"
+                onClick={handleViewProfile}
+              >
                 Lihat Profil
               </Button>
             </div>
@@ -207,6 +230,22 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
       <Separator className="hidden md:block" />
       <div className="hidden md:block py-3 px-6" />
     </Card>
+
+      <AnimatePresence>
+        {isNavigating && (
+          <motion.div
+            key="vendor-navigation"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: prefersReduced ? 0 : 0.3 }}
+            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
+          >
+            <LoaderTwo />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 

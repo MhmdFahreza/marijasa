@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useRouter, usePathname } from "next/navigation"; 
 import {
   Navbar,
   NavBody,
@@ -13,18 +14,21 @@ import {
   MobileNavMenu,
   LanguageSelector,
 } from "@/app/components/ui/resizable-navbar";
+import { LoaderTwo } from "@/app/components/transition/loader"; 
 
 const LANG_STORAGE_KEY = "appLanguage";
 
 export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { t, i18n } = useTranslation();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const initialLang =
     i18n.resolvedLanguage || i18n.language || "id";
   const [selectedLanguage, setSelectedLanguage] = useState(initialLang);
+  const [isLoading, setIsLoading] = useState(false); 
 
-  // Sinkronisasi bahasa dari localStorage / state -> i18n + <html lang="">
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
@@ -38,7 +42,12 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     if (!saved) {
       window.localStorage.setItem(LANG_STORAGE_KEY, lang);
     }
-  }, []); // sekali saat mount
+  }, []); 
+
+  // Reset loading state ketika pathname berubah
+  useEffect(() => {
+    setIsLoading(false);
+  }, [pathname]);
 
   useEffect(() => {
     document.documentElement.lang = selectedLanguage;
@@ -58,17 +67,56 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleLoginClick = () => {
+    setIsLoading(true);
+    
+    // Simulasi delay untuk menampilkan loader
+    const connection = (navigator as any).connection || 
+                      (navigator as any).mozConnection || 
+                      (navigator as any).webkitConnection;
+
+    const networkSpeed = connection ? connection.effectiveType : "4g";
+    const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
+
+    setTimeout(() => {
+      router.push("/login");
+    }, delay);
+  };
+
+  const handleRegisterClick = () => {
+    setIsLoading(true);
+    
+    // Simulasi delay untuk menampilkan loader
+    const connection = (navigator as any).connection || 
+                      (navigator as any).mozConnection || 
+                      (navigator as any).webkitConnection;
+
+    const networkSpeed = connection ? connection.effectiveType : "4g";
+    const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
+
+    setTimeout(() => {
+      router.push("/register");
+    }, delay);
+  };
+
   return (
-    <div className="relative w-full">
+    <div className="relative w-full min-h-screen">
+      {/* Loader Overlay - Tampil di atas semua konten */}
+      {isLoading && (
+        <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
+          <LoaderTwo /> 
+        </div>
+      )}
+
       <Navbar>
         <NavBody>
           <NavbarLogo />
           <div className="flex items-center gap-4 lg:gap-6">
             <div className="hidden lg:flex items-center gap-4">
-              <NavbarButton variant="primary">
+              <NavbarButton variant="primary" onClick={handleLoginClick}>
                 {t("nav.registerProvider")}
               </NavbarButton>
-              <NavbarButton variant="primary">
+              <NavbarButton variant="primary" onClick={handleLoginClick}>
                 {t("nav.login")}
               </NavbarButton>
               <LanguageSelector
@@ -77,7 +125,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               />
             </div>
             <div className="lg:hidden flex items-center gap-4">
-              <NavbarButton variant="primary" className="block w-full text-center">
+              <NavbarButton
+                variant="primary"
+                className="block w-full text-center"
+                onClick={handleLoginClick}
+              >
                 {t("nav.login")}
               </NavbarButton>
             </div>
@@ -99,14 +151,14 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           >
             <div className="flex w-full flex-col gap-4">
               <NavbarButton
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={handleLoginClick} 
                 variant="primary"
                 className="w-full text-center"
               >
                 {t("nav.login")}
               </NavbarButton>
               <NavbarButton
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={handleLoginClick} 
                 variant="primary"
                 className="w-full text-center"
               >
@@ -123,7 +175,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
         </MobileNav>
       </Navbar>
 
-      {/* Halaman spesifik dirender di bawah Navbar */}
       {children}
     </div>
   );
