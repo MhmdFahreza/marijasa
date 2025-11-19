@@ -16,11 +16,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar"
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { Separator } from "@/app/components/ui/separator";
+import { Send } from "lucide-react";
 import { Vendors } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
-import { Star, CheckCircle2, Heart, MapPin, Phone, Mail, MessageCircle } from "lucide-react";
+import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle } from "lucide-react";
 
 export default function VendorDetailPage() {
   const params = useParams();
@@ -144,25 +144,27 @@ export default function VendorDetailPage() {
         </Card>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Button size="lg" className="w-full">
-            <Phone className="mr-2 h-4 w-4" />
-            Hubungi via Telepon
-          </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <Button 
             size="lg" 
-            variant="outline" 
+            className="w-full"
+            onClick={() => handleNavigation(`/jasa/detailjasa/${vendorId}/form`)}
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Pesan Sekarang
+          </Button>
+
+          <Button
+            size="lg"
+            variant="outline"
             className="w-full"
             onClick={() => handleNavigation("/jasa")}
           >
             <MessageCircle className="mr-2 h-4 w-4" />
             Chat Sekarang
           </Button>
-          <Button size="lg" variant="outline" className="w-full">
-            <Mail className="mr-2 h-4 w-4" />
-            Kirim Email
-          </Button>
         </div>
+
 
         {/* Gallery Section */}
         {vendor.gallery && vendor.gallery.length > 0 && (

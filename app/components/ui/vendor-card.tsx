@@ -42,6 +42,13 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
     router.push(`/jasa/detailjasa/${id}`);
   };
 
+  const handleOrderNow = async () => {
+    setIsNavigating(true);
+    // Beri waktu untuk animasi loader muncul
+    await new Promise((r) => setTimeout(r, prefersReduced ? 100 : 400));
+    router.push(`/jasa/detailjasa/${id}/form`);
+  };
+
   return (
     <>
       <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl">
@@ -148,7 +155,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
 
               {/* Aksi mobile */}
               <div className="mt-3 flex gap-2 md:hidden">
-                <Button className="flex-1 min-w-0 text-xs sm:text-sm">Pesan Sekarang</Button>
+                <Button 
+                  className="flex-1 min-w-0 text-xs sm:text-sm"
+                  onClick={handleOrderNow}
+                >
+                  Pesan Sekarang
+                </Button>
                 <Button 
                   variant="outline" 
                   className="flex-1 min-w-0 text-xs sm:text-sm"
@@ -181,7 +193,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
 
             {/* Tombol aksi desktop */}
             <div className="flex gap-2 justify-end w-full">
-              <Button className="min-w-[150px] px-4">Pesan Sekarang</Button>
+              <Button 
+                className="min-w-[150px] px-4"
+                onClick={handleOrderNow}
+              >
+                Pesan Sekarang
+              </Button>
               <Button 
                 variant="outline" 
                 className="min-w-[130px] px-4"

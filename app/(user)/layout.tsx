@@ -83,7 +83,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, delay);
   };
 
-  const handleRegisterClick = () => {
+  const handleRegisterProviderClick = () => {
     setIsLoading(true);
     
     // Simulasi delay untuk menampilkan loader
@@ -95,7 +95,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
 
     setTimeout(() => {
-      router.push("/register");
+      router.push("/mitra/daftar");
     }, delay);
   };
 
@@ -113,7 +113,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           <NavbarLogo />
           <div className="flex items-center gap-4 lg:gap-6">
             <div className="hidden lg:flex items-center gap-4">
-              <NavbarButton variant="primary" onClick={handleLoginClick}>
+              <NavbarButton variant="primary" onClick={handleRegisterProviderClick}>
                 {t("nav.registerProvider")}
               </NavbarButton>
               <NavbarButton variant="primary" onClick={handleLoginClick}>
@@ -158,7 +158,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                 {t("nav.login")}
               </NavbarButton>
               <NavbarButton
-                onClick={handleLoginClick} 
+                onClick={handleRegisterProviderClick} 
                 variant="primary"
                 className="w-full text-center"
               >

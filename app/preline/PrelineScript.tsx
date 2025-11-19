@@ -3,14 +3,6 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 
-declare global {
-  interface Window {
-    HSStaticMethods?: {
-      autoInit?: () => void;
-    };
-  }
-}
-
 export default function PrelineScript() {
   const pathname = usePathname();
 
@@ -32,7 +24,6 @@ export default function PrelineScript() {
         window.HSStaticMethods?.autoInit?.();
       });
     })().catch((err) => {
-
       console.error('[PrelineScript] gagal memuat:', err);
     });
   }, []);

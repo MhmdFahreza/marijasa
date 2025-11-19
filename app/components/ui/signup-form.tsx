@@ -28,7 +28,7 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="name">Full Name</FieldLabel>
-              <Input id="name" type="text" placeholder="John Doe" required />
+              <Input id="name" type="text" placeholder="Masukkan Namamu" required />
             </Field>
             <Field>
               <FieldLabel htmlFor="email">Email</FieldLabel>
@@ -41,6 +41,18 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
               <FieldDescription>
                 We&apos;ll use this to contact you. We will not share your email
                 with anyone else.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="phone">Phone Number</FieldLabel>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="Masukkan No. Telp"
+                required
+              />
+              <FieldDescription>
+                Enter your phone number with country code.
               </FieldDescription>
             </Field>
             <Field>
