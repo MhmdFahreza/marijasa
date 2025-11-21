@@ -276,7 +276,7 @@ export default function MitraDaftarPage() {
 
                 {/* Form Card */}
                 <Card className="rounded-2xl overflow-hidden">
-                    <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5">
+                    <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5 py-6">
                         <div className="flex items-center gap-3">
                             <Button
                                 variant="ghost"

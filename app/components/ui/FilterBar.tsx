@@ -18,7 +18,7 @@ import { PlaceholdersAndVanishInput } from "@/app/components/ui/placeholders-and
 const LABELS = {
     kategori: {
         listrik: "Tukang Listrik",
-        ac: "Paket Service AC",
+        ac: "Tukang AC",
         pembersihanrumah: "Pembersihan Rumah",
         ledeng: "Tukang Ledeng/Pipa",
         sedotwc: "Sedot WC",
@@ -128,7 +128,7 @@ export default function FilterBar() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="listrik">Tukang Listrik</SelectItem>
-                            <SelectItem value="ac">Paket Service AC</SelectItem>
+                            <SelectItem value="ac">Tukang AC</SelectItem>
                             <SelectItem value="pembersihanrumah">Pembersihan Rumah</SelectItem>
                             <SelectItem value="ledeng">Tukang Ledeng/Pipa</SelectItem>
                             <SelectItem value="sedotwc">Sedot WC</SelectItem>
@@ -247,7 +247,7 @@ export default function FilterBar() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="listrik">Tukang Listrik</SelectItem>
-                                        <SelectItem value="ac">Paket Service AC</SelectItem>
+                                        <SelectItem value="ac">Tukang AC</SelectItem>
                                         <SelectItem value="pembersihanrumah">Pembersihan Rumah</SelectItem>
                                         <SelectItem value="ledeng">Tukang Ledeng/Pipa</SelectItem>
                                         <SelectItem value="sedotwc">Sedot WC</SelectItem>
