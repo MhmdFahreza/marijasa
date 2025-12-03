@@ -5,7 +5,7 @@ export const Vendors: Vendor[] = [
         id: "1",
         name: "Edi Taulany Karya Baru",
         verified: true,
-        rating: 4.9,
+        rating: 4.3,
         reviewCount: 74,
         tags: ["Tukang AC", "Instalasi AC", "Cuci AC"],
         summary:
@@ -17,12 +17,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/a4/200/200", alt: "Pengecekan tekanan freon" },
         ],
         avatar: "https://i.pravatar.cc/120?img=12",
+        serviceAreas: ["Jakarta Barat", "Jakarta Utara", "Tangerang", "Cirebon", "Subang"],
     },
     {
         id: "2",
         name: "Berkah Teknik Listrik",
         verified: true,
-        rating: 4.8,
+        rating: 3.8,
         reviewCount: 58,
         tags: ["Tukang Listrik", "Panel Listrik", "Instalasi Rumah", "Perbaikan MCB"],
         summary:
@@ -33,14 +34,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/b3/200/200", alt: "Pengecekan instalasi listrik" },
         ],
         avatar: "https://i.pravatar.cc/120?img=32",
+        serviceAreas: ["Jakarta Selatan", "Depok", "Bogor", "Sukabumi", "Cianjur"],
     },
     {
         id: "3",
         name: "Clean&Co",
         verified: false,
-        rating: 4.7,
+        rating: 4.1,
         reviewCount: 120,
-        tags: ["Pembersihan Rumah", "Deep Cleaning"],
+        tags: ["Tukang Pembersihan Rumah", "Deep Cleaning"],
         summary:
             "Jasa kebersihan profesional untuk apartemen, rumah, dan kantor. Termasuk general cleaning, deep cleaning pasca renovasi, sanitasi kamar mandi, dan pembersihan sofa serta karpet.",
         gallery: [
@@ -49,14 +51,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/c3/200/200", alt: "Vacuum karpet profesional" },
         ],
         avatar: "https://i.pravatar.cc/120?img=5",
+        serviceAreas: ["Jakarta Pusat", "Bandung", "Cimahi", "Tasikmalaya", "Garut"],
     },
     {
         id: "4",
         name: "Jaya Plumbing",
         verified: true,
-        rating: 4.6,
+        rating: 3.6,
         reviewCount: 41,
-        tags: ["Tukang Ledeng/Pipa", "Bongkar Pasang Wastafel", "Perbaikan Kebocoran"],
+        tags: ["Tukang Ledeng", "Bongkar Pasang Wastafel", "Perbaikan Kebocoran"],
         summary:
             "Menangani bocor pipa, mampet, instalasi pompa air, wastafel, kloset, hingga toren. Respon cepat dengan diagnosa jelas sebelum pengerjaan dan hasil rapi tanpa banyak bongkar.",
         gallery: [
@@ -65,14 +68,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/d3/200/200", alt: "Pemasangan pompa air" },
         ],
         avatar: "https://i.pravatar.cc/120?img=47",
+        serviceAreas: ["Bekasi", "Karawang", "Cilegon", "Serang", "Pandeglang"],
     },
     {
         id: "5",
         name: "Sedot WC Barokah",
         verified: false,
-        rating: 4.5,
+        rating: 3.9,
         reviewCount: 33,
-        tags: ["Sedot WC", "Saluran Mampet"],
+        tags: ["Tukang Sedot WC", "Saluran Mampet"],
         summary:
             "Layanan sedot WC dan saluran mampet dengan armada siap panggil. Menjaga area kerja tetap bersih, proses cepat, dan transparan dalam estimasi biaya.",
         gallery: [
@@ -81,12 +85,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/e3/200/200", alt: "Peralatan sedot profesional" },
         ],
         avatar: "https://i.pravatar.cc/120?img=21",
+        serviceAreas: ["Semarang", "Solo", "Magelang", "Salatiga", "Purwokerto"],
     },
     {
         id: "6",
         name: "Green Yard",
         verified: true,
-        rating: 4.8,
+        rating: 4.2,
         reviewCount: 63,
         tags: ["Tukang Kebun", "Perawatan Taman", "Desain Landscape"],
         summary:
@@ -97,14 +102,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/f3/200/200", alt: "Penataan landscape halaman" },
         ],
         avatar: "https://i.pravatar.cc/120?img=8",
+        serviceAreas: ["Yogyakarta", "Bantul", "Sleman", "Magelang", "Klaten"],
     },
     {
         id: "7",
         name: "Karya Furnitur",
         verified: true,
-        rating: 4.9,
+        rating: 4.5,
         reviewCount: 85,
-        tags: ["Mebel/Furnitur", "Custom Lemari", "Kitchen Set"],
+        tags: ["Tukang Mebel", "Custom Lemari", "Kitchen Set"],
         summary:
             "Workshop furnitur custom untuk lemari, kitchen set, rak TV, dan meja kerja. Menggunakan material pilihan dengan finishing rapi dan desain menyesuaikan kebutuhan ruangan.",
         gallery: [
@@ -113,12 +119,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/g3/200/200", alt: "Meja kerja custom" },
         ],
         avatar: "https://i.pravatar.cc/120?img=57",
+        serviceAreas: ["Surabaya", "Sidoarjo", "Gresik", "Mojokerto", "Pasuruan"],
     },
     {
         id: "8",
         name: "AC Pro Service",
         verified: true,
-        rating: 4.7,
+        rating: 3.7,
         reviewCount: 92,
         tags: ["Tukang AC", "Cuci AC", "Isi Freon"],
         summary:
@@ -129,12 +136,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/h3/200/200", alt: "Pengecekan kompresor" },
         ],
         avatar: "https://i.pravatar.cc/120?img=15",
+        serviceAreas: ["Jakarta Timur", "Tangerang Selatan", "Cikarang", "Cibubur", "Cileungsi"],
     },
     {
         id: "9",
         name: "Mandiri Elektrik",
         verified: true,
-        rating: 4.6,
+        rating: 4.0,
         reviewCount: 67,
         tags: ["Tukang Listrik", "Instalasi Rumah", "Ganti Saklar & Stop Kontak"],
         summary:
@@ -145,14 +153,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/i3/200/200", alt: "Pemasangan lampu LED" },
         ],
         avatar: "https://i.pravatar.cc/120?img=28",
+        serviceAreas: ["Malang", "Batu", "Blitar", "Kediri", "Probolinggo"],
     },
     {
         id: "10",
         name: "Sparkle Home Cleaning",
         verified: true,
-        rating: 4.8,
+        rating: 4.4,
         reviewCount: 156,
-        tags: ["Pembersihan Rumah", "Deep Cleaning", "Cuci Sofa"],
+        tags: ["Tukang Pembersihan Rumah", "Deep Cleaning", "Cuci Sofa"],
         summary:
             "Tim cleaning profesional dengan peralatan modern. Melayani general cleaning, deep cleaning kamar mandi dan dapur, cuci sofa, springbed, dan karpet dengan hasil maksimal.",
         gallery: [
@@ -161,14 +170,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/j3/200/200", alt: "Pembersihan kamar mandi" },
         ],
         avatar: "https://i.pravatar.cc/120?img=9",
+        serviceAreas: ["Denpasar", "Badung", "Gianyar", "Tabanan", "Singaraja"],
     },
     {
         id: "11",
         name: "Sentosa Plumbing",
         verified: true,
-        rating: 4.7,
+        rating: 3.5,
         reviewCount: 54,
-        tags: ["Tukang Ledeng/Pipa", "Perbaikan Kebocoran", "Instalasi Water Heater"],
+        tags: ["Tukang Ledeng", "Perbaikan Kebocoran", "Instalasi Water Heater"],
         summary:
             "Ahli perbaikan dan instalasi sistem air rumah. Menangani bocor pipa, instalasi water heater, shower, dan bathtub. Dikerjakan oleh tukang ledeng berpengalaman dengan harga transparan.",
         gallery: [
@@ -177,14 +187,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/k3/200/200", alt: "Pemasangan shower" },
         ],
         avatar: "https://i.pravatar.cc/120?img=39",
+        serviceAreas: ["Medan", "Binjai", "Pematangsiantar", "Tebing Tinggi", "Tanjungbalai"],
     },
     {
         id: "12",
         name: "Express Sedot WC",
         verified: false,
-        rating: 4.4,
+        rating: 3.4,
         reviewCount: 28,
-        tags: ["Sedot WC", "Saluran Mampet", "24 Jam"],
+        tags: ["Tukang Sedot WC", "Saluran Mampet", "24 Jam"],
         summary:
             "Layanan sedot WC dan saluran 24 jam dengan respon cepat. Armada modern dan bersih, harga bersaing, serta garansi hasil kerja. Melayani area Jakarta dan sekitarnya.",
         gallery: [
@@ -193,12 +204,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/l3/200/200", alt: "Tim kerja profesional" },
         ],
         avatar: "https://i.pravatar.cc/120?img=44",
+        serviceAreas: ["Palembang", "Prabumulih", "Lubuklinggau", "Pagar Alam", "Lahat"],
     },
     {
         id: "13",
         name: "Taman Indah",
         verified: true,
-        rating: 4.9,
+        rating: 4.6,
         reviewCount: 71,
         tags: ["Tukang Kebun", "Perawatan Taman", "Pemangkasan Pohon"],
         summary:
@@ -209,14 +221,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/m3/200/200", alt: "Sistem irigasi taman" },
         ],
         avatar: "https://i.pravatar.cc/120?img=18",
+        serviceAreas: ["Balikpapan", "Samarinda", "Bontang", "Berau", "Kutai Kartanegara"],
     },
     {
         id: "14",
         name: "Mebel Jati Mas",
         verified: true,
-        rating: 4.8,
+        rating: 4.3,
         reviewCount: 94,
-        tags: ["Mebel/Furnitur", "Custom Lemari", "Furniture Jati"],
+        tags: ["Tukang Mebel", "Custom Lemari", "Furniture Jati"],
         summary:
             "Workshop mebel kayu jati dan mahoni. Menerima pembuatan lemari pakaian, buffet TV, meja makan, dan furniture custom lainnya dengan desain klasik maupun modern.",
         gallery: [
@@ -225,12 +238,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/n3/200/200", alt: "Buffet TV modern" },
         ],
         avatar: "https://i.pravatar.cc/120?img=62",
+        serviceAreas: ["Banjarmasin", "Banjarbaru", "Barito Kuala", "Martapura", "Kandangan"],
     },
     {
         id: "15",
         name: "Cool Air Conditioning",
         verified: false,
-        rating: 4.5,
+        rating: 3.8,
         reviewCount: 45,
         tags: ["Tukang AC", "Instalasi AC", "Bongkar Pasang AC"],
         summary:
@@ -241,12 +255,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/o3/200/200", alt: "Service outdoor unit" },
         ],
         avatar: "https://i.pravatar.cc/120?img=25",
+        serviceAreas: ["Batam", "Tanjungpinang", "Bintan", "Karimun", "Natuna"],
     },
     {
         id: "16",
         name: "Wijaya Listrik",
         verified: true,
-        rating: 4.9,
+        rating: 4.7,
         reviewCount: 112,
         tags: ["Tukang Listrik", "Panel Listrik", "Instalasi Rumah"],
         summary:
@@ -257,14 +272,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/p3/200/200", alt: "Pemasangan grounding" },
         ],
         avatar: "https://i.pravatar.cc/120?img=51",
+        serviceAreas: ["Padang", "Bukittinggi", "Payakumbuh", "Solok", "Padang Panjang"],
     },
     {
         id: "17",
         name: "Fresh & Clean Service",
         verified: true,
-        rating: 4.6,
+        rating: 3.9,
         reviewCount: 88,
-        tags: ["Pembersihan Rumah", "Deep Cleaning", "Sanitasi"],
+        tags: ["Tukang Pembersihan Rumah", "Deep Cleaning", "Sanitasi"],
         summary:
             "Layanan kebersihan dengan fokus sanitasi dan disinfeksi. Cocok untuk pembersihan pasca renovasi, move in/out, dan perawatan rutin apartemen atau rumah dengan standar hotel.",
         gallery: [
@@ -273,14 +289,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/q3/200/200", alt: "Poles lantai marmer" },
         ],
         avatar: "https://i.pravatar.cc/120?img=11",
+        serviceAreas: ["Bandar Lampung", "Metro", "Lampung Selatan", "Lampung Tengah", "Lampung Timur"],
     },
     {
         id: "18",
         name: "Ahli Pipa Cepat",
         verified: false,
-        rating: 4.4,
+        rating: 3.2,
         reviewCount: 36,
-        tags: ["Tukang Ledeng/Pipa", "Bongkar Pasang Wastafel", "Perbaikan Kebocoran"],
+        tags: ["Tukang Ledeng", "Bongkar Pasang Wastafel", "Perbaikan Kebocoran"],
         summary:
             "Tukang ledeng panggilan dengan respon 24 jam. Menangani kebocoran darurat, pipa mampet, ganti kran, instalasi wastafel dan kloset dengan harga terjangkau.",
         gallery: [
@@ -289,14 +306,15 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/r3/200/200", alt: "Instalasi kloset duduk" },
         ],
         avatar: "https://i.pravatar.cc/120?img=33",
+        serviceAreas: ["Pontianak", "Singkawang", "Mempawah", "Kubu Raya", "Sanggau"],
     },
     {
         id: "19",
         name: "Bersih Tuntas WC",
         verified: true,
-        rating: 4.6,
+        rating: 4.1,
         reviewCount: 49,
-        tags: ["Sedot WC", "Saluran Mampet", "Septitank"],
+        tags: ["Tukang Sedot WC", "Saluran Mampet", "Septitank"],
         summary:
             "Spesialis sedot septitank, WC mampet, dan saluran pembuangan. Menggunakan peralatan modern dan ramah lingkungan. Gratis konsultasi maintenance septitank berkala.",
         gallery: [
@@ -305,12 +323,13 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/s3/200/200", alt: "Truk vacuum modern" },
         ],
         avatar: "https://i.pravatar.cc/120?img=40",
+        serviceAreas: ["Makassar", "Maros", "Gowa", "Parepare", "Palopo"],
     },
     {
         id: "20",
         name: "Hijau Asri Landscape",
         verified: true,
-        rating: 4.7,
+        rating: 4.2,
         reviewCount: 65,
         tags: ["Tukang Kebun", "Desain Landscape", "Vertical Garden"],
         summary:
@@ -321,5 +340,6 @@ export const Vendors: Vendor[] = [
             { src: "https://picsum.photos/seed/t3/200/200", alt: "Indoor plant arrangement" },
         ],
         avatar: "https://i.pravatar.cc/120?img=14",
+        serviceAreas: ["Manado", "Bitung", "Tomohon", "Kotamobagu", "Gorontalo"],
     },
 ];

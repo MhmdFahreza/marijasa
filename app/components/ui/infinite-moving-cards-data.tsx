@@ -2,12 +2,12 @@
 
 import React from "react";
 import { InfiniteMovingCards } from "@/app/components/ui/infinite-moving-cards";
-import { SparklesCore } from "@/app/components/ui/sparkles"; 
+import { SparklesCore } from "@/app/components/ui/sparkles";
 
 export function InfiniteMovingCardsData() {
   return (
     <section className="relative isolate w-full pt-6 md:pt-8 pb-10">
-      <h2 className="mx-auto max-w-7xl text-center text-2xl md:text-5xl font-bold text-neutral-800 dark:text-neutral-200 font-sans tracking-tight leading-tight mt-2 md:mt-4 mb-3 md:mb-5">
+      <h2 className="mx-auto max-w-7xl text-center text-2xl md:text-5xl font-bold text-[#7CE0A8] dark:text-neutral-200 font-sans tracking-tight leading-tight mt-2 md:mt-4 mb-3 md:mb-5">
         Testimoni Customer
       </h2>
 
@@ -23,7 +23,7 @@ export function InfiniteMovingCardsData() {
           minSize={1}
           maxSize={3}
           particleDensity={110}
-          particleColor="#60a5fa" 
+          particleColor="#60a5fa"
         />
 
         <div className="relative z-10 w-full">

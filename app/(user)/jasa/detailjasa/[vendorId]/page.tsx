@@ -22,11 +22,17 @@ import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle } from "lucide-react";
 
+type GalleryImage = {
+  src: string;
+  alt: string;
+};
+
 export default function VendorDetailPage() {
   const params = useParams();
   const router = useRouter();
   const prefersReduced = useReducedMotion();
   const [leaving, setLeaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("layanan");
 
   const vendorId = params.vendorId as string;
   const vendor = Vendors.find((v) => v.id === vendorId);
@@ -36,6 +42,25 @@ export default function VendorDetailPage() {
     await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 220));
     router.push(path);
   };
+
+  const scrollToSection = (sectionId: string) => {
+    setActiveTab(sectionId);
+    const element = document.getElementById(sectionId);
+    if (element) {
+      const offset = 100;
+      const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+      window.scrollTo({
+        top: elementPosition - offset,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const tabs = [
+    { id: "layanan", label: "Layanan" },
+    { id: "hasil-pekerjaan", label: "Hasil Pekerjaan" },
+    { id: "ulasan", label: "Ulasan" },
+  ];
 
   if (!vendor) {
     return (
@@ -52,7 +77,7 @@ export default function VendorDetailPage() {
   return (
     <>
       <motion.main
-        className="min-h-screen w-full max-w-7xl mx-auto px-4 py-6"
+        className="min-h-screen w-full max-w-7xl mx-auto px-4 py-6 pb-24 lg:pb-6"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
@@ -90,11 +115,11 @@ export default function VendorDetailPage() {
 
         {/* Header Section */}
         <Card className="mb-6">
-          <CardHeader className="p-6">
-            <div className="flex flex-col md:flex-row gap-6">
-              <Avatar className="h-24 w-24 md:h-32 md:w-32">
+          <CardHeader className="p-4 md:p-6">
+            <div className="flex gap-3 md:gap-6">
+              <Avatar className="h-16 w-16 md:h-32 md:w-32 flex-shrink-0">
                 <AvatarImage src={vendor.avatar ?? ""} alt={vendor.name} />
-                <AvatarFallback className="text-2xl md:text-3xl">
+                <AvatarFallback className="text-lg md:text-3xl">
                   {vendor.name
                     .split(" ")
                     .map((w) => w[0])
@@ -104,133 +129,278 @@ export default function VendorDetailPage() {
                 </AvatarFallback>
               </Avatar>
 
-              <div className="flex-1">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <h1 className="text-2xl md:text-3xl font-bold">{vendor.name}</h1>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <h1 className="text-lg md:text-3xl font-bold">{vendor.name}</h1>
                       {vendor.verified && (
-                        <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
-                          <CheckCircle2 className="h-5 w-5" />
+                        <span className="inline-flex items-center gap-1 text-xs md:text-sm font-medium text-primary flex-shrink-0">
+                          <CheckCircle2 className="h-4 w-4 md:h-5 md:w-5" />
                           Verified
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 mb-3 md:mb-4 flex-wrap">
                       <RatingStars value={vendor.rating} />
-                      <span className="font-semibold">{vendor.rating.toFixed(1)}</span>
-                      <span className="text-muted-foreground">({vendor.reviewCount} review)</span>
+                      <span className="font-semibold text-sm md:text-base">{vendor.rating.toFixed(1)}</span>
+                      <span className="text-muted-foreground text-xs md:text-sm">({vendor.reviewCount} ulasan)</span>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {vendor.tags.map((tag, i) => (
-                        <Badge key={i} variant="secondary" className="rounded-full">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
+                    <p className="text-muted-foreground leading-relaxed text-sm md:text-base">{vendor.summary}</p>
                   </div>
 
-                  <Button variant="ghost" size="icon" aria-label="Simpan">
+                  <Button variant="ghost" size="icon" aria-label="Simpan" className="flex-shrink-0">
                     <Heart className="h-5 w-5" />
                   </Button>
                 </div>
-
-                <p className="text-muted-foreground leading-relaxed">{vendor.summary}</p>
               </div>
             </div>
           </CardHeader>
         </Card>
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <Button 
-            size="lg" 
-            className="w-full"
-            onClick={() => handleNavigation(`/jasa/detailjasa/${vendorId}/form`)}
-          >
-            <Send className="mr-2 h-4 w-4" />
-            Pesan Sekarang
-          </Button>
-
-          <Button
-            size="lg"
-            variant="outline"
-            className="w-full"
-            onClick={() => handleNavigation("/jasa")}
-          >
-            <MessageCircle className="mr-2 h-4 w-4" />
-            Chat Sekarang
-          </Button>
-        </div>
-
-
-        {/* Gallery Section */}
-        {vendor.gallery && vendor.gallery.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Portofolio & Hasil Pekerjaan</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {vendor.gallery.map((img, i) => (
-                  <motion.div
-                    key={i}
-                    className="aspect-square rounded-lg overflow-hidden bg-muted"
-                    whileHover={{ scale: 1.05 }}
-                    transition={{ duration: 0.2 }}
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          {/* Left Column - Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 sticky top-0 bg-white z-10">
+              <nav className="flex space-x-8" aria-label="Tabs">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => scrollToSection(tab.id)}
+                    className={`
+                      py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                      ${activeTab === tab.id
+                        ? "border-pink-500 text-pink-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }
+                    `}
                   >
-                    <img
-                      src={img.src}
-                      alt={img.alt}
-                      className="w-full h-full object-cover"
-                    />
-                  </motion.div>
+                    {tab.label}
+                  </button>
                 ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Placeholder Sections */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Tentang Layanan</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Informasi detail tentang layanan akan ditampilkan di sini. Termasuk deskripsi lengkap,
-              pengalaman, sertifikasi, dan keunggulan dari vendor ini.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Lokasi & Jangkauan Area</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-start gap-2 text-muted-foreground">
-              <MapPin className="h-5 w-5 mt-0.5" />
-              <p>Informasi lokasi dan area layanan akan ditampilkan di sini</p>
+              </nav>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Review & Testimoni</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Review dan testimoni dari pelanggan akan ditampilkan di sini
-            </p>
-          </CardContent>
-        </Card>
+            {/* Layanan */}
+            <div id="layanan">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Layanan yang tersedia</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {vendor.tags.map((tag: string, i: number) => (
+                      <Badge key={i} variant="outline" className="px-3 py-1">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Jangkauan Layanan */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Jangkauan layanan</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {vendor.serviceAreas.map((area: string, i: number) => (
+                    <Badge key={i} variant="outline" className="px-3 py-1">
+                      {area}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Hasil Pekerjaan */}
+            <div id="hasil-pekerjaan">
+              {vendor.gallery && vendor.gallery.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Hasil Pekerjaan</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {vendor.gallery.map((img: GalleryImage, i: number) => (
+                        <motion.div
+                          key={i}
+                          className="aspect-square rounded-lg overflow-hidden bg-muted cursor-pointer"
+                          whileHover={{ scale: 1.05 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <img
+                            src={img.src}
+                            alt={img.alt}
+                            className="w-full h-full object-cover"
+                          />
+                        </motion.div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Hasil Pekerjaan</CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-8 text-center">
+                    <p className="text-muted-foreground">Belum ada hasil pekerjaan yang ditampilkan</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Ulasan */}
+            <div id="ulasan">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ulasan</CardTitle>
+                  <div className="flex items-center gap-2 mt-4">
+                    <RatingStars value={vendor.rating} size="lg" />
+                    <span className="text-xl font-bold">{vendor.rating.toFixed(1)}</span>
+                    <span className="text-muted-foreground">
+                      ({vendor.reviewCount} ulasan)
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Sample Review 1 */}
+                    <div className="pb-6 border-b last:border-b-0">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-12 w-12 bg-gray-200">
+                          <AvatarFallback className="text-gray-600">A</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="mb-3">
+                            <h4 className="font-semibold text-base mb-2">Anonymous</h4>
+                            <div className="flex items-center gap-2 mb-3">
+                              <RatingStars value={5} size="sm" />
+                              <span className="text-xs text-muted-foreground">24 Jul 2025</span>
+                            </div>
+                          </div>
+                          <p className="text-sm leading-relaxed">Sangat baik 👍</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sample Review 2 */}
+                    <div className="pb-6 border-b last:border-b-0">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-12 w-12 bg-gray-200">
+                          <AvatarFallback className="text-gray-600">A</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="mb-3">
+                            <h4 className="font-semibold text-base mb-2">Anonymous</h4>
+                            <div className="flex items-center gap-2 mb-3">
+                              <RatingStars value={5} size="sm" />
+                              <span className="text-xs text-muted-foreground">15 Jun 2024</span>
+                            </div>
+                          </div>
+                          <p className="text-sm leading-relaxed">Pekerjaan bersih</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sample Review 3 */}
+                    <div className="pb-6 border-b last:border-b-0">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-12 w-12 bg-gray-200">
+                          <AvatarFallback className="text-gray-600">I</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="mb-3">
+                            <h4 className="font-semibold text-base mb-2">Isabella</h4>
+                            <div className="flex items-center gap-2 mb-3">
+                              <RatingStars value={5} size="sm" />
+                              <span className="text-xs text-muted-foreground">05 Jun 2024</span>
+                            </div>
+                          </div>
+                          <p className="text-sm leading-relaxed">Puas</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Right Column - Action Sidebar (Desktop) */}
+          <div className="hidden lg:block lg:col-span-1">
+            <Card className="sticky top-6">
+              <CardHeader>
+                <CardTitle className="text-lg">Dapatkan Penawaran</CardTitle>
+                <p className="text-sm text-muted-foreground text-justify">
+                  Ingin mendapatkan informasi lebih lanjut atau perkiraan harga? Pilih yang Anda inginkan di bawah ini untuk memulai pesan atau chat.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button
+                  size="lg"
+                  className="w-full bg-[#7CE0A8] text-white hover:bg-[#5CA68A] shadow-lg rounded-lg transition duration-300"
+                  onClick={() => handleNavigation(`/jasa/detailjasa/${vendorId}/form`)}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Pesan Sekarang
+                </Button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Atau
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full border-2 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition duration-300"
+                  onClick={() => handleNavigation("/jasa")}
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Chat dengan Vendor
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         <div className="mt-10">
           <SiteFooter />
+        </div>
+
+        {/* Floating Action Buttons (Mobile & Tablet) */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-50">
+          <div className="max-w-7xl mx-auto flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1 border-2 border-pink-500 text-pink-600 hover:bg-pink-50 rounded-lg transition duration-300"
+              onClick={() => handleNavigation("/jasa")}
+            >
+              <MessageCircle className="mr-2 h-4 w-4" />
+              Chat
+            </Button>
+            <Button
+              className="flex-1 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] shadow-lg rounded-lg transition duration-300"
+              onClick={() => handleNavigation(`/jasa/detailjasa/${vendorId}/form`)}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              Pesan Sekarang
+            </Button>
+          </div>
         </div>
       </motion.main>
 
@@ -252,19 +422,25 @@ export default function VendorDetailPage() {
   );
 }
 
-function RatingStars({ value }: { value: number }) {
+function RatingStars({ value, size = "md" }: { value: number; size?: "sm" | "md" | "lg" }) {
   const full = Math.floor(value);
   const half = value - full >= 0.5;
   const total = 5;
 
+  const sizeClasses = {
+    sm: "h-4 w-4",
+    md: "h-4 w-4",
+    lg: "h-6 w-6"
+  };
+
   return (
     <div className="flex items-center">
-      {Array.from({ length: total }).map((_, i) => {
+      {Array.from({ length: total }).map((_, i: number) => {
         const filled = i < full || (i === full && half);
         return (
           <Star
             key={i}
-            className={`h-5 w-5 ${filled ? "fill-current text-yellow-500" : "text-muted-foreground/40"}`}
+            className={`${sizeClasses[size]} ${filled ? "fill-yellow-400 text-yellow-400" : "fill-gray-200 text-gray-200"}`}
             aria-hidden="true"
           />
         );

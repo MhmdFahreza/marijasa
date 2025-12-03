@@ -71,7 +71,10 @@ export const Navbar = ({ children, className }: NavbarProps) => {
     return (
         <motion.div
             ref={ref}
-            className={cn("sticky inset-x-0 top-5 z-40 w-full", className)}
+            className={cn(
+                "sticky inset-x-0 top-0 z-40 w-full bg-white dark:bg-neutral-950",
+                className
+            )}
         >
             {React.Children.map(children, (child) =>
                 React.isValidElement(child)
@@ -85,6 +88,7 @@ export const Navbar = ({ children, className }: NavbarProps) => {
     );
 };
 
+
 export const NavBody = ({ children, className, visible }: NavBodyProps) => {
     return (
         <motion.div
@@ -93,14 +97,13 @@ export const NavBody = ({ children, className, visible }: NavBodyProps) => {
                 boxShadow: visible
                     ? "0 0 24px rgba(34, 42, 53, 0.06), 0 1px 1px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(34, 42, 53, 0.04), 0 0 4px rgba(34, 42, 53, 0.08), 0 16px 68px rgba(47, 48, 55, 0.05), 0 1px 0 rgba(255, 255, 255, 0.1) inset"
                     : "none",
-                width: visible ? "40%" : "100%",
-                y: visible ? 20 : 0,
+                y: 0, // sudah tidak turun/mengkerucut
             }}
             transition={{ type: "spring", stiffness: 200, damping: 50 }}
-            style={{ minWidth: "800px" }}
             className={cn(
-                "relative z-[60] mx-auto hidden w-full max-w-7xl flex-row items-center justify-between self-start rounded-full bg-transparent px-4 py-2 lg:flex dark:bg-transparent",
-                visible && "bg-white/80 dark:bg-neutral-950/80",
+                "relative z-[60] hidden h-16 w-full flex-row items-center justify-between lg:flex",
+                "px-4 md:px-8",
+                "bg-white dark:bg-neutral-950 border-b border-neutral-200/70 dark:border-neutral-800/70",
                 className
             )}
         >
@@ -148,16 +151,13 @@ export const MobileNav = ({ children, className, visible }: MobileNavProps) => {
                 boxShadow: visible
                     ? "0 0 24px rgba(34, 42, 53, 0.06), 0 1px 1px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(34, 42, 53, 0.04), 0 0 4px rgba(34, 42, 53, 0.08), 0 16px 68px rgba(47, 48, 55, 0.05), 0 1px 0 rgba(255, 255, 255, 0.1) inset"
                     : "none",
-                width: visible ? "90%" : "100%",
-                paddingRight: visible ? "12px" : "0px",
-                paddingLeft: visible ? "12px" : "0px",
-                borderRadius: visible ? "4px" : "2rem",
-                y: visible ? 20 : 0,
+                // tidak lagi mengubah width/padding/borderRadius/y
+                y: 0,
             }}
             transition={{ type: "spring", stiffness: 200, damping: 50 }}
             className={cn(
-                "relative z-50 mx-auto flex w-full max-w-[calc(100vw-2rem)] flex-col items-center justify-between bg-transparent px-0 py-2 lg:hidden",
-                visible && "bg-white/80 dark:bg-neutral-950/80",
+                "relative z-50 mx-auto flex w-full max-w-[100vw] flex-col items-center justify-between px-3 py-2 lg:hidden",
+                "bg-white dark:bg-neutral-950 border-b border-neutral-200/70 dark:border-neutral-800/70",
                 className
             )}
         >
@@ -174,7 +174,12 @@ export const MobileNavHeader = ({ children, className }: MobileNavHeaderProps) =
     );
 };
 
-export const MobileNavMenu = ({ children, className, isOpen, onClose }: MobileNavMenuProps) => {
+export const MobileNavMenu = ({
+    children,
+    className,
+    isOpen,
+    onClose,
+}: MobileNavMenuProps) => {
     return (
         <AnimatePresence>
             {isOpen && (
@@ -194,7 +199,13 @@ export const MobileNavMenu = ({ children, className, isOpen, onClose }: MobileNa
     );
 };
 
-export const MobileNavToggle = ({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }) => {
+export const MobileNavToggle = ({
+    isOpen,
+    onClick,
+}: {
+    isOpen: boolean;
+    onClick: () => void;
+}) => {
     return isOpen ? (
         <IconX className="text-black dark:text-white" onClick={onClick} />
     ) : (
@@ -204,9 +215,20 @@ export const MobileNavToggle = ({ isOpen, onClick }: { isOpen: boolean; onClick:
 
 export const NavbarLogo = () => {
     return (
-        <a href="#" className="relative z-20 mr-4 flex items-center space-x-2 px-2 py-1 text-sm font-medium text-black">
-            <img src="/icon512_maskable.png" alt="logo" width={60} height={60} className="object-contain" />
-            <span className="font-bold text-[clamp(1rem,6vw,1.5rem)] text-black dark:text-white font-poppins">MARIJASA</span>
+        <a
+            href="#"
+            className="relative z-20 mr-4 flex items-center space-x-2 px-2 py-1 text-sm font-medium"
+        >
+            <img
+                src="/icon512_maskable.png"
+                alt="logo"
+                width={60}
+                height={60}
+                className="object-contain"
+            />
+            <span className="font-bold text-[clamp(1rem,6vw,1.5rem)] text-[#7CE0A8] dark:text-white font-poppins">
+                MARIJASA
+            </span>
         </a>
     );
 };
@@ -233,67 +255,76 @@ export const NavbarButton = ({
             "shadow-[0_0_24px_rgba(34,_42,_53,_0.06),_0_1px_1px_rgba(0,_0,_0,_0.05),_0_0_0_1px_rgba(34,_42,_53,_0.04),_0_0_4px_rgba(34,_42,_53,_0.08),_0_16px_68px_rgba(47,_48,_55,_0.05),_0_1px_0_rgba(255,_255,_255,_0.1)_inset]",
         secondary: "bg-transparent shadow-none dark:text-white",
         dark: "bg-black text-white shadow-[0_0_24px_rgba(34,_42,_53,_0.06),_0_1px_1px_rgba(0,_0,_0,_0.05),_0_0_0_1px_rgba(34,_42,_53,_0.04),_0_0_4px_rgba(34,_42,_53,_0.08),_0_16px_68px_rgba(47,_48,_55,_0.05),_0_1px_0_rgba(255,_255,_255,_0.1)_inset]",
-        gradient: "bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.3)_inset]",
+        gradient:
+            "bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.3)_inset]",
     } as const;
 
     return (
-        <Tag href={href || undefined} className={cn(baseStyles, variantStyles[variant], className)} {...props}>
+        <Tag
+            href={href || undefined}
+            className={cn(baseStyles, variantStyles[variant], className)}
+            {...props}
+        >
             {children}
         </Tag>
     );
 };
 
 export const LanguageSelector = ({
-  selectedLanguage,                
-  onSelectLanguage,                
+    selectedLanguage,
+    onSelectLanguage,
 }: LanguageSelectorProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
 
-  const availableLanguages = [
-    { code: "id", label: "ID", flag: "ID" }, 
-    { code: "en", label: "EN", flag: "US" }, 
-  ] as const;
+    const availableLanguages = [
+        { code: "id", label: "ID", flag: "ID" },
+        { code: "en", label: "EN", flag: "US" },
+    ] as const;
 
-  const currentLang =
-    availableLanguages.find((l) => l.code === selectedLanguage) ||
-    availableLanguages[0];
+    const currentLang =
+        availableLanguages.find((l) => l.code === selectedLanguage) ||
+        availableLanguages[0];
 
-  return (
-    <div className="relative flex items-center">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-1 rounded-full px-2 py-1 text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-neutral-800"
-      >
-        <Flag code={currentLang.flag} style={{ width: 20, height: 20 }} />
-        <span className="text-xs">{currentLang.label}</span>
-      </button>
+    return (
+        // ⬇⬇⬇  penting: inline-block + relative, bukan flex
+        <div className="relative inline-block">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center space-x-1 rounded-full px-2 py-1 text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-neutral-800"
+            >
+                <Flag code={currentLang.flag} style={{ width: 20, height: 20 }} />
+                <span className="text-xs">{currentLang.label}</span>
+            </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute right-0 mt-2 z-50 w-32 rounded-md bg-white shadow-lg dark:bg-neutral-800"
-          >
-            {availableLanguages.map((lang) => (
-              <button
-                key={lang.code}
-                onClick={() => {
-                  onSelectLanguage(lang.code); 
-                  setIsOpen(false);
-                }}
-                className={`flex w-full items-center space-x-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 ${
-                  selectedLanguage === lang.code ? "bg-gray-200 dark:bg-neutral-700" : ""
-                }`}
-              >
-                <Flag code={lang.flag} style={{ width: 16, height: 16 }} />
-                <span>{lang.label}</span>
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        // jangan geser pakai y, biar nempel persis di bawah tombol
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        // ⬇⬇⬇ top-[100%] + tanpa mt => nempel; kalau mau agak renggang ganti ke top-[calc(100%+4px)]
+                        className="absolute left-0 top-[100%] z-50 w-32 rounded-md bg-white shadow-lg dark:bg-neutral-800"
+                    >
+                        {availableLanguages.map((lang) => (
+                            <button
+                                key={lang.code}
+                                onClick={() => {
+                                    onSelectLanguage(lang.code);
+                                    setIsOpen(false);
+                                }}
+                                className={`flex w-full items-center space-x-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 ${selectedLanguage === lang.code
+                                        ? "bg-gray-200 dark:bg-neutral-700"
+                                        : ""
+                                    }`}
+                            >
+                                <Flag code={lang.flag} style={{ width: 16, height: 16 }} />
+                                <span>{lang.label}</span>
+                            </button>
+                        ))}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
 };

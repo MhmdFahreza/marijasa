@@ -23,7 +23,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar"
 import { Vendors } from "@/app/data/dataVendor";
 import { useParams } from "next/navigation";
 
-// Price configurations for each service
 const PRICES = {
   ac: {
     instalasi: { base: 500000, label: "Instalasi AC Baru" },
@@ -287,7 +286,13 @@ export default function VendorFormPage() {
               <Button type="button" variant="outline" className="flex-1">
                 Batal
               </Button>
-              <Button type="submit" className="flex-1">
+              <Button
+                type="submit"
+                className="flex-1 text-white transition-colors duration-200"
+                style={{ backgroundColor: '#7CE0A8' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
+              >
                 Kirim Pesanan
               </Button>
             </div>
@@ -396,13 +401,13 @@ function ACServiceForm({ formData, setFormData }: any) {
 
         <div className="space-y-2">
           <Label htmlFor="acCount">Jumlah Unit *</Label>
-          <Input 
-            id="acCount" 
-            type="number" 
-            min="1" 
+          <Input
+            id="acCount"
+            type="number"
+            min="1"
             defaultValue="1"
-            placeholder="Jumlah unit AC" 
-            onChange={(e) => setFormData({ ...formData, acCount: e.target.value })} 
+            placeholder="Jumlah unit AC"
+            onChange={(e) => setFormData({ ...formData, acCount: e.target.value })}
           />
         </div>
 
@@ -557,21 +562,21 @@ function CleaningServiceForm({ formData, setFormData }: any) {
 
         <div className="space-y-2">
           <Label htmlFor="areaSize">Luas Area (m²) *</Label>
-          <Input 
-            id="areaSize" 
-            type="number" 
-            placeholder="Contoh: 50" 
-            onChange={(e) => setFormData({ ...formData, areaSize: e.target.value })} 
+          <Input
+            id="areaSize"
+            type="number"
+            placeholder="Contoh: 50"
+            onChange={(e) => setFormData({ ...formData, areaSize: e.target.value })}
           />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="rooms">Jumlah Ruangan *</Label>
-          <Input 
-            id="rooms" 
-            type="number" 
-            placeholder="Jumlah ruangan" 
-            onChange={(e) => setFormData({ ...formData, rooms: e.target.value })} 
+          <Input
+            id="rooms"
+            type="number"
+            placeholder="Jumlah ruangan"
+            onChange={(e) => setFormData({ ...formData, rooms: e.target.value })}
           />
         </div>
       </div>
@@ -653,7 +658,7 @@ function SedotWCServiceForm({ formData, setFormData }: any) {
     <div className="space-y-6">
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Detail Layanan Sedot WC</h3>
-        
+
         <div className="p-4 bg-muted/50 rounded-lg space-y-2">
           <div className="flex justify-between text-sm">
             <span>Harga Dasar (1 unit):</span>
@@ -667,12 +672,12 @@ function SedotWCServiceForm({ formData, setFormData }: any) {
 
         <div className="space-y-2">
           <Label htmlFor="wcCount">Jumlah WC/Septic Tank *</Label>
-          <Input 
-            id="wcCount" 
-            type="number" 
-            min="1" 
-            placeholder="Jumlah WC" 
-            onChange={(e) => setFormData({ ...formData, wcCount: e.target.value })} 
+          <Input
+            id="wcCount"
+            type="number"
+            min="1"
+            placeholder="Jumlah WC"
+            onChange={(e) => setFormData({ ...formData, wcCount: e.target.value })}
           />
         </div>
 
@@ -753,11 +758,11 @@ function GardenServiceForm({ formData, setFormData }: any) {
 
         <div className="space-y-2">
           <Label htmlFor="gardenSize">Luas Taman (m²) *</Label>
-          <Input 
-            id="gardenSize" 
-            type="number" 
-            placeholder="Luas area taman" 
-            onChange={(e) => setFormData({ ...formData, gardenSize: e.target.value })} 
+          <Input
+            id="gardenSize"
+            type="number"
+            placeholder="Luas area taman"
+            onChange={(e) => setFormData({ ...formData, gardenSize: e.target.value })}
           />
         </div>
 
@@ -856,11 +861,11 @@ function FurnitureServiceForm({ formData, setFormData }: any) {
 
         <div className="space-y-2">
           <Label htmlFor="dimensions">Ukuran/Dimensi</Label>
-          <Textarea 
-            id="dimensions" 
-            placeholder="Contoh: Lemari 200cm x 60cm x 180cm" 
-            rows={2} 
-            onChange={(e) => setFormData({ ...formData, dimensions: e.target.value })} 
+          <Textarea
+            id="dimensions"
+            placeholder="Contoh: Lemari 200cm x 60cm x 180cm"
+            rows={2}
+            onChange={(e) => setFormData({ ...formData, dimensions: e.target.value })}
           />
         </div>
       </div>
@@ -876,15 +881,15 @@ function GeneralServiceForm({ formData, setFormData }: any) {
       <h3 className="text-lg font-semibold">Detail Layanan</h3>
       <div className="space-y-2">
         <Label htmlFor="serviceDescription">Deskripsi Pekerjaan *</Label>
-        <Textarea 
-          id="serviceDescription" 
-          placeholder="Jelaskan detail pekerjaan yang dibutuhkan..." 
-          rows={5} 
-          required 
-          onChange={(e) => setFormData({ ...formData, serviceDescription: e.target.value })} 
+        <Textarea
+          id="serviceDescription"
+          placeholder="Jelaskan detail pekerjaan yang dibutuhkan..."
+          rows={5}
+          required
+          onChange={(e) => setFormData({ ...formData, serviceDescription: e.target.value })}
         />
       </div>
-      
+
       <div className="p-4 bg-muted/50 rounded-lg">
         <p className="text-sm text-muted-foreground">
           Untuk estimasi harga yang akurat, kami akan menghubungi Anda setelah form dikirim.

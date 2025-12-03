@@ -48,7 +48,7 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
               <Input
                 id="phone"
                 type="tel"
-                placeholder="Masukkan No. Telp"
+                placeholder="08xxxxxxxxxx"
                 required
               />
               <FieldDescription>
@@ -72,11 +72,11 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
             <FieldGroup>
               <Field>
                 <Button type="submit">Create Account</Button>
-                <Button variant="outline" type="button">
+                {/* <Button variant="outline" type="button">
                   Sign up with Google
-                </Button>
+                </Button> */}
                 <FieldDescription className="px-6 text-center">
-                  Already have an account? <a href="#">Masuk</a>
+                  Already have an account? <a href="/login">Masuk</a>
                 </FieldDescription>
               </Field>
             </FieldGroup>

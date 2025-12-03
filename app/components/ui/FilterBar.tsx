@@ -19,11 +19,11 @@ const LABELS = {
     kategori: {
         listrik: "Tukang Listrik",
         ac: "Tukang AC",
-        pembersihanrumah: "Pembersihan Rumah",
-        ledeng: "Tukang Ledeng/Pipa",
-        sedotwc: "Sedot WC",
+        pembersihanrumah: "Tukang Pembersihan Rumah",
+        ledeng: "Tukang Ledeng",
+        sedotwc: "Tukang Sedot WC",
         kebun: "Tukang Kebun",
-        furnitur: "Mebel/Furnitur",
+        furnitur: "Tukang Mebel",
     } as Record<string, string>,
     rating: {
         "5": "Rating: Bintang 5",
@@ -129,11 +129,11 @@ export default function FilterBar() {
                         <SelectContent>
                             <SelectItem value="listrik">Tukang Listrik</SelectItem>
                             <SelectItem value="ac">Tukang AC</SelectItem>
-                            <SelectItem value="pembersihanrumah">Pembersihan Rumah</SelectItem>
-                            <SelectItem value="ledeng">Tukang Ledeng/Pipa</SelectItem>
-                            <SelectItem value="sedotwc">Sedot WC</SelectItem>
+                            <SelectItem value="pembersihanrumah">Tukang Pembersihan Rumah</SelectItem>
+                            <SelectItem value="ledeng">Tukang Ledeng</SelectItem>
+                            <SelectItem value="sedotwc">Tukang Sedot WC</SelectItem>
                             <SelectItem value="kebun">Tukang Kebun</SelectItem>
-                            <SelectItem value="furnitur">Mebel/Furnitur</SelectItem>
+                            <SelectItem value="furnitur">Tukang Mebel</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -248,11 +248,11 @@ export default function FilterBar() {
                                     <SelectContent>
                                         <SelectItem value="listrik">Tukang Listrik</SelectItem>
                                         <SelectItem value="ac">Tukang AC</SelectItem>
-                                        <SelectItem value="pembersihanrumah">Pembersihan Rumah</SelectItem>
+                                        <SelectItem value="pembersihanrumah">Tukang Pembersihan Rumah</SelectItem>
                                         <SelectItem value="ledeng">Tukang Ledeng/Pipa</SelectItem>
-                                        <SelectItem value="sedotwc">Sedot WC</SelectItem>
+                                        <SelectItem value="sedotwc">Tukang Sedot WC</SelectItem>
                                         <SelectItem value="kebun">Tukang Kebun</SelectItem>
-                                        <SelectItem value="furnitur">Mebel/Furnitur</SelectItem>
+                                        <SelectItem value="furnitur">Tukang Mebel</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
