@@ -1,7 +1,7 @@
 "use client";
 
-import React, { memo, ReactNode } from "react";
-import { motion } from "motion/react";
+import React, { memo, ReactNode, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { Carousel, Card } from "@/app/components/ui/apple-cards-carousel";
 import { InfiniteMovingCardsData } from "@/app/components/ui/infinite-moving-cards-data";
 import { cardData, type ContentSection } from "@/app/data/dataContent";
@@ -20,6 +20,8 @@ import {
   Armchair,
 } from "lucide-react";
 import { ContainerTextFlip } from "@/app/components/ui/container-text-flip";
+import { LoaderTwo } from "@/app/components/transition/loader";
+import { AnimatePresence } from "motion/react";
 
 type ContentCategoryProps = {
   sections?: ContentSection[];
@@ -98,7 +100,17 @@ type TechnicianCategory = {
   icon: ReactNode;
 };
 
-// daftar kategori teknisi seperti fastwork
+// Mapping kategori dari beranda ke filter di page jasa
+const CATEGORY_MAPPING: Record<string, string> = {
+  "tukang-listrik": "listrik",
+  "tukang-ac": "ac",
+  "pembersihan-rumah": "pembersihanrumah",
+  "tukang-ledeng": "ledeng",
+  "tukang-sedot-wc": "sedotwc",
+  "tukang-kebun": "kebun",
+  "tukang-mebel": "furnitur",
+};
+
 const technicianCategories: TechnicianCategory[] = [
   {
     key: "tukang-listrik",
@@ -144,12 +156,21 @@ const technicianCategories: TechnicianCategory[] = [
 
 export default function Beranda() {
   const router = useRouter();
+  const [leaving, setLeaving] = useState(false);
+  const prefersReduced = useReducedMotion();
 
-  const handlePilihKategori = (kategori: string) => {
+  const handlePilihKategori = async (kategori: string) => {
+    setLeaving(true);
+    
+    // Tunggu sebentar untuk animasi loader
+    await new Promise(resolve => setTimeout(resolve, prefersReduced ? 0 : 300));
+    
     if (kategori === "semua-kategori") {
-      router.push("/jasa"); // tampilkan semua jasa tanpa filter
+      router.push("/jasa");
     } else {
-      router.push(`/jasa?kategori=${encodeURIComponent(kategori)}`);
+      // Gunakan mapping untuk mengubah key beranda menjadi filter yang sesuai
+      const filterKey = CATEGORY_MAPPING[kategori] || kategori;
+      router.push(`/jasa?kategori=${encodeURIComponent(filterKey)}`);
     }
   };
 
@@ -277,6 +298,22 @@ export default function Beranda() {
       </div>
 
       <SiteFooter />
+
+      {/* Loader untuk transisi halaman */}
+      <AnimatePresence>
+        {leaving && (
+          <motion.div
+            key="route-leave"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: prefersReduced ? 0 : 0.5 }}
+            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
+          >
+            <LoaderTwo />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
