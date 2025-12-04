@@ -1,3 +1,5 @@
+"use client"
+
 import { Button } from "@/app/components/ui/button"
 import {
   Card,
@@ -13,70 +15,138 @@ import {
   FieldLabel,
 } from "@/app/components/ui/field"
 import { Input } from "@/app/components/ui/input"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
+import { cn } from "../lib/utils"
 
 export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: ""
+  })
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.id]: e.target.value
+    })
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    
+    // Validasi sederhana
+    if (formData.password !== formData.confirmPassword) {
+      alert("Password dan konfirmasi password tidak cocok")
+      setIsLoading(false)
+      return
+    }
+    
+    // Simulasi proses register
+    setTimeout(() => {
+      setIsLoading(false)
+      // Redirect ke halaman OTP register dengan email sebagai parameter
+      router.push(`/register/otp?email=${encodeURIComponent(formData.email)}`)
+    }, 1000)
+  }
+
   return (
     <Card {...props}>
       <CardHeader>
-        <CardTitle>Create an account</CardTitle>
+        <CardTitle>Buat Akun</CardTitle>
         <CardDescription>
-          Enter your information below to create your account
+          Masukkan informasi Anda untuk membuat akun
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form>
+        <form onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="name">Full Name</FieldLabel>
-              <Input id="name" type="text" placeholder="Masukkan Namamu" required />
+              <FieldLabel htmlFor="name">Nama Lengkap</FieldLabel>
+              <Input 
+                id="name" 
+                type="text" 
+                placeholder="Masukkan Namamu" 
+                required 
+                value={formData.name}
+                onChange={handleChange}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="email">Email</FieldLabel>
               <Input
                 id="email"
                 type="email"
-                placeholder="m@example.com"
                 required
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="contoh@email.com"
               />
               <FieldDescription>
-                We&apos;ll use this to contact you. We will not share your email
-                with anyone else.
+                Kami akan menggunakan ini untuk menghubungi Anda.
               </FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="phone">Phone Number</FieldLabel>
+              <FieldLabel htmlFor="phone">Nomor Telepon</FieldLabel>
               <Input
                 id="phone"
                 type="tel"
-                placeholder="08xxxxxxxxxx"
                 required
+                value={formData.phone}
+                onChange={handleChange}
+                placeholder="+628123456789"
               />
               <FieldDescription>
-                Enter your phone number with country code.
+                Masukkan nomor telepon dengan kode negara.
               </FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="password">Password</FieldLabel>
-              <Input id="password" type="password" required />
+              <Input 
+                id="password" 
+                type="password" 
+                required 
+                value={formData.password}
+                onChange={handleChange}
+              />
               <FieldDescription>
-                Must be at least 8 characters long.
+                Minimal 8 karakter.
               </FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="confirm-password">
-                Confirm Password
+              <FieldLabel htmlFor="confirmPassword">
+                Konfirmasi Password
               </FieldLabel>
-              <Input id="confirm-password" type="password" required />
-              <FieldDescription>Please confirm your password.</FieldDescription>
+              <Input 
+                id="confirmPassword" 
+                type="password" 
+                required 
+                value={formData.confirmPassword}
+                onChange={handleChange}
+              />
+              <FieldDescription>Harap konfirmasi password Anda.</FieldDescription>
             </Field>
             <FieldGroup>
               <Field>
-                <Button type="submit">Create Account</Button>
-                {/* <Button variant="outline" type="button">
-                  Sign up with Google
-                </Button> */}
+                <Button 
+                  type="submit" 
+                  disabled={isLoading}
+                  className={cn(
+                    "bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
+                    "focus:ring-[#7CE0A8] focus:ring-offset-2",
+                    "transition-colors duration-200 w-full"
+                  )}
+                >
+                  {isLoading ? "Memproses..." : "Buat Akun"}
+                </Button>
                 <FieldDescription className="px-6 text-center">
-                  Already have an account? <a href="/login">Masuk</a>
+                  Sudah punya akun? <a href="/login" className="text-[#7CE0A8] hover:underline">Masuk</a>
                 </FieldDescription>
               </Field>
             </FieldGroup>

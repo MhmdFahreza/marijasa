@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,10 +18,11 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt } from "lucide-react";
+import { Calendar, User, Receipt, Home } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Vendors } from "@/app/data/dataVendor";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { LoaderTwo } from "@/app/components/transition/loader";
 
 const PRICES = {
   ac: {
@@ -86,12 +87,40 @@ function getServiceCategory(tags: string[]): string {
 
 export default function VendorFormPage() {
   const params = useParams();
+  const router = useRouter();
   const [formData, setFormData] = useState<any>({});
   const [mounted, setMounted] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [navigationUrl, setNavigationUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleNavigation = async (url: string) => {
+    setLeaving(true);
+    setNavigationUrl(url);
+    // Tunggu sebentar untuk animasi loader muncul
+    await new Promise(resolve => setTimeout(resolve, 300));
+    router.push(url);
+  };
+
+  const handleBreadcrumbClick = (e: React.MouseEvent, url: string) => {
+    e.preventDefault();
+    handleNavigation(url);
+  };
+
+  const handleCancel = () => {
+    const vendorId = params.vendorId as string;
+    handleNavigation(`/jasa/detailjasa/${vendorId}`);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("Form submitted:", formData);
+    alert("Pesanan berhasil dikirim! Kami akan menghubungi Anda segera.");
+    await handleNavigation("/");
+  };
 
   if (!mounted) {
     return null;
@@ -106,7 +135,7 @@ export default function VendorFormPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">Vendor Tidak Ditemukan</h1>
-          <Button onClick={() => window.location.href = "/jasa"}>
+          <Button onClick={() => handleNavigation("/jasa")}>
             Kembali ke Daftar Jasa
           </Button>
         </div>
@@ -116,190 +145,223 @@ export default function VendorFormPage() {
 
   const serviceCategory = getServiceCategory(vendor.tags);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log("Form submitted:", formData);
-    alert("Pesanan berhasil dikirim! Kami akan menghubungi Anda segera.");
-  };
-
   return (
-    <motion.main
-      className="min-h-screen w-full max-w-4xl mx-auto px-4 py-6"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-    >
-      <div className="mb-6">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                  <a href="/" className="cursor-pointer">Home</a>
-                </motion.span>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                  <a href="/jasa" className="cursor-pointer">Jasa</a>
-                </motion.span>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                  <a href={`/jasa/detailjasa/${vendor.id}`} className="cursor-pointer">
-                    {vendor.name}
-                  </a>
-                </motion.span>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Form Pemesanan</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
+    <>
+      <motion.main
+        className="min-h-screen w-full max-w-4xl mx-auto px-4 py-6"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <div className="mb-6">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
+                    <a
+                      href="/"
+                      className="cursor-pointer"
+                      onClick={(e) => handleBreadcrumbClick(e, "/")}
+                    >
+                      Home
+                    </a>
+                  </motion.span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
+                    <a
+                      href="/jasa"
+                      className="cursor-pointer"
+                      onClick={(e) => handleBreadcrumbClick(e, "/jasa")}
+                    >
+                      Jasa
+                    </a>
+                  </motion.span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
+                    <a
+                      href={`/jasa/detailjasa/${vendor.id}`}
+                      className="cursor-pointer"
+                      onClick={(e) => handleBreadcrumbClick(e, `/jasa/detailjasa/${vendor.id}`)}
+                    >
+                      {vendor.name}
+                    </a>
+                  </motion.span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Form Pemesanan</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
 
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarImage src={vendor.avatar ?? ""} alt={vendor.name} />
-              <AvatarFallback>
-                {vendor.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h2 className="text-xl font-bold">{vendor.name}</h2>
-              <p className="text-sm text-muted-foreground">{vendor.tags.join(" • ")}</p>
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16">
+                <AvatarImage src={vendor.avatar ?? ""} alt={vendor.name} />
+                <AvatarFallback>
+                  {vendor.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <h2 className="text-xl font-bold">{vendor.name}</h2>
+                <p className="text-sm text-muted-foreground">{vendor.tags.join(" • ")}</p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Form Pemesanan Layanan</CardTitle>
-          <CardDescription>
-            Lengkapi formulir di bawah untuk memesan layanan {vendor.tags[0]}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Data Pelanggan
-              </h3>
+        <Card>
+          <CardHeader>
+            <CardTitle>Form Pemesanan Layanan</CardTitle>
+            <CardDescription>
+              Lengkapi formulir di bawah untuk memesan layanan {vendor.tags[0]}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Data Pelanggan
+                </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nama Lengkap *</Label>
-                  <Input
-                    id="name"
-                    placeholder="Masukkan nama lengkap"
-                    required
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nama Lengkap *</Label>
+                    <Input
+                      id="name"
+                      placeholder="Masukkan nama lengkap"
+                      required
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">No. Telepon *</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="08xxxxxxxxxx"
+                      required
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">No. Telepon *</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="08xxxxxxxxxx"
+                  <Label htmlFor="address">Alamat Lengkap *</Label>
+                  <Textarea
+                    id="address"
+                    placeholder="Masukkan alamat lengkap"
+                    rows={3}
                     required
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   />
+                </div>
+              </div>
+
+              <ServiceSpecificFormWithPrice
+                category={serviceCategory}
+                formData={formData}
+                setFormData={setFormData}
+              />
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Jadwal Layanan
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date">Tanggal Pengerjaan *</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      required
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="time">Waktu Pengerjaan *</Label>
+                    <Select onValueChange={(value) => setFormData({ ...formData, time: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih waktu" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="08:00-10:00">08:00 - 10:00</SelectItem>
+                        <SelectItem value="10:00-12:00">10:00 - 12:00</SelectItem>
+                        <SelectItem value="13:00-15:00">13:00 - 15:00</SelectItem>
+                        <SelectItem value="15:00-17:00">15:00 - 17:00</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Alamat Lengkap *</Label>
+                <Label htmlFor="notes">Catatan Tambahan</Label>
                 <Textarea
-                  id="address"
-                  placeholder="Masukkan alamat lengkap"
-                  rows={3}
-                  required
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  id="notes"
+                  placeholder="Informasi tambahan yang perlu diketahui vendor..."
+                  rows={4}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 />
               </div>
-            </div>
 
-            <ServiceSpecificFormWithPrice
-              category={serviceCategory}
-              formData={formData}
-              setFormData={setFormData}
-            />
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Jadwal Layanan
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="date">Tanggal Pengerjaan *</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    required
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="time">Waktu Pengerjaan *</Label>
-                  <Select onValueChange={(value) => setFormData({ ...formData, time: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih waktu" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="08:00-10:00">08:00 - 10:00</SelectItem>
-                      <SelectItem value="10:00-12:00">10:00 - 12:00</SelectItem>
-                      <SelectItem value="13:00-15:00">13:00 - 15:00</SelectItem>
-                      <SelectItem value="15:00-17:00">15:00 - 17:00</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="flex gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleCancel}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 text-white transition-colors duration-200"
+                  style={{ backgroundColor: '#7CE0A8' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
+                >
+                  Kirim Pesanan
+                </Button>
               </div>
-            </div>
+            </form>
+          </CardContent>
+        </Card>
+      </motion.main>
 
-            <div className="space-y-2">
-              <Label htmlFor="notes">Catatan Tambahan</Label>
-              <Textarea
-                id="notes"
-                placeholder="Informasi tambahan yang perlu diketahui vendor..."
-                rows={4}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              />
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <Button type="button" variant="outline" className="flex-1">
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 text-white transition-colors duration-200"
-                style={{ backgroundColor: '#7CE0A8' }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
-              >
-                Kirim Pesanan
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </motion.main>
+      {/* Loader untuk transisi halaman */}
+      <AnimatePresence>
+        {leaving && (
+          <motion.div
+            key="route-leave"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
+          >
+            <LoaderTwo />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
