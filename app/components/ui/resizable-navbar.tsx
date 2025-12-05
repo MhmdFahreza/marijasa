@@ -245,7 +245,7 @@ export const NavbarButton = ({
     as?: React.ElementType;
     children: React.ReactNode;
     className?: string;
-    variant?: "primary" | "secondary" | "dark" | "gradient";
+    variant?: "primary" | "secondary" | "dark" | "gradient" | "ghost";
 } & (React.ComponentPropsWithoutRef<"a"> | React.ComponentPropsWithoutRef<"button">)) => {
     const baseStyles =
         "px-4 py-2 rounded-md bg-white button bg-white text-black text-sm font-bold relative cursor-pointer hover:-translate-y-0.5 transition duration-200 inline-block text-center";
@@ -257,6 +257,7 @@ export const NavbarButton = ({
         dark: "bg-black text-white shadow-[0_0_24px_rgba(34,_42,_53,_0.06),_0_1px_1px_rgba(0,_0,_0,_0.05),_0_0_0_1px_rgba(34,_42,_53,_0.04),_0_0_4px_rgba(34,_42,_53,_0.08),_0_16px_68px_rgba(47,_48,_55,_0.05),_0_1px_0_rgba(255,_255,_255,_0.1)_inset]",
         gradient:
             "bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.3)_inset]",
+        ghost: "bg-transparent shadow-none text-black dark:text-white hover:bg-transparent",
     } as const;
 
     return (
@@ -314,8 +315,8 @@ export const LanguageSelector = ({
                                     setIsOpen(false);
                                 }}
                                 className={`flex w-full items-center space-x-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 ${selectedLanguage === lang.code
-                                        ? "bg-gray-200 dark:bg-neutral-700"
-                                        : ""
+                                    ? "bg-gray-200 dark:bg-neutral-700"
+                                    : ""
                                     }`}
                             >
                                 <Flag code={lang.flag} style={{ width: 16, height: 16 }} />

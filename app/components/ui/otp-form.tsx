@@ -36,7 +36,6 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Gunakan email dari searchParams jika tersedia
   const emailFromParams = searchParams?.get("email") || email
 
   useEffect(() => {
@@ -46,11 +45,26 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    
+
     // Simulasi proses verifikasi OTP
     setTimeout(() => {
       setIsLoading(false)
       if (otp === "123456") { // OTP dummy
+        // Simpan data user ke localStorage
+        const userData = {
+          name: "User", // Nama default
+          email: emailFromParams,
+          avatar: "/profile.svg" // Gambar default seperti Tokopedia
+        };
+
+        const authData = {
+          isLoggedIn: true,
+          user: userData,
+          loginTime: new Date().toISOString()
+        };
+
+        localStorage.setItem("authData", JSON.stringify(authData));
+
         // Redirect ke halaman utama setelah verifikasi berhasil
         router.push("/")
       } else {
@@ -74,8 +88,8 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
               <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
               <div className="flex items-center gap-2.5">
                 {[...Array(6)].map((_, i) => (
-                  <div 
-                    key={i} 
+                  <div
+                    key={i}
                     className="h-14 w-12 bg-gray-200 rounded-md animate-pulse"
                   />
                 ))}
@@ -108,9 +122,9 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="otp">Verification code</FieldLabel>
-              <InputOTP 
-                maxLength={6} 
-                id="otp" 
+              <InputOTP
+                maxLength={6}
+                id="otp"
                 required
                 value={otp}
                 onChange={(value) => setOtp(value)}
@@ -130,8 +144,8 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
               </FieldDescription>
             </Field>
             <FieldGroup>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isLoading || otp.length !== 6}
                 className={cn(
                   "w-full",
