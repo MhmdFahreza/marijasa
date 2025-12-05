@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useRouter, usePathname } from "next/navigation"; 
+import { useRouter, usePathname } from "next/navigation";
 import {
   Navbar,
   NavBody,
@@ -14,7 +14,7 @@ import {
   MobileNavMenu,
   LanguageSelector,
 } from "@/app/components/ui/resizable-navbar";
-import { LoaderTwo } from "@/app/components/transition/loader"; 
+import { LoaderTwo } from "@/app/components/transition/loader";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +48,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   // Cek status login dari localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
+
     const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
     const lang = saved || selectedLanguage;
 
@@ -100,11 +100,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   const handleLoginClick = () => {
     setIsLoading(true);
-    
+
     // Simulasi delay untuk menampilkan loader
-    const connection = (navigator as any).connection || 
-                      (navigator as any).mozConnection || 
-                      (navigator as any).webkitConnection;
+    const connection = (navigator as any).connection ||
+      (navigator as any).mozConnection ||
+      (navigator as any).webkitConnection;
 
     const networkSpeed = connection ? connection.effectiveType : "4g";
     const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
@@ -114,19 +114,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, delay);
   };
 
-  const handleRegisterProviderClick = () => {
+  const handleRegisterClick = () => {
     setIsLoading(true);
-    
+
     // Simulasi delay untuk menampilkan loader
-    const connection = (navigator as any).connection || 
-                      (navigator as any).mozConnection || 
-                      (navigator as any).webkitConnection;
+    const connection = (navigator as any).connection ||
+      (navigator as any).mozConnection ||
+      (navigator as any).webkitConnection;
 
     const networkSpeed = connection ? connection.effectiveType : "4g";
     const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
 
     setTimeout(() => {
-      router.push("/mitra/daftar");
+      router.push("/register");
     }, delay);
   };
 
@@ -142,29 +142,40 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     router.push("/profile");
   };
 
-  // Gambar profil default seperti Tokopedia (tersimpan di public folder)
-  const defaultAvatar = "/default-avatar.png";
+  const defaultAvatar = "/profile.svg";
 
   return (
     <div className="relative w-full min-h-screen">
       {/* Loader Overlay - Tampil di atas semua konten */}
       {isLoading && (
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
-          <LoaderTwo /> 
+          <LoaderTwo />
         </div>
       )}
 
       <Navbar>
+        {/* Desktop Layout */}
         <NavBody>
           <NavbarLogo />
-          <div className="flex items-center gap-4 lg:gap-6">
+
+          {/* Container untuk tombol-tombol */}
+          <div className="flex items-center gap-4">
             {isLoggedIn ? (
-              // Tampilkan foto profil user jika sudah login
+              // User sudah login - Desktop
               <div className="flex items-center gap-4">
+                {/* Tombol bahasa di kiri profil */}
+                <div className="hidden lg:flex">
+                  <LanguageSelector
+                    selectedLanguage={selectedLanguage}
+                    onSelectLanguage={handleSelectLanguage}
+                  />
+                </div>
+
+                {/* Profil user di tengah */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors">
-                      <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
+                    <button className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors">
+                      <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                         <img
                           src={userData?.avatar || defaultAvatar}
                           alt={userData?.name || "User"}
@@ -188,42 +199,49 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Tombol bahasa di kanan profil (opsional - hapus jika tidak perlu) */}
+                {/* <div className="hidden lg:flex">
+                  <LanguageSelector
+                    selectedLanguage={selectedLanguage}
+                    onSelectLanguage={handleSelectLanguage}
+                  />
+                </div> */}
+              </div>
+            ) : (
+              // User belum login - Desktop
+              <div className="flex items-center gap-4">
                 <div className="hidden lg:flex items-center gap-4">
+                  {/* Tombol Masuk di kiri */}
+                  <NavbarButton
+                    variant="outline"
+                    onClick={handleLoginClick}
+                    className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
+                  >
+                    {t("nav.login")}
+                  </NavbarButton>
+
+                  {/* Tombol Daftar di kanan */}
+                  <NavbarButton
+                    variant="primary"
+                    onClick={handleRegisterClick}
+                    className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
+                  >
+                    {t("nav.register")}
+                  </NavbarButton>
+
+                  {/* Tombol bahasa di paling kanan */}
                   <LanguageSelector
                     selectedLanguage={selectedLanguage}
                     onSelectLanguage={handleSelectLanguage}
                   />
                 </div>
               </div>
-            ) : (
-              // Tampilkan tombol login/daftar jika belum login
-              <>
-                <div className="hidden lg:flex items-center gap-4">
-                  <NavbarButton variant="primary" onClick={handleRegisterProviderClick}>
-                    {t("nav.registerProvider")}
-                  </NavbarButton>
-                  <NavbarButton variant="primary" onClick={handleLoginClick}>
-                    {t("nav.login")}
-                  </NavbarButton>
-                  <LanguageSelector
-                    selectedLanguage={selectedLanguage}
-                    onSelectLanguage={handleSelectLanguage}
-                  />
-                </div>
-                <div className="lg:hidden flex items-center gap-4">
-                  <NavbarButton
-                    variant="primary"
-                    className="block w-full text-center"
-                    onClick={handleLoginClick}
-                  >
-                    {t("nav.login")}
-                  </NavbarButton>
-                </div>
-              </>
             )}
           </div>
         </NavBody>
 
+        {/* Mobile Layout */}
         <MobileNav>
           <MobileNavHeader>
             <NavbarLogo />
@@ -237,11 +255,12 @@ export default function UserLayout({ children }: { children: ReactNode }) {
             isOpen={isMobileMenuOpen}
             onClose={() => setIsMobileMenuOpen(false)}
           >
-            <div className="flex w-full flex-col gap-4">
+            <div className="w-full">
               {isLoggedIn ? (
-                // Menu untuk user yang sudah login (mobile)
-                <>
-                  <div className="flex items-center gap-3 p-3 border-b border-gray-200 dark:border-neutral-700">
+                // Mobile menu untuk user yang sudah login
+                <div className="space-y-6">
+                  {/* Profile info */}
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-neutral-800">
                     <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                       <img
                         src={userData?.avatar || defaultAvatar}
@@ -252,55 +271,71 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         }}
                       />
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
                         {userData?.name || "User"}
                       </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                         {userData?.email || ""}
                       </p>
                     </div>
                   </div>
-                  <NavbarButton
-                    onClick={handleProfileClick}
-                    variant="secondary"
-                    className="w-full text-center"
-                  >
-                    Profil Saya
-                  </NavbarButton>
-                  <NavbarButton
-                    onClick={handleLogout}
-                    variant="ghost"
-                    className="w-full text-center text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    Keluar
-                  </NavbarButton>
-                </>
+
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleProfileClick}
+                      className="w-full px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                    >
+                      Profil Saya
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    >
+                      Keluar
+                    </button>
+                  </div>
+
+                  {/* Language selector - di bawah */}
+                  <div className="pt-4 border-t border-gray-200 dark:border-neutral-700">
+                    <div className="flex justify-start">
+                      <LanguageSelector
+                        selectedLanguage={selectedLanguage}
+                        onSelectLanguage={handleSelectLanguage}
+                      />
+                    </div>
+                  </div>
+                </div>
               ) : (
-                // Menu untuk user belum login (mobile)
-                <>
-                  <NavbarButton
-                    onClick={handleLoginClick} 
-                    variant="primary"
-                    className="w-full text-center"
-                  >
-                    {t("nav.login")}
-                  </NavbarButton>
-                  <NavbarButton
-                    onClick={handleRegisterProviderClick} 
-                    variant="primary"
-                    className="w-full text-center"
-                  >
-                    {t("nav.registerProvider")}
-                  </NavbarButton>
-                </>
+                // Mobile menu untuk user belum login
+                <div className="space-y-6">
+                  {/* Urutan: Daftar > Masuk */}
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleRegisterClick}
+                      className="w-full px-4 py-3 text-center font-medium text-white bg-[#7CE0A8] rounded-lg hover:bg-[#6bd097] transition-colors"
+                    >
+                      {t("nav.register")}
+                    </button>
+                    <button
+                      onClick={handleLoginClick}
+                      className="w-full px-4 py-3 text-center font-medium text-[#7CE0A8] border border-[#7CE0A8] rounded-lg hover:bg-[#7CE0A8] hover:text-white transition-colors"
+                    >
+                      {t("nav.login")}
+                    </button>
+                  </div>
+
+                  {/* Language selector */}
+                  <div className="pt-4 border-t border-gray-200 dark:border-neutral-700">
+                    <div className="flex justify-start">
+                      <LanguageSelector
+                        selectedLanguage={selectedLanguage}
+                        onSelectLanguage={handleSelectLanguage}
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
-              <div className="mt-2">
-                <LanguageSelector
-                  selectedLanguage={selectedLanguage}
-                  onSelectLanguage={handleSelectLanguage}
-                />
-              </div>
             </div>
           </MobileNavMenu>
         </MobileNav>

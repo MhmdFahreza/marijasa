@@ -8,23 +8,31 @@ const resources = {
   id: {
     translation: {
       nav: {
-        registerProvider: "Daftar sebagai penyedia jasa",
-        login: "Masuk / Daftar",
+        login: "Masuk",
+        register: "Daftar",
         language: "Bahasa",
         en: "Inggris",
         id: "Indonesia",
       },
+      hero: {
+        tagline: "Kami memiliki teknisi penyedia jasa rumah tangga.",
+        findService: "Temukan Penyedia Jasa Terpercaya, untuk Kebutuhan Rumah Tangga Anda."
+      }
     },
   },
   en: {
     translation: {
       nav: {
-        registerProvider: "Join as service provider",
-        login: "Login / Register",
+        login: "Login",
+        register: "Register",
         language: "Language",
         en: "English",
         id: "Indonesian",
       },
+      hero: {
+        tagline: "We have household service provider technicians.",
+        findService: "Find Trusted Service Providers for Your Household Needs."
+      }
     },
   },
 };

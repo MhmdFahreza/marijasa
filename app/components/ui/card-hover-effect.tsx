@@ -96,7 +96,7 @@ export const CardDescription = ({
   return (
     <p
       className={cn(
-        "mt-1.5 md:mt-2 lg:mt-8 text-white/90 tracking-normal leading-snug text-[10px] md:text-[10px] lg:text-sm md:leading-snug lg:leading-relaxed flex-1",
+        "mt-1.5 md:mt-2 lg:mt-8 text-white/90 tracking-normal leading-snug text-[10px] md:text-[10px] lg:text-sm md:leading-snug lg:leading-relaxed flex-1 text-justify hyphens-auto break-words",
         className
       )}
     >

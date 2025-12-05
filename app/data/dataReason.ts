@@ -1,37 +1,40 @@
+import { ReactNode } from "react";
+
 export type HoverProject = {
   title: string;
   description: string;
+  icon?: ReactNode; 
 };
 
 export const dataReason: HoverProject[] = [
   {
     title: "1. Akses Mudah dari Mana Saja",
     description:
-      "Website Marijasa dioptimalkan untuk perangkat seluler, sehingga pengguna dapat mencari, memesan, dan mengelola jasa rumah tangga kapan pun dan di mana pun.",
+      "Website Marijasa dapat diakses, memudahkan pencarian dan pemesanan jasa rumah tangga.",
   },
   {
     title: "2. Pencarian dan Pemesanan Cepat",
     description:
-      "Dengan sistem pencarian dan filter pintar, pengguna dapat menemukan penyedia jasa terdekat, melihat rating, harga, dan langsung melakukan pemesanan sesuai kebutuhan.",
+      "Sistem pencarian penyedia jasa terdekat dan langsung pesan sesuai kebutuhan.",
   },
   {
     title: "3. Ulasan dan Rating Transparan",
     description:
-      "Marijasa menampilkan ulasan asli dari pelanggan sebelumnya untuk membantu pengguna mengambil keputusan terbaik sebelum memesan jasa.",
+      "Dapat memberikan rating kepada mitra sekaligus ulasan yang dapat dilihat oleh pengguna.",
   },
   {
     title: "4. Pembayaran Aman dan Fleksibel",
     description:
-      "Tersedia berbagai metode pembayaran digital yang aman dan diawasi sistem escrow, memastikan dana hanya diteruskan setelah jasa selesai dengan baik.",
+      "Berbagai metode pembayaran digital yang aman, dan jaminan transaksi yang terpercaya.",
   },
   {
     title: "5. Penyedia Jasa Terverifikasi",
     description:
-      "Setiap penyedia jasa melewati proses verifikasi identitas dan kelayakan sehingga pengguna mendapatkan layanan yang aman, terpercaya, dan profesional.",
+      "Semua penyedia jasa terverifikasi identitas dan kemampuan.",
   },
   {
     title: "6. Dukungan Pelanggan 24/7",
     description:
-      "Marijasa menyediakan layanan dukungan pelanggan yang responsif setiap saat untuk membantu pengguna menyelesaikan kendala, memberikan panduan, atau menindaklanjuti keluhan dengan cepat dan ramah.",
+      "Layanan dukungan pelanggan yang responsif, dan menyelesaikan kendala dengan cepat.",
   },
 ];
