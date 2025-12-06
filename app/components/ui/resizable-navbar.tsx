@@ -97,15 +97,19 @@ export const NavBody = ({ children, className, visible }: NavBodyProps) => {
                 boxShadow: visible
                     ? "0 0 24px rgba(34, 42, 53, 0.06), 0 1px 1px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(34, 42, 53, 0.04), 0 0 4px rgba(34, 42, 53, 0.08), 0 16px 68px rgba(47, 48, 55, 0.05), 0 1px 0 rgba(255, 255, 255, 0.1) inset"
                     : "none",
-                y: 0, // sudah tidak turun/mengkerucut
+                y: 0,
             }}
             transition={{ type: "spring", stiffness: 200, damping: 50 }}
             className={cn(
                 "relative z-[60] hidden h-16 w-full flex-row items-center justify-between lg:flex",
-                "px-4 md:px-8",
+                "px-4 md:px-6 lg:px-8",
                 "bg-white dark:bg-neutral-950 border-b border-neutral-200/70 dark:border-neutral-800/70",
                 className
             )}
+            style={{
+                width: '100%',
+                maxWidth: '100%',
+            }}
         >
             {children}
         </motion.div>
@@ -151,15 +155,17 @@ export const MobileNav = ({ children, className, visible }: MobileNavProps) => {
                 boxShadow: visible
                     ? "0 0 24px rgba(34, 42, 53, 0.06), 0 1px 1px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(34, 42, 53, 0.04), 0 0 4px rgba(34, 42, 53, 0.08), 0 16px 68px rgba(47, 48, 55, 0.05), 0 1px 0 rgba(255, 255, 255, 0.1) inset"
                     : "none",
-                // tidak lagi mengubah width/padding/borderRadius/y
                 y: 0,
             }}
             transition={{ type: "spring", stiffness: 200, damping: 50 }}
             className={cn(
-                "relative z-50 mx-auto flex w-full max-w-[100vw] flex-col items-center justify-between px-3 py-2 lg:hidden",
+                "relative z-50 flex w-full flex-col items-center justify-between px-4 py-2 lg:hidden",
                 "bg-white dark:bg-neutral-950 border-b border-neutral-200/70 dark:border-neutral-800/70",
                 className
             )}
+            style={{
+                maxWidth: '100%',
+            }}
         >
             {children}
         </motion.div>
@@ -217,7 +223,7 @@ export const NavbarLogo = () => {
     return (
         <a
             href="#"
-            className="relative z-20 mr-4 flex items-center space-x-2 px-2 py-1 text-sm font-medium"
+            className="relative z-20 flex items-center space-x-2 px-2 py-1 text-sm font-medium shrink-0"
         >
             <img
                 src="/icon512_maskable.png"
@@ -226,7 +232,7 @@ export const NavbarLogo = () => {
                 height={60}
                 className="object-contain"
             />
-            <span className="font-bold text-[clamp(1rem,6vw,1.5rem)] text-[#7CE0A8] dark:text-white font-poppins">
+            <span className="font-bold text-[clamp(1rem,6vw,1.5rem)] text-[#7CE0A8] dark:text-white font-poppins whitespace-nowrap">
                 MARIJASA
             </span>
         </a>
@@ -248,7 +254,7 @@ export const NavbarButton = ({
     variant?: "primary" | "secondary" | "dark" | "gradient" | "ghost" | "outline";
 } & (React.ComponentPropsWithoutRef<"a"> | React.ComponentPropsWithoutRef<"button">)) => {
     const baseStyles =
-        "px-4 py-2 rounded-md bg-white button bg-white text-black text-sm font-bold relative cursor-pointer hover:-translate-y-0.5 transition duration-200 inline-block text-center";
+        "px-4 py-2 rounded-md bg-white button bg-white text-black text-sm font-bold relative cursor-pointer hover:-translate-y-0.5 transition duration-200 inline-block text-center whitespace-nowrap";
 
     const variantStyles = {
         primary:
@@ -288,8 +294,7 @@ export const LanguageSelector = ({
         availableLanguages[0];
 
     return (
-        // ⬇⬇⬇  penting: inline-block + relative, bukan flex
-        <div className="relative inline-block">
+        <div className="relative inline-block shrink-0">
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center space-x-1 rounded-full px-2 py-1 text-sm font-medium transition hover:bg-gray-100 dark:hover:bg-neutral-800"
@@ -301,11 +306,9 @@ export const LanguageSelector = ({
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        // jangan geser pakai y, biar nempel persis di bawah tombol
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        // ⬇⬇⬇ top-[100%] + tanpa mt => nempel; kalau mau agak renggang ganti ke top-[calc(100%+4px)]
                         className="absolute left-0 top-[100%] z-50 w-32 rounded-md bg-white shadow-lg dark:bg-neutral-800"
                     >
                         {availableLanguages.map((lang) => (
