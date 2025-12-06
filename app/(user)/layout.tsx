@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Navbar,
@@ -34,31 +33,20 @@ interface UserData {
 
 export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { t, i18n } = useTranslation();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  const initialLang =
-    i18n.resolvedLanguage || i18n.language || "id";
-  const [selectedLanguage, setSelectedLanguage] = useState(initialLang);
+  const [selectedLanguage, setSelectedLanguage] = useState("id");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Cek status login dari localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
-    const lang = saved || selectedLanguage;
-
-    if (lang !== i18n.language) {
-      i18n.changeLanguage(lang);
-    }
-    document.documentElement.lang = lang;
-
-    if (!saved) {
-      window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+    const savedLang = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (savedLang) {
+      setSelectedLanguage(savedLang);
     }
 
     // Cek status login
@@ -80,13 +68,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, [pathname]);
 
-  useEffect(() => {
-    document.documentElement.lang = selectedLanguage;
-  }, [selectedLanguage]);
-
   const handleSelectLanguage = (language: string) => {
     setSelectedLanguage(language);
-    i18n.changeLanguage(language);
 
     if (typeof document !== "undefined") {
       document.cookie = `i18next=${language}; path=/; max-age=${60 * 60 * 24 * 30}`;
@@ -154,24 +137,22 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       )}
 
       <Navbar>
-        {/* Desktop Layout */}
+        {/* Desktop & Tablet Layout - Tampil dari md (768px) ke atas */}
         <NavBody>
           <NavbarLogo />
 
           {/* Container untuk tombol-tombol */}
           <div className="flex items-center gap-4">
             {isLoggedIn ? (
-              // User sudah login - Desktop
+              // User sudah login - Desktop & Tablet
               <div className="flex items-center gap-4">
                 {/* Tombol bahasa di kiri profil */}
-                <div className="hidden lg:flex">
-                  <LanguageSelector
-                    selectedLanguage={selectedLanguage}
-                    onSelectLanguage={handleSelectLanguage}
-                  />
-                </div>
+                <LanguageSelector
+                  selectedLanguage={selectedLanguage}
+                  onSelectLanguage={handleSelectLanguage}
+                />
 
-                {/* Profil user di tengah */}
+                {/* Profil user */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors">
@@ -190,7 +171,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       </span>
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align="end" className="w-48 mt-2">
                     <DropdownMenuItem onClick={handleProfileClick}>
                       Profil Saya
                     </DropdownMenuItem>
@@ -201,39 +182,37 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                 </DropdownMenu>
               </div>
             ) : (
-              // User belum login - Desktop
+              // User belum login - Desktop & Tablet
               <div className="flex items-center gap-4">
-                <div className="hidden lg:flex items-center gap-4">
-                  {/* Tombol Masuk di kiri */}
-                  <NavbarButton
-                    variant="outline"
-                    onClick={handleLoginClick}
-                    className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
-                  >
-                    {t("nav.login")}
-                  </NavbarButton>
+                {/* Tombol Masuk */}
+                <NavbarButton
+                  variant="outline"
+                  onClick={handleLoginClick}
+                  className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
+                >
+                  Masuk
+                </NavbarButton>
 
-                  {/* Tombol Daftar di kanan */}
-                  <NavbarButton
-                    variant="primary"
-                    onClick={handleRegisterClick}
-                    className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
-                  >
-                    {t("nav.register")}
-                  </NavbarButton>
+                {/* Tombol Daftar */}
+                <NavbarButton
+                  variant="primary"
+                  onClick={handleRegisterClick}
+                  className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
+                >
+                  Daftar
+                </NavbarButton>
 
-                  {/* Tombol bahasa di paling kanan */}
-                  <LanguageSelector
-                    selectedLanguage={selectedLanguage}
-                    onSelectLanguage={handleSelectLanguage}
-                  />
-                </div>
+                {/* Tombol bahasa */}
+                <LanguageSelector
+                  selectedLanguage={selectedLanguage}
+                  onSelectLanguage={handleSelectLanguage}
+                />
               </div>
             )}
           </div>
         </NavBody>
 
-        {/* Mobile Layout */}
+        {/* Mobile Layout - Hanya tampil di < 768px */}
         <MobileNav>
           <MobileNavHeader>
             <NavbarLogo />
@@ -288,7 +267,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </button>
                   </div>
 
-                  {/* Language selector - di bawah */}
+                  {/* Language selector */}
                   <div className="pt-4 border-t border-gray-200 dark:border-neutral-700">
                     <div className="flex justify-start">
                       <LanguageSelector
@@ -301,19 +280,18 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               ) : (
                 // Mobile menu untuk user belum login
                 <div className="space-y-6">
-                  {/* Urutan: Daftar > Masuk */}
                   <div className="space-y-3">
                     <button
                       onClick={handleRegisterClick}
                       className="w-full px-4 py-3 text-center font-medium text-white bg-[#7CE0A8] rounded-lg hover:bg-[#6bd097] transition-colors"
                     >
-                      {t("nav.register")}
+                      Daftar
                     </button>
                     <button
                       onClick={handleLoginClick}
                       className="w-full px-4 py-3 text-center font-medium text-[#7CE0A8] border border-[#7CE0A8] rounded-lg hover:bg-[#7CE0A8] hover:text-white transition-colors"
                     >
-                      {t("nav.login")}
+                      Masuk
                     </button>
                   </div>
 
@@ -332,81 +310,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           </MobileNavMenu>
         </MobileNav>
       </Navbar>
-
-      {/* Add global styles untuk fix navbar tablet - HANYA NAVBAR */}
-      <style jsx global>{`
-        /* Fix untuk navbar tablet - TARGET SPESIFIK dengan !important yang kuat */
-        @media screen and (min-width: 768px) and (max-width: 1023px) {
-          /* NAVBAR ROOT - Remove all constraints */
-          body > div > nav:first-of-type,
-          #__next > div > nav:first-of-type,
-          main + nav,
-          div[class*="min-h-screen"] > nav {
-            max-width: 100vw !important;
-            width: 100% !important;
-            padding-left: 20px !important;
-            padding-right: 20px !important;
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-            box-sizing: border-box !important;
-          }
-          
-          /* Container dengan class max-w atau mx-auto di dalam navbar */
-          body > div > nav:first-of-type [class*="max-w"],
-          body > div > nav:first-of-type [class*="mx-auto"],
-          #__next > div > nav:first-of-type [class*="max-w"],
-          #__next > div > nav:first-of-type [class*="mx-auto"] {
-            max-width: 100% !important;
-            width: 100% !important;
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-          }
-          
-          /* Direct children - first level */
-          body > div > nav:first-of-type > div,
-          #__next > div > nav:first-of-type > div {
-            max-width: 100% !important;
-            width: 100% !important;
-            padding-left: 0 !important;
-            padding-right: 0 !important;
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-          }
-          
-          /* Flex container untuk logo dan buttons */
-          body > div > nav:first-of-type div[class*="flex"],
-          body > div > nav:first-of-type div[class*="justify-between"],
-          #__next > div > nav:first-of-type div[class*="flex"],
-          #__next > div > nav:first-of-type div[class*="justify-between"] {
-            max-width: 100% !important;
-            width: 100% !important;
-          }
-          
-          /* Kill semua max-w-* classes di navbar */
-          body > div > nav:first-of-type [class*="max-w-xs"],
-          body > div > nav:first-of-type [class*="max-w-sm"],
-          body > div > nav:first-of-type [class*="max-w-md"],
-          body > div > nav:first-of-type [class*="max-w-lg"],
-          body > div > nav:first-of-type [class*="max-w-xl"],
-          body > div > nav:first-of-type [class*="max-w-2xl"],
-          body > div > nav:first-of-type [class*="max-w-3xl"],
-          body > div > nav:first-of-type [class*="max-w-4xl"],
-          body > div > nav:first-of-type [class*="max-w-5xl"],
-          body > div > nav:first-of-type [class*="max-w-6xl"],
-          body > div > nav:first-of-type [class*="max-w-7xl"] {
-            max-width: 100% !important;
-          }
-        }
-        
-        /* iPad Pro specific */
-        @media screen and (min-width: 1024px) and (max-width: 1024px) {
-          body > div > nav:first-of-type,
-          #__next > div > nav:first-of-type {
-            padding-left: 24px !important;
-            padding-right: 24px !important;
-          }
-        }
-      `}</style>
 
       {children}
     </div>

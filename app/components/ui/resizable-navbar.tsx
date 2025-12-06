@@ -88,7 +88,7 @@ export const Navbar = ({ children, className }: NavbarProps) => {
     );
 };
 
-
+// NavBody - Tampil di md (768px) ke atas - untuk Desktop & Tablet
 export const NavBody = ({ children, className, visible }: NavBodyProps) => {
     return (
         <motion.div
@@ -101,7 +101,7 @@ export const NavBody = ({ children, className, visible }: NavBodyProps) => {
             }}
             transition={{ type: "spring", stiffness: 200, damping: 50 }}
             className={cn(
-                "relative z-[60] hidden h-16 w-full flex-row items-center justify-between lg:flex",
+                "relative z-[60] hidden h-16 w-full flex-row items-center justify-between md:flex",
                 "px-4 md:px-6 lg:px-8",
                 "bg-white dark:bg-neutral-950 border-b border-neutral-200/70 dark:border-neutral-800/70",
                 className
@@ -147,6 +147,7 @@ export const NavItems = ({ items, className, onItemClick }: NavItemsProps) => {
     );
 };
 
+// MobileNav - Hanya tampil di < 768px
 export const MobileNav = ({ children, className, visible }: MobileNavProps) => {
     return (
         <motion.div
@@ -159,7 +160,7 @@ export const MobileNav = ({ children, className, visible }: MobileNavProps) => {
             }}
             transition={{ type: "spring", stiffness: 200, damping: 50 }}
             className={cn(
-                "relative z-50 flex w-full flex-col items-center justify-between px-4 py-2 lg:hidden",
+                "relative z-50 flex w-full flex-col items-center justify-between px-4 py-2 md:hidden",
                 "bg-white dark:bg-neutral-950 border-b border-neutral-200/70 dark:border-neutral-800/70",
                 className
             )}
