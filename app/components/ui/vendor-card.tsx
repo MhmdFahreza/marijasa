@@ -38,14 +38,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
 
   const handleViewProfile = async () => {
     setIsNavigating(true);
-    // Beri waktu untuk animasi loader muncul
     await new Promise((r) => setTimeout(r, prefersReduced ? 100 : 400));
     router.push(`/jasa/detailjasa/${id}`);
   };
 
   const handleOrderNow = async () => {
     setIsNavigating(true);
-    // Beri waktu untuk animasi loader muncul
     await new Promise((r) => setTimeout(r, prefersReduced ? 100 : 400));
     router.push(`/jasa/detailjasa/${id}/form`);
   };
@@ -53,18 +51,18 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
   return (
     <>
       <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl">
-        <CardHeader className="p-4 sm:p-5 md:p-6">
+        <CardHeader className="p-3 sm:p-5 md:p-6">
           {/* Mobile: flex-col, Tablet/Desktop: 2 kolom grid fix */}
           <div
             className="
-            flex flex-col gap-4
+            flex flex-col gap-3
             md:grid md:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)]
             md:gap-4 md:items-start
           "
           >
             {/* KIRI: info vendor */}
-            <div className="flex items-start gap-3 md:gap-4 min-w-0">
-              <Avatar className="h-12 w-12 md:h-14 md:w-14 shrink-0">
+            <div className="flex items-start gap-2 md:gap-4 min-w-0">
+              <Avatar className="h-9 w-9 sm:h-12 sm:w-12 md:h-14 md:w-14 shrink-0">
                 <AvatarImage src={avatar ?? ""} alt={name} />
                 <AvatarFallback>
                   {(name || "?")
@@ -78,10 +76,10 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
 
               <div className="flex-1 min-w-0">
                 {/* Nama + verified + like mobile */}
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base sm:text-lg md:text-2xl font-semibold leading-tight truncate">
+                <div className="flex items-start gap-1">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <h2 className="text-xs sm:text-base md:text-2xl font-semibold leading-tight line-clamp-1">
                         {name}
                       </h2>
                       {verified && <Check className="text-primary" />}
@@ -95,10 +93,10 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="ml-auto h-8 w-8 p-1.5 md:hidden"
+                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0"
                           aria-label="Simpan"
                         >
-                          <Heart className="h-4 w-4" />
+                          <Heart className="h-3 w-3" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Simpan</TooltipContent>
@@ -107,26 +105,26 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                 </div>
 
                 {/* Rating */}
-                <div className="mt-1.5 flex items-center gap-2 text-xs sm:text-sm md:text-base text-muted-foreground">
+                <div className="mt-1 flex items-center gap-1 text-[10px] sm:text-sm md:text-base text-muted-foreground">
                   <RatingStars value={rating} />
                   <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
-                  <span>({reviewCount} review)</span>
+                  <span>({reviewCount})</span>
                 </div>
 
                 {/* Tag mobile: max 2 + N lainnya */}
-                <div className="mt-2 flex flex-wrap gap-1.5 items-center md:hidden">
-                  {tags.slice(0, 2).map((t, i) => (
+                <div className="mt-1.5 flex flex-wrap gap-1 items-center md:hidden">
+                  {tags.slice(0, 1).map((t, i) => (
                     <Badge
                       key={i}
                       variant="secondary"
-                      className="rounded-full px-2 py-0.5 text-[10px]"
+                      className="rounded-full px-1.5 py-0 text-[8px] leading-none h-4"
                     >
                       {t}
                     </Badge>
                   ))}
-                  {tags.length > 2 && (
-                    <span className="text-[9px] text-blue-500 font-medium">
-                      +{tags.length - 2} lainnya
+                  {tags.length > 1 && (
+                    <span className="text-[7px] text-blue-500 font-medium">
+                      +{tags.length - 1} lainnya
                     </span>
                   )}
                 </div>
@@ -150,21 +148,21 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                 </div>
 
                 {/* Deskripsi clamp */}
-                <p className="mt-2 text-xs sm:text-sm md:text-base text-foreground/80 leading-relaxed line-clamp-2 md:line-clamp-5">
+                <p className="mt-1.5 text-[10px] sm:text-sm md:text-base text-foreground/80 leading-relaxed line-clamp-2 md:line-clamp-5">
                   {summary}
                 </p>
 
-                {/* Aksi mobile */}
-                <div className="mt-3 flex gap-2 md:hidden">
+                {/* Aksi mobile - PERBAIKAN UTAMA: Tombol sebaris dengan teks kecil */}
+                <div className="mt-2 flex gap-1.5 md:hidden">
                   <Button
-                    className="min-w-[150px] px-4 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] focus:outline-none focus:ring-2 focus:ring-[#5CA68A] active:bg-[#4A8D74]"
+                    className="flex-1 px-1.5 py-1 h-7 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] text-[9px] font-medium whitespace-nowrap"
                     onClick={handleOrderNow}
                   >
                     Pesan Sekarang
                   </Button>
                   <Button
                     variant="outline"
-                    className="flex-1 min-w-0 text-xs sm:text-sm"
+                    className="flex-1 px-1.5 py-1 h-7 text-[9px] font-medium whitespace-nowrap"
                     onClick={handleViewProfile}
                   >
                     Lihat Profil
@@ -195,7 +193,7 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
               {/* Tombol aksi desktop */}
               <div className="flex gap-2 justify-end w-full">
                 <Button
-                  className="min-w-[150px] px-4 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] focus:outline-none focus:ring-2 focus:ring-[#5CA68A] active:bg-[#4A8D74]"
+                  className="min-w-[150px] px-4 bg-[#7CE0A8] text-white hover:bg-[#5CA68A]"
                   onClick={handleOrderNow}
                 >
                   Pesan Sekarang
@@ -244,7 +242,6 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
           </div>
         </CardHeader>
 
-        {/* Separator & footer hanya md+ */}
         <Separator className="hidden md:block" />
         <div className="hidden md:block py-3 px-6" />
       </Card>
@@ -270,9 +267,9 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
 function Check({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[10px] sm:text-xs md:text-sm font-medium ${className ?? ""}`}
+      className={`inline-flex items-center gap-0.5 text-[8px] sm:text-xs md:text-sm font-medium ${className ?? ""}`}
     >
-      <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5" />
+      <CheckCircle2 className="h-2.5 w-2.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />
       Verified
     </span>
   );
@@ -290,8 +287,9 @@ function RatingStars({ value }: { value: number }) {
         return (
           <Star
             key={i}
-            className={`h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 ${filled ? "fill-current" : "text-muted-foreground/40"
-              }`}
+            className={`h-2.5 w-2.5 sm:h-4 sm:w-4 md:h-5 md:w-5 ${
+              filled ? "fill-current" : "text-muted-foreground/40"
+            }`}
             aria-hidden="true"
           />
         );

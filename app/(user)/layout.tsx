@@ -199,14 +199,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                {/* Tombol bahasa di kanan profil (opsional - hapus jika tidak perlu) */}
-                {/* <div className="hidden lg:flex">
-                  <LanguageSelector
-                    selectedLanguage={selectedLanguage}
-                    onSelectLanguage={handleSelectLanguage}
-                  />
-                </div> */}
               </div>
             ) : (
               // User belum login - Desktop
@@ -340,6 +332,81 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           </MobileNavMenu>
         </MobileNav>
       </Navbar>
+
+      {/* Add global styles untuk fix navbar tablet - HANYA NAVBAR */}
+      <style jsx global>{`
+        /* Fix untuk navbar tablet - TARGET SPESIFIK dengan !important yang kuat */
+        @media screen and (min-width: 768px) and (max-width: 1023px) {
+          /* NAVBAR ROOT - Remove all constraints */
+          body > div > nav:first-of-type,
+          #__next > div > nav:first-of-type,
+          main + nav,
+          div[class*="min-h-screen"] > nav {
+            max-width: 100vw !important;
+            width: 100% !important;
+            padding-left: 20px !important;
+            padding-right: 20px !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* Container dengan class max-w atau mx-auto di dalam navbar */
+          body > div > nav:first-of-type [class*="max-w"],
+          body > div > nav:first-of-type [class*="mx-auto"],
+          #__next > div > nav:first-of-type [class*="max-w"],
+          #__next > div > nav:first-of-type [class*="mx-auto"] {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+          }
+          
+          /* Direct children - first level */
+          body > div > nav:first-of-type > div,
+          #__next > div > nav:first-of-type > div {
+            max-width: 100% !important;
+            width: 100% !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+          }
+          
+          /* Flex container untuk logo dan buttons */
+          body > div > nav:first-of-type div[class*="flex"],
+          body > div > nav:first-of-type div[class*="justify-between"],
+          #__next > div > nav:first-of-type div[class*="flex"],
+          #__next > div > nav:first-of-type div[class*="justify-between"] {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+          
+          /* Kill semua max-w-* classes di navbar */
+          body > div > nav:first-of-type [class*="max-w-xs"],
+          body > div > nav:first-of-type [class*="max-w-sm"],
+          body > div > nav:first-of-type [class*="max-w-md"],
+          body > div > nav:first-of-type [class*="max-w-lg"],
+          body > div > nav:first-of-type [class*="max-w-xl"],
+          body > div > nav:first-of-type [class*="max-w-2xl"],
+          body > div > nav:first-of-type [class*="max-w-3xl"],
+          body > div > nav:first-of-type [class*="max-w-4xl"],
+          body > div > nav:first-of-type [class*="max-w-5xl"],
+          body > div > nav:first-of-type [class*="max-w-6xl"],
+          body > div > nav:first-of-type [class*="max-w-7xl"] {
+            max-width: 100% !important;
+          }
+        }
+        
+        /* iPad Pro specific */
+        @media screen and (min-width: 1024px) and (max-width: 1024px) {
+          body > div > nav:first-of-type,
+          #__next > div > nav:first-of-type {
+            padding-left: 24px !important;
+            padding-right: 24px !important;
+          }
+        }
+      `}</style>
 
       {children}
     </div>
