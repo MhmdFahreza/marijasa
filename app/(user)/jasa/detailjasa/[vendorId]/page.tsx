@@ -368,7 +368,7 @@ export default function VendorDetailPage() {
                   size="lg"
                   variant="outline"
                   className="w-full border-2 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition duration-300"
-                  onClick={() => handleNavigation("/jasa")}
+                  onClick={() => handleNavigation(`/chat/${vendorId}`)}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
                   Chat dengan Vendor
@@ -387,8 +387,8 @@ export default function VendorDetailPage() {
           <div className="max-w-7xl mx-auto flex gap-3">
             <Button
               variant="outline"
-              className="flex-1 border-2 border-pink-500 text-pink-600 hover:bg-pink-50 rounded-lg transition duration-300"
-              onClick={() => handleNavigation("/jasa")}
+              className="flex-1 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg transition duration-300"
+              onClick={() => handleNavigation(`/chat/${vendorId}`)}
             >
               <MessageCircle className="mr-2 h-4 w-4" />
               Chat

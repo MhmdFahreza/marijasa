@@ -161,3 +161,58 @@
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 20px) !important;
 }
+
+/* Waveform animation */
+@keyframes waveformPulse {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* Voice message specific styles */
+.voice-message-wave {
+  position: relative;
+  overflow: hidden;
+}
+
+.voice-message-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: waveScan 2s linear infinite;
+}
+
+@keyframes waveScan {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* Play button animation */
+.play-button {
+  transition: all 0.3s ease;
+}
+
+.play-button:hover {
+  transform: scale(1.1);
+}
+
+/* Progress indicator for voice message */
+.voice-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #25D366, #128C7E);
+  transition: width 0.1s linear;
+}
