@@ -18,6 +18,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=12",
         serviceAreas: ["Jakarta Barat", "Jakarta Utara", "Tangerang", "Cirebon", "Subang"],
+        phone: "+6281234567890",
     },
     {
         id: "2",
@@ -35,6 +36,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=32",
         serviceAreas: ["Jakarta Selatan", "Depok", "Bogor", "Sukabumi", "Cianjur"],
+        phone: "+6282345678901",
     },
     {
         id: "3",
@@ -52,6 +54,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=5",
         serviceAreas: ["Jakarta Pusat", "Bandung", "Cimahi", "Tasikmalaya", "Garut"],
+        phone: "+6283456789012",
     },
     {
         id: "4",
@@ -69,6 +72,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=47",
         serviceAreas: ["Bekasi", "Karawang", "Cilegon", "Serang", "Pandeglang"],
+        phone: "+6284567890123",
     },
     {
         id: "5",
@@ -86,6 +90,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=21",
         serviceAreas: ["Semarang", "Solo", "Magelang", "Salatiga", "Purwokerto"],
+        phone: "+6285678901234",
     },
     {
         id: "6",
@@ -103,6 +108,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=8",
         serviceAreas: ["Yogyakarta", "Bantul", "Sleman", "Magelang", "Klaten"],
+        phone: "+6286789012345",
     },
     {
         id: "7",
@@ -120,6 +126,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=57",
         serviceAreas: ["Surabaya", "Sidoarjo", "Gresik", "Mojokerto", "Pasuruan"],
+        phone: "+6287890123456",
     },
     {
         id: "8",
@@ -137,6 +144,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=15",
         serviceAreas: ["Jakarta Timur", "Tangerang Selatan", "Cikarang", "Cibubur", "Cileungsi"],
+        phone: "+6288901234567",
     },
     {
         id: "9",
@@ -154,6 +162,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=28",
         serviceAreas: ["Malang", "Batu", "Blitar", "Kediri", "Probolinggo"],
+        phone: "+6289012345678",
     },
     {
         id: "10",
@@ -171,6 +180,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=9",
         serviceAreas: ["Denpasar", "Badung", "Gianyar", "Tabanan", "Singaraja"],
+        phone: "+6280123456789",
     },
     {
         id: "11",
@@ -188,6 +198,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=39",
         serviceAreas: ["Medan", "Binjai", "Pematangsiantar", "Tebing Tinggi", "Tanjungbalai"],
+        phone: "+6281122334455",
     },
     {
         id: "12",
@@ -205,6 +216,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=44",
         serviceAreas: ["Palembang", "Prabumulih", "Lubuklinggau", "Pagar Alam", "Lahat"],
+        phone: "+6282233445566",
     },
     {
         id: "13",
@@ -222,6 +234,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=18",
         serviceAreas: ["Balikpapan", "Samarinda", "Bontang", "Berau", "Kutai Kartanegara"],
+        phone: "+6283344556677",
     },
     {
         id: "14",
@@ -239,6 +252,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=62",
         serviceAreas: ["Banjarmasin", "Banjarbaru", "Barito Kuala", "Martapura", "Kandangan"],
+        phone: "+6284455667788",
     },
     {
         id: "15",
@@ -256,6 +270,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=25",
         serviceAreas: ["Batam", "Tanjungpinang", "Bintan", "Karimun", "Natuna"],
+        phone: "+6285566778899",
     },
     {
         id: "16",
@@ -273,6 +288,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=51",
         serviceAreas: ["Padang", "Bukittinggi", "Payakumbuh", "Solok", "Padang Panjang"],
+        phone: "+6286677889900",
     },
     {
         id: "17",
@@ -290,6 +306,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=11",
         serviceAreas: ["Bandar Lampung", "Metro", "Lampung Selatan", "Lampung Tengah", "Lampung Timur"],
+        phone: "+6287788990011",
     },
     {
         id: "18",
@@ -307,6 +324,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=33",
         serviceAreas: ["Pontianak", "Singkawang", "Mempawah", "Kubu Raya", "Sanggau"],
+        phone: "+6288899001122",
     },
     {
         id: "19",
@@ -324,6 +342,7 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=40",
         serviceAreas: ["Makassar", "Maros", "Gowa", "Parepare", "Palopo"],
+        phone: "+6289900112233",
     },
     {
         id: "20",
@@ -341,5 +360,6 @@ export const Vendors: Vendor[] = [
         ],
         avatar: "https://i.pravatar.cc/120?img=14",
         serviceAreas: ["Manado", "Bitung", "Tomohon", "Kotamobagu", "Gorontalo"],
+        phone: "+6280011223344",
     },
 ];
