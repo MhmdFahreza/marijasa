@@ -27,7 +27,7 @@ import { LoaderTwo } from "@/app/components/transition/loader";
 const PRICES = {
   ac: {
     instalasi: { base: 500000, label: "Instalasi AC Baru" },
-    service: { base: 150000, label: "Service/Perbaikan" },
+    service: { base: 150000, label: "Perbaikan AC" },
     cuci: { base: 100000, label: "Cuci AC" },
     bongkar: { base: 300000, label: "Bongkar Pasang" }
   },

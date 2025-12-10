@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +32,14 @@ import {
     AlertCircle,
     CheckCircle2,
     ArrowLeft,
+    LayoutGrid,
+    PlugZap,
+    AirVent,
+    Brush,
+    ShowerHead,
+    Toilet,
+    Trees,
+    Armchair,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import SiteFooter from "@/app/footer";
@@ -42,6 +50,86 @@ type WorkImage = {
     file: File;
     preview: string;
 };
+
+type ServiceCategory = {
+    id: string;
+    name: string;
+    icon: ReactNode;
+    defaultServices: string[];
+};
+
+const SERVICE_CATEGORIES: ServiceCategory[] = [
+    {
+        id: "ac",
+        name: "Tukang AC",
+        icon: (
+            <div className="flex justify-center">
+                <AirVent className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-sky-500" />
+            </div>
+        ),
+        defaultServices: ["Instalasi AC Baru", "Perbaikan AC", "Cuci AC", "Bongkar Pasang AC"]
+    },
+    {
+        id: "electrical",
+        name: "Tukang Listrik",
+        icon: (
+            <div className="flex justify-center">
+                <PlugZap className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-yellow-500" />
+            </div>
+        ),
+        defaultServices: ["Instalasi Baru", "Perbaikan", "Penambahan Titik Listrik", "Pemasangan Panel", "Ganti MCB"]
+    },
+    {
+        id: "cleaning",
+        name: "Tukang Pembersihan Rumah",
+        icon: (
+            <div className="flex justify-center">
+                <Brush className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-emerald-500" />
+            </div>
+        ),
+        defaultServices: ["General Cleaning", "Deep Cleaning", "Post Renovasi"]
+    },
+    {
+        id: "plumbing",
+        name: "Tukang Ledeng",
+        icon: (
+            <div className="flex justify-center">
+                <ShowerHead className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-cyan-500" />
+            </div>
+        ),
+        defaultServices: ["Kebocoran Pipa", "Saluran Mampet", "Instalasi Baru", "Ganti Wastafel/Kloset", "Pompa Air"]
+    },
+    {
+        id: "sedot-wc",
+        name: "Tukang Sedot WC",
+        icon: (
+            <div className="flex justify-center">
+                <Toilet className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-indigo-500" />
+            </div>
+        ),
+        defaultServices: ["Sedot WC/Septic Tank", "Pembersihan Saluran"]
+    },
+    {
+        id: "garden",
+        name: "Tukang Kebun",
+        icon: (
+            <div className="flex justify-center">
+                <Trees className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-green-600" />
+            </div>
+        ),
+        defaultServices: ["Pembuatan Taman Baru", "Perawatan Rutin", "Pemangkasan", "Vertical Garden", "Landscape Design"]
+    },
+    {
+        id: "furniture",
+        name: "Tukang Mebel",
+        icon: (
+            <div className="flex justify-center">
+                <Armchair className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-amber-600" />
+            </div>
+        ),
+        defaultServices: ["Lemari", "Kitchen Set", "Rak TV", "Meja Kerja", "Tempat Tidur", "Rak Buku"]
+    }
+];
 
 export default function MitraDaftarPage() {
     const router = useRouter();
@@ -54,6 +142,7 @@ export default function MitraDaftarPage() {
     const [namaMitra, setNamaMitra] = useState("");
     const [fotoProfil, setFotoProfil] = useState<File | null>(null);
     const [fotoProfilPreview, setFotoProfilPreview] = useState<string>("");
+    const [kategoriJasa, setKategoriJasa] = useState<string>("");
     const [jasaDitawarkan, setJasaDitawarkan] = useState<ServiceTag[]>([]);
     const [currentTag, setCurrentTag] = useState("");
     const [deskripsi, setDeskripsi] = useState("");
@@ -66,10 +155,19 @@ export default function MitraDaftarPage() {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [showSuccess, setShowSuccess] = useState(false);
 
-    // ✅ Semua hooks dipanggil terlebih dahulu, SEBELUM kondisional apapun
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    // Auto-populate services when category is selected
+    useEffect(() => {
+        if (kategoriJasa) {
+            const category = SERVICE_CATEGORIES.find(cat => cat.id === kategoriJasa);
+            if (category) {
+                setJasaDitawarkan(category.defaultServices);
+            }
+        }
+    }, [kategoriJasa]);
 
     const handleBackClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault();
@@ -173,6 +271,10 @@ export default function MitraDaftarPage() {
             newErrors.fotoProfil = "Foto profil wajib diunggah";
         }
 
+        if (!kategoriJasa) {
+            newErrors.kategoriJasa = "Kategori jasa wajib dipilih";
+        }
+
         if (jasaDitawarkan.length === 0) {
             newErrors.jasaDitawarkan = "Minimal 1 jasa harus ditambahkan";
         }
@@ -221,7 +323,6 @@ export default function MitraDaftarPage() {
         }, 2000);
     };
 
-    // ✅ Kondisional return di AKHIR, setelah semua hooks
     if (!mounted) {
         return null;
     }
@@ -241,7 +342,7 @@ export default function MitraDaftarPage() {
                             <BreadcrumbItem>
                                 <BreadcrumbLink asChild>
                                     <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                                        <Link href="/" onClick={handleBackClick}>
+                                        <Link href="/" onClick={handleBackClick} className="hover:text-[#7CE0A8]">
                                             Home
                                         </Link>
                                     </motion.span>
@@ -264,9 +365,9 @@ export default function MitraDaftarPage() {
                             exit={{ opacity: 0, y: -10 }}
                             className="mb-6"
                         >
-                            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-                                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                <AlertDescription className="text-green-800 dark:text-green-200">
+                            <Alert className="border-[#7CE0A8] bg-[#7CE0A8]/10 dark:bg-[#7CE0A8]/20">
+                                <CheckCircle2 className="h-4 w-4 text-[#7CE0A8]" />
+                                <AlertDescription className="text-[#5AB88A] dark:text-[#7CE0A8]">
                                     Pendaftaran berhasil! Anda akan dialihkan ke halaman utama...
                                 </AlertDescription>
                             </Alert>
@@ -275,19 +376,19 @@ export default function MitraDaftarPage() {
                 </AnimatePresence>
 
                 {/* Form Card */}
-                <Card className="rounded-2xl overflow-hidden">
-                    <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5 py-6">
+                <Card className="rounded-2xl overflow-hidden border-[#7CE0A8]/20">
+                    <CardHeader className="bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 py-6">
                         <div className="flex items-center gap-3">
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => router.back()}
-                                className="rounded-full"
+                                className="rounded-full hover:bg-[#7CE0A8]/20 hover:text-[#7CE0A8]"
                             >
                                 <ArrowLeft className="h-5 w-5" />
                             </Button>
                             <div>
-                                <CardTitle className="text-2xl">Daftar Sebagai Mitra</CardTitle>
+                                <CardTitle className="text-2xl text-[#7CE0A8]">Daftar Sebagai Mitra</CardTitle>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     Lengkapi formulir di bawah untuk bergabung sebagai penyedia jasa
                                 </p>
@@ -310,7 +411,7 @@ export default function MitraDaftarPage() {
                                         setNamaMitra(e.target.value);
                                         setErrors((prev) => ({ ...prev, namaMitra: "" }));
                                     }}
-                                    className={`h-12 ${errors.namaMitra ? "border-destructive" : ""}`}
+                                    className={`h-12 focus-visible:ring-[#7CE0A8] ${errors.namaMitra ? "border-destructive" : ""}`}
                                 />
                                 {errors.namaMitra && (
                                     <p className="text-sm text-destructive flex items-center gap-1">
@@ -327,7 +428,7 @@ export default function MitraDaftarPage() {
                                 </Label>
                                 <div className="flex flex-col sm:flex-row gap-4 items-start">
                                     {fotoProfilPreview ? (
-                                        <div className="relative w-32 h-32 rounded-full overflow-hidden border-4 border-muted">
+                                        <div className="relative w-32 h-32 rounded-full overflow-hidden border-4 border-[#7CE0A8]/30">
                                             <Image
                                                 src={fotoProfilPreview}
                                                 alt="Preview"
@@ -348,10 +449,10 @@ export default function MitraDaftarPage() {
                                     ) : (
                                         <label
                                             htmlFor="foto-profil-input"
-                                            className="w-32 h-32 rounded-full border-2 border-dashed border-muted-foreground/25 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                                            className="w-32 h-32 rounded-full border-2 border-dashed border-[#7CE0A8]/50 flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors"
                                         >
-                                            <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                                            <span className="text-xs text-center text-muted-foreground px-2">
+                                            <Upload className="h-8 w-8 text-[#7CE0A8] mb-2" />
+                                            <span className="text-xs text-center text-[#7CE0A8] px-2">
                                                 Upload Foto
                                             </span>
                                         </label>
@@ -377,25 +478,68 @@ export default function MitraDaftarPage() {
                                 </div>
                             </div>
 
-                            {/* 3. Jasa yang Ditawarkan */}
+                            {/* 3. Kategori Jasa */}
+                            <div id="kategoriJasa" className="space-y-2">
+                                <Label className="text-base font-semibold">
+                                    Kategori Jasa <span className="text-destructive">*</span>
+                                </Label>
+                                <p className="text-sm text-muted-foreground">
+                                    Pilih kategori jasa yang ingin Anda tawarkan
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                    {SERVICE_CATEGORIES.map((category) => (
+                                        <button
+                                            key={category.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setKategoriJasa(category.id);
+                                                setErrors((prev) => ({ ...prev, kategoriJasa: "" }));
+                                            }}
+                                            className={`p-4 rounded-lg border-2 transition-all ${kategoriJasa === category.id
+                                                ? "border-[#7CE0A8] bg-[#7CE0A8]/10"
+                                                : "border-muted hover:border-[#7CE0A8]/50"
+                                                }`}
+                                        >
+                                            <div className="text-3xl mb-2">{category.icon}</div>
+                                            <div className="text-sm font-medium text-center">
+                                                {category.name}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                                {errors.kategoriJasa && (
+                                    <p className="text-sm text-destructive flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3" />
+                                        {errors.kategoriJasa}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* 4. Jasa yang Ditawarkan */}
                             <div id="jasaDitawarkan" className="space-y-2">
                                 <Label htmlFor="jasa-input" className="text-base font-semibold">
-                                    Jasa yang Ditawarkan <span className="text-destructive">*</span>
+                                    Layanan yang Ditawarkan <span className="text-destructive">*</span>
                                 </Label>
+                                <p className="text-sm text-muted-foreground">
+                                    {kategoriJasa
+                                        ? "Layanan default sudah ditambahkan. Anda bisa menambah atau menghapus layanan."
+                                        : "Pilih kategori jasa terlebih dahulu untuk melihat layanan default."}
+                                </p>
                                 <div className="flex gap-2">
                                     <Input
                                         id="jasa-input"
-                                        placeholder="Contoh: Fotografi, Videografi, Editing"
+                                        placeholder="Tambahkan layanan baru"
                                         value={currentTag}
                                         onChange={(e) => setCurrentTag(e.target.value)}
                                         onKeyDown={handleTagKeyDown}
-                                        className="h-12"
+                                        className="h-12 focus-visible:ring-[#7CE0A8]"
+                                        disabled={!kategoriJasa}
                                     />
                                     <Button
                                         type="button"
                                         onClick={handleAddTag}
-                                        disabled={!currentTag.trim()}
-                                        className="h-12 px-6"
+                                        disabled={!currentTag.trim() || !kategoriJasa}
+                                        className="h-12 px-6 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
                                     >
                                         <Plus className="h-4 w-4 mr-2" />
                                         Tambah
@@ -406,8 +550,7 @@ export default function MitraDaftarPage() {
                                         {jasaDitawarkan.map((tag) => (
                                             <Badge
                                                 key={tag}
-                                                variant="secondary"
-                                                className="px-3 py-1.5 text-sm"
+                                                className="px-3 py-1.5 text-sm bg-[#7CE0A8]/20 text-[#5AB88A] hover:bg-[#7CE0A8]/30 border-[#7CE0A8]/30"
                                             >
                                                 {tag}
                                                 <button
@@ -429,7 +572,7 @@ export default function MitraDaftarPage() {
                                 )}
                             </div>
 
-                            {/* 4. Deskripsi */}
+                            {/* 5. Deskripsi */}
                             <div id="deskripsi" className="space-y-2">
                                 <Label htmlFor="deskripsi-textarea" className="text-base font-semibold">
                                     Deskripsi <span className="text-destructive">*</span>
@@ -443,7 +586,7 @@ export default function MitraDaftarPage() {
                                         setErrors((prev) => ({ ...prev, deskripsi: "" }));
                                     }}
                                     rows={6}
-                                    className={errors.deskripsi ? "border-destructive" : ""}
+                                    className={`focus-visible:ring-[#7CE0A8] ${errors.deskripsi ? "border-destructive" : ""}`}
                                 />
                                 <div className="flex justify-between text-sm text-muted-foreground">
                                     <span>{deskripsi.length} karakter (minimal 50)</span>
@@ -456,7 +599,7 @@ export default function MitraDaftarPage() {
                                 )}
                             </div>
 
-                            {/* 5. Hasil Pekerjaan */}
+                            {/* 6. Hasil Pekerjaan */}
                             <div id="hasilPekerjaan" className="space-y-2">
                                 <Label className="text-base font-semibold">
                                     Hasil Pekerjaan <span className="text-destructive">*</span>
@@ -474,7 +617,7 @@ export default function MitraDaftarPage() {
                                                     src={img.preview}
                                                     alt="Hasil Pekerjaan"
                                                     fill
-                                                    className="object-cover rounded-lg"
+                                                    className="object-cover rounded-lg border-2 border-[#7CE0A8]/20"
                                                 />
                                             </AspectRatio>
                                             <button
@@ -490,10 +633,10 @@ export default function MitraDaftarPage() {
                                     {hasilPekerjaan.length < 10 && (
                                         <label
                                             htmlFor="hasil-pekerjaan-input"
-                                            className="aspect-square border-2 border-dashed border-muted-foreground/25 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                                            className="aspect-square border-2 border-dashed border-[#7CE0A8]/50 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors"
                                         >
-                                            <ImagePlus className="h-8 w-8 text-muted-foreground mb-2" />
-                                            <span className="text-xs text-muted-foreground">
+                                            <ImagePlus className="h-8 w-8 text-[#7CE0A8] mb-2" />
+                                            <span className="text-xs text-[#7CE0A8]">
                                                 Tambah Foto
                                             </span>
                                         </label>
@@ -517,7 +660,7 @@ export default function MitraDaftarPage() {
                                 )}
                             </div>
 
-                            {/* 6. Lokasi/Jangkauan Area */}
+                            {/* 7. Lokasi/Jangkauan Area */}
                             <div id="lokasi" className="space-y-2">
                                 <Label className="text-base font-semibold">
                                     Lokasi/Jangkauan Area <span className="text-destructive">*</span>
@@ -532,13 +675,13 @@ export default function MitraDaftarPage() {
                                         onValueChange={setCurrentLokasi}
                                         placeholder="Pilih kota"
                                         cities={CITIES_ID}
-                                        triggerClassName="flex-1"
+                                        triggerClassName="flex-1 focus:ring-[#7CE0A8]"
                                     />
                                     <Button
                                         type="button"
                                         onClick={handleAddLokasi}
                                         disabled={!currentLokasi}
-                                        className="h-12 px-6"
+                                        className="h-12 px-6 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
                                     >
                                         <Plus className="h-4 w-4 mr-2" />
                                         Tambah
@@ -550,8 +693,7 @@ export default function MitraDaftarPage() {
                                         {lokasi.map((city) => (
                                             <Badge
                                                 key={city}
-                                                variant="secondary"
-                                                className="px-3 py-1.5 text-sm"
+                                                className="px-3 py-1.5 text-sm bg-[#7CE0A8]/20 text-[#5AB88A] hover:bg-[#7CE0A8]/30 border-[#7CE0A8]/30"
                                             >
                                                 {city}
                                                 <button
@@ -580,14 +722,14 @@ export default function MitraDaftarPage() {
                                     type="button"
                                     variant="outline"
                                     onClick={() => router.back()}
-                                    className="flex-1 h-12"
+                                    className="flex-1 h-12 border-[#7CE0A8]/50 text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
                                     disabled={isSubmitting}
                                 >
                                     Batal
                                 </Button>
                                 <Button
                                     type="submit"
-                                    className="flex-1 h-12"
+                                    className="flex-1 h-12 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
                                     disabled={isSubmitting}
                                 >
                                     {isSubmitting ? (
