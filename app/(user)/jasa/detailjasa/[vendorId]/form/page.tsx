@@ -39,35 +39,36 @@ const PRICES = {
     "Ganti MCB": 100000
   },
   cleaning: {
-    general: { base: 300000, label: "General Cleaning" },
-    deep: { base: 500000, label: "Deep Cleaning" },
-    "post-reno": { base: 800000, label: "Post Renovasi" }
+    general: { base: 300000, label: "Pembersihan Rutin" },
+    deep: { base: 500000, label: "Pembersihan Mendalam" },
+    "renovasi": { base: 800000, label: "Pembersihan Renovasi" },
+    "pindahan": { base: 800000, label: "Pindahan" },
   },
   plumbing: {
-    "Kebocoran Pipa": 250000,
-    "Saluran Mampet": 200000,
-    "Instalasi Baru": 600000,
-    "Ganti Wastafel/Kloset": 400000,
-    "Pompa Air": 350000
+    "Instalasi Pipa": 250000,
+    "Perbaikan Kebocoran": 200000,
+    "Pelancaran Saluran Mampet": 600000,
+    "Pemasangan Sanitary Fixture": 400000,
+    "Instalasi water heater": 350000
   },
   sedotWC: {
-    base: 400000,
-    perUnit: 150000
+    "Penyedotan Septictank": 250000,
+    "Inspeksi": 200000,
+    "Pelancaran Saluran WC": 200000,
   },
   garden: {
     "Pembuatan Taman Baru": 2000000,
     "Perawatan Rutin": 300000,
     "Pemangkasan": 150000,
-    "Vertical Garden": 1500000,
-    "Landscape Design": 3000000
+    "Perawatan Rumput": 1500000,
+    "Pengendalian Hama Tanaman": 3000000
   },
   furniture: {
-    "Lemari": 3000000,
-    "Kitchen Set": 5000000,
-    "Rak TV": 1500000,
-    "Meja Kerja": 2000000,
-    "Tempat Tidur": 4000000,
-    "Rak Buku": 1800000
+    "Pembuatan Furnitur": 3000000,
+    "Restorasi Furnitur Lama": 5000000,
+    "Bongkar Pasang": 1500000,
+    "Produksi Furnitur Dekoratif": 2000000,
+    "Pemeliharaan Furnitur": 4000000,
   }
 };
 
@@ -711,24 +712,45 @@ function PlumbingServiceForm({ formData, setFormData }: any) {
 
 function SedotWCServiceForm({ formData, setFormData }: any) {
   const totalPrice = useMemo(() => {
-    const count = parseInt(formData.wcCount) || 0;
-    if (count === 0) return 0;
-    return PRICES.sedotWC.base + (PRICES.sedotWC.perUnit * (count - 1));
-  }, [formData.wcCount]);
+    const services = formData.sedotWCServices || [];
+    return services.reduce((sum: number, service: string) => {
+      return sum + (PRICES.sedotWC[service as keyof typeof PRICES.sedotWC] || 0);
+    }, 0);
+  }, [formData.sedotWCServices]);
 
   return (
     <div className="space-y-6">
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Detail Layanan Sedot WC</h3>
-
-        <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Harga Dasar (1 unit):</span>
-            <span className="font-semibold">Rp {PRICES.sedotWC.base.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Tambahan per unit:</span>
-            <span className="font-semibold">Rp {PRICES.sedotWC.perUnit.toLocaleString('id-ID')}</span>
+        <div className="space-y-2">
+          <Label>Jenis Layanan *</Label>
+          <div className="space-y-2">
+            {Object.entries(PRICES.sedotWC).map(([item, price]) => (
+              <div key={item} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`sedot-wc-${item.toLowerCase().replace(/\s/g, "-")}`}
+                    onCheckedChange={(checked) => {
+                      const current = formData.sedotWCServices || [];
+                      if (checked) {
+                        setFormData({ ...formData, sedotWCServices: [...current, item] });
+                      } else {
+                        setFormData({ ...formData, sedotWCServices: current.filter((i: string) => i !== item) });
+                      }
+                    }}
+                  />
+                  <Label
+                    htmlFor={`sedot-wc-${item.toLowerCase().replace(/\s/g, "-")}`}
+                    className="font-normal cursor-pointer"
+                  >
+                    {item}
+                  </Label>
+                </div>
+                <span className="text-sm font-semibold text-primary">
+                  Rp {price.toLocaleString('id-ID')}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
