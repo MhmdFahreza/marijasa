@@ -794,7 +794,7 @@ export default function MitraDaftarPage() {
                                         "2"
                                     )}
                                 </div>
-                                <span className="ml-2 font-medium">Data Pribadi</span>
+                                <span className="ml-2 font-medium">Biodata</span>
                             </div>
                         </div>
                     </div>
@@ -1175,7 +1175,7 @@ export default function MitraDaftarPage() {
                                         className="flex-1 h-12 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
                                         disabled={isSubmitting}
                                     >
-                                        Lanjutkan ke Data Pribadi
+                                        Lanjutkan
                                     </Button>
                                 </div>
                             </form>
@@ -1199,7 +1199,7 @@ export default function MitraDaftarPage() {
                                 <div>
                                     <CardTitle className="text-2xl text-[#7CE0A8]">Data Pribadi</CardTitle>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        Lengkapi data pribadi dan dokumen pendukung
+                                        Lengkapi Biodata dan dokumen pendukung
                                     </p>
                                 </div>
                             </div>

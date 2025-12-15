@@ -53,7 +53,7 @@ export function LoginForm({
     admin: {
       title: "Login ke Akun Admin",
       description: "Masukkan kredensial admin Anda untuk login",
-      registerLink: null, // Admin tidak punya link daftar
+      registerLink: null,
       registerText: null,
     },
   }
@@ -64,12 +64,34 @@ export function LoginForm({
     e.preventDefault()
     setIsLoading(true)
     
-    // Simulasi proses login
-    setTimeout(() => {
+    try {
+      // Simulasi API call
+      const response = await new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({ success: true, token: "dummy-token" })
+        }, 1000)
+      })
+      
+      // Simpan token di localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mitraToken', 'dummy-token')
+        localStorage.setItem('mitraUser', JSON.stringify({ email }))
+      }
+      
+      // Redirect berdasarkan user type
+      if (userType === "mitra") {
+        router.push("/mitra/dashboard")
+        router.refresh()
+      } else if (userType === "user") {
+        router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
+      } else if (userType === "admin") {
+        router.push("/admin/dashboard")
+      }
+    } catch (error) {
+      console.error("Login error:", error)
+    } finally {
       setIsLoading(false)
-      // Redirect ke halaman OTP login dengan userType
-      router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
-    }, 1000)
+    }
   }
 
   return (
@@ -92,6 +114,8 @@ export function LoginForm({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="masukkan email"
+                  autoComplete="email"
                 />
               </Field>
               <Field>
@@ -112,7 +136,8 @@ export function LoginForm({
                   required 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  suppressHydrationWarning
+                  placeholder="masukkan password"
+                  autoComplete="current-password"
                 />
               </Field>
               <Field>
@@ -120,30 +145,26 @@ export function LoginForm({
                   type="submit" 
                   disabled={isLoading}
                   className={cn(
-                    "bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
+                    "w-full bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
                     "focus:ring-[#7CE0A8] focus:ring-offset-2",
                     "transition-colors duration-200"
                   )}
-                  suppressHydrationWarning
                 >
                   {isLoading ? "Memproses..." : "Login"}
                 </Button>
                 
-                {/* Hanya tampilkan Google login untuk user biasa dan mitra */}
                 {userType !== "admin" && (
                   <Button 
                     variant="outline" 
                     type="button"
-                    className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
-                    suppressHydrationWarning
+                    className="w-full mt-3 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
                   >
                     Login dengan Google
                   </Button>
                 )}
                 
-                {/* Hanya tampilkan link register jika tersedia */}
                 {config.registerLink && (
-                  <FieldDescription className="text-center">
+                  <FieldDescription className="text-center mt-4">
                     Belum punya akun?{" "}
                     <Link 
                       href={config.registerLink} 
