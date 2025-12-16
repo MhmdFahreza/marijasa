@@ -128,7 +128,7 @@ export default function DashboardLayout({
     if (pathname === '/mitra/dashboard') return 'dashboard';
     if (pathname === '/mitra/orders') return 'orders';
     if (pathname === '/mitra/chat') return 'chat';
-    if (pathname === '/mitra/ulasan') return 'ulasan';
+    if (pathname === '/mitra/rating') return 'rating';
     if (pathname === '/mitra/settings/profile') return 'profile';
     if (pathname === '/mitra/settings/services') return 'services';
     return 'dashboard';
@@ -161,9 +161,9 @@ export default function DashboardLayout({
       icon: <IconMessage className="h-5 w-5 flex-shrink-0" />,
     },
     {
-      label: "Ulasan",
-      id: "ulasan",
-      href: "/mitra/ulasan",
+      label: "Rating",
+      id: "rating",
+      href: "/mitra/rating",
       icon: <IconStar className="h-5 w-5 flex-shrink-0" />,
     },
   ], []);

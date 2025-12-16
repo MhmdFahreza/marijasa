@@ -18,7 +18,7 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, Home } from "lucide-react";
+import { Calendar, User, Receipt, Home, MapPin, Navigation } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Vendors } from "@/app/data/dataVendor";
 import { useParams, useRouter } from "next/navigation";
@@ -93,6 +93,7 @@ export default function VendorFormPage() {
   const [mounted, setMounted] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [navigationUrl, setNavigationUrl] = useState<string | null>(null);
+  const [gettingLocation, setGettingLocation] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -101,7 +102,6 @@ export default function VendorFormPage() {
   const handleNavigation = async (url: string) => {
     setLeaving(true);
     setNavigationUrl(url);
-    // Tunggu sebentar untuk animasi loader muncul
     await new Promise(resolve => setTimeout(resolve, 300));
     router.push(url);
   };
@@ -116,6 +116,29 @@ export default function VendorFormPage() {
     handleNavigation(`/jasa/detailjasa/${vendorId}`);
   };
 
+  const handleGetLocation = () => {
+    setGettingLocation(true);
+    
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const mapsUrl = `https://maps.google.com/?q=${latitude},${longitude}`;
+          setFormData({ ...formData, gpsLink: mapsUrl });
+          setGettingLocation(false);
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          alert("Tidak dapat mengakses lokasi. Pastikan izin lokasi telah diberikan.");
+          setGettingLocation(false);
+        }
+      );
+    } else {
+      alert("Browser Anda tidak mendukung fitur geolokasi.");
+      setGettingLocation(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submitted:", formData);
@@ -127,7 +150,6 @@ export default function VendorFormPage() {
     return null;
   }
 
-  // Ambil vendorId dari URL params
   const vendorId = params.vendorId as string;
   const vendor = Vendors.find((v) => v.id === vendorId);
 
@@ -262,10 +284,49 @@ export default function VendorFormPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="gpsLink" className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Link Google Maps / GPS *
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="gpsLink"
+                      type="url"
+                      placeholder="https://maps.google.com/... atau https://maps.app.goo.gl/..."
+                      required
+                      value={formData.gpsLink || ""}
+                      onChange={(e) => setFormData({ ...formData, gpsLink: e.target.value })}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleGetLocation}
+                      disabled={gettingLocation}
+                      className="whitespace-nowrap"
+                    >
+                      {gettingLocation ? (
+                        <>
+                          <span className="animate-spin mr-2">⟳</span>
+                          Mencari...
+                        </>
+                      ) : (
+                        <>
+                          <Navigation className="h-4 w-4 mr-2" />
+                          Lokasi Saya
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Tempelkan link lokasi dari Google Maps atau klik tombol "Lokasi Saya" untuk otomatis mengisi lokasi Anda saat ini
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="address">Alamat Lengkap *</Label>
                   <Textarea
                     id="address"
-                    placeholder="Masukkan alamat lengkap"
+                    placeholder="Masukkan alamat lengkap (jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota)"
                     rows={3}
                     required
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
@@ -347,7 +408,6 @@ export default function VendorFormPage() {
         </Card>
       </motion.main>
 
-      {/* Loader untuk transisi halaman */}
       <AnimatePresence>
         {leaving && (
           <motion.div
