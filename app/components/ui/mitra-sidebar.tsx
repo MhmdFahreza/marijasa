@@ -1,16 +1,8 @@
 "use client";
 import { cn } from "../lib/utils";
-import React, { useState, createContext, useContext } from "react";
+import React, { useState, createContext, useContext, useMemo, useCallback } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconMenu2, IconX } from "@tabler/icons-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-
-interface Links {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-}
 
 interface SidebarContextProps {
   open: boolean;
@@ -46,8 +38,13 @@ export const SidebarProvider = ({
   const open = openProp !== undefined ? openProp : openState;
   const setOpen = setOpenProp !== undefined ? setOpenProp : setOpenState;
 
+  const value = useMemo(
+    () => ({ open, setOpen, animate }),
+    [open, setOpen, animate]
+  );
+
   return (
-    <SidebarContext.Provider value={{ open, setOpen, animate: animate }}>
+    <SidebarContext.Provider value={value}>
       {children}
     </SidebarContext.Provider>
   );
@@ -86,6 +83,15 @@ export const DesktopSidebar = ({
   ...props
 }: React.ComponentProps<typeof motion.div>) => {
   const { open, setOpen, animate } = useSidebar();
+  
+  const handleMouseEnter = useCallback(() => {
+    setOpen(true);
+  }, [setOpen]);
+  
+  const handleMouseLeave = useCallback(() => {
+    setOpen(false);
+  }, [setOpen]);
+
   return (
     <>
       <motion.div
@@ -93,11 +99,14 @@ export const DesktopSidebar = ({
           "h-full px-4 py-4 hidden md:flex md:flex-col bg-neutral-100 dark:bg-neutral-800 w-[300px] shrink-0",
           className
         )}
+        initial={false}
         animate={{
           width: animate ? (open ? "300px" : "60px") : "300px",
         }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        transition={{ duration: 0.15, ease: "easeOut" }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{ willChange: 'width' }}
         {...props}
       >
         {children}
@@ -112,6 +121,11 @@ export const MobileSidebar = ({
   ...props
 }: React.ComponentProps<"div">) => {
   const { open, setOpen } = useSidebar();
+  
+  const toggleOpen = useCallback(() => {
+    setOpen(!open);
+  }, [open, setOpen]);
+
   return (
     <>
       <div
@@ -123,27 +137,28 @@ export const MobileSidebar = ({
         <div className="flex justify-end z-20 w-full">
           <IconMenu2
             className="text-neutral-800 dark:text-neutral-200 cursor-pointer"
-            onClick={() => setOpen(!open)}
+            onClick={toggleOpen}
           />
         </div>
-        <AnimatePresence>
+        <AnimatePresence initial={false}>
           {open && (
             <motion.div
               initial={{ x: "-100%", opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: "-100%", opacity: 0 }}
               transition={{
-                duration: 0.3,
-                ease: "easeInOut",
+                duration: 0.15,
+                ease: "easeOut",
               }}
               className={cn(
                 "fixed h-full w-full inset-0 bg-white dark:bg-neutral-900 p-10 z-[100] flex flex-col justify-between",
                 className
               )}
+              style={{ willChange: 'transform, opacity' }}
             >
               <div
                 className="absolute right-10 top-10 z-50 text-neutral-800 dark:text-neutral-200 cursor-pointer"
-                onClick={() => setOpen(!open)}
+                onClick={toggleOpen}
               >
                 <IconX />
               </div>
@@ -153,76 +168,5 @@ export const MobileSidebar = ({
         </AnimatePresence>
       </div>
     </>
-  );
-};
-
-const IconWrapper = ({ 
-  icon, 
-  isActive 
-}: { 
-  icon: React.ReactNode; 
-  isActive: boolean 
-}) => {
-  if (React.isValidElement(icon)) {
-    return React.cloneElement(icon as React.ReactElement<{ className?: string }>, {
-      className: cn(
-        "h-5 w-5 flex-shrink-0",
-        isActive 
-          ? "text-white" 
-          : "text-neutral-700 dark:text-neutral-200",
-        (icon as React.ReactElement<{ className?: string }>).props?.className
-      )
-    });
-  }
-  
-  return icon;
-};
-
-export const SidebarLink = ({
-  link,
-  className,
-  disableActive = false,
-  ...props
-}: {
-  link: Links;
-  className?: string;
-  disableActive?: boolean;
-}) => {
-  const { open, animate } = useSidebar();
-  const pathname = usePathname();
-  const isActive = disableActive ? false : pathname === link.href;
-
-  return (
-    <Link
-      href={link.href}
-      className={cn(
-        "flex items-center group/sidebar py-2 rounded-md transition-all duration-300",
-        open ? "justify-start gap-2 px-2" : "justify-center",
-        isActive 
-          ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white" 
-          : "hover:bg-neutral-200 dark:hover:bg-neutral-700",
-        className
-      )}
-      prefetch={true}
-      {...props}
-    >
-      <div className="flex-shrink-0">
-        <IconWrapper icon={link.icon} isActive={isActive} />
-      </div>
-      <motion.span
-        animate={{
-          display: animate ? (open ? "inline-block" : "none") : "inline-block",
-          opacity: animate ? (open ? 1 : 0) : 1,
-        }}
-        className={cn(
-          "text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0",
-          isActive 
-            ? "text-white font-medium" 
-            : "text-neutral-700 dark:text-neutral-200"
-        )}
-      >
-        {link.label}
-      </motion.span>
-    </Link>
   );
 };
