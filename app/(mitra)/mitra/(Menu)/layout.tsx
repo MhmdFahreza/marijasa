@@ -15,19 +15,30 @@ import {
     IconChevronRight,
 } from "@tabler/icons-react";
 import { AnimatePresence } from "motion/react";
+import { LoaderTwo } from "@/app/components/transition/loader"; 
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
 }
 
-const LogoutModal = React.memo(({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: () => void; onConfirm: () => void }) => {
+const LogoutModal = React.memo(({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  isLoggingOut 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onConfirm: () => void;
+  isLoggingOut: boolean;
+}) => {
   return (
     <AnimatePresence initial={false}>
       {isOpen && (
         <>
           <div
             className="fixed inset-0 bg-black/50 z-[200]"
-            onClick={onClose}
+            onClick={isLoggingOut ? undefined : onClose}
             style={{ willChange: 'opacity' }}
           />
           
@@ -36,27 +47,43 @@ const LogoutModal = React.memo(({ isOpen, onClose, onConfirm }: { isOpen: boolea
               className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl max-w-md w-full p-6 pointer-events-auto"
               style={{ willChange: 'transform, opacity' }}
             >
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
-                Konfirmasi Logout
-              </h3>
-              <p className="text-neutral-600 dark:text-neutral-300 mb-6">
-                Apakah Anda yakin ingin keluar dari akun mitra?
-              </p>
-              
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-md border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={onConfirm}
-                  className="px-4 py-2 rounded-md bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] text-white hover:from-[#6bcb96] hover:to-[#4cc383] transition-all shadow-md"
-                >
-                  Ya, Logout
-                </button>
-              </div>
+              {isLoggingOut ? (
+                <div className="text-center py-6">
+                  <div className="mb-4">
+                    <LoaderTwo />
+                  </div>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
+                    Sedang Logout...
+                  </h3>
+                  <p className="text-neutral-600 dark:text-neutral-300">
+                    Membersihkan sesi dan mengalihkan ke halaman login
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
+                    Konfirmasi Logout
+                  </h3>
+                  <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+                    Apakah Anda yakin ingin keluar dari akun mitra?
+                  </p>
+                  
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={onClose}
+                      className="px-4 py-2 rounded-md border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      onClick={onConfirm}
+                      className="px-4 py-2 rounded-md bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] text-white hover:from-[#6bcb96] hover:to-[#4cc383] transition-all shadow-md flex items-center justify-center gap-2"
+                    >
+                      Ya, Logout
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </>
@@ -120,6 +147,8 @@ export default function DashboardLayout({
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showLogoutRedirectLoader, setShowLogoutRedirectLoader] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -182,25 +211,52 @@ export default function DashboardLayout({
   }, []);
 
   const handleLogoutConfirm = useCallback(() => {
-    setLogoutModalOpen(false);
+    setIsLoggingOut(true);
     
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('mitraToken');
-      localStorage.removeItem('mitraUser');
-      sessionStorage.clear();
+    // Simulasi proses logout dengan delay
+    setTimeout(() => {
+      setShowLogoutRedirectLoader(true);
       
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
-      
-      window.location.href = '/mitra/login';
-    }
+      setTimeout(() => {
+        setLogoutModalOpen(false);
+        setIsLoggingOut(false);
+        
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('mitraToken');
+          localStorage.removeItem('mitraUser');
+          sessionStorage.clear();
+          
+          document.cookie.split(";").forEach((c) => {
+            document.cookie = c
+              .replace(/^ +/, "")
+              .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+          });
+          
+          window.location.href = '/mitra/login';
+        }
+      }, 1500);
+    }, 1000);
   }, []);
 
   return (
     <>
+      {showLogoutRedirectLoader && (
+        <div className="fixed inset-0 bg-white dark:bg-neutral-900 z-50 flex flex-col items-center justify-center gap-6">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
+              Logout Berhasil!
+            </h2>
+            <p className="text-neutral-600 dark:text-neutral-300">
+              Mengalihkan ke halaman login...
+            </p>
+          </div>
+          <LoaderTwo />
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-4">
+            Sesi Anda telah berakhir
+          </p>
+        </div>
+      )}
+      
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar open={open} setOpen={setOpen}>
           <SidebarBody className="justify-between gap-8">
@@ -222,12 +278,14 @@ export default function DashboardLayout({
                   <button
                     key={link.id}
                     onClick={() => handleNavigation(link.href)}
+                    disabled={isLoggingOut || showLogoutRedirectLoader}
                     className={cn(
                       "flex items-center group/sidebar py-2 rounded-md transition-all duration-150",
                       open ? "justify-start gap-2 px-2" : "justify-center",
                       activeView === link.id
                         ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white"
-                        : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200"
+                        : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
+                      (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className={cn(
@@ -249,12 +307,14 @@ export default function DashboardLayout({
                 <div className="flex flex-col">
                   <button
                     onClick={toggleSettings}
+                    disabled={isLoggingOut || showLogoutRedirectLoader}
                     className={cn(
                       "flex items-center justify-between gap-2 group/sidebar py-2 rounded-md transition-all duration-150 w-full",
                       open ? "px-2" : "px-0 justify-center",
                       (activeView === 'profile' || activeView === 'services')
                         ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white"
-                        : "hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                        : "hover:bg-neutral-200 dark:hover:bg-neutral-700",
+                      (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className={cn("flex items-center gap-2", !open && "justify-center w-full")}>
@@ -301,11 +361,13 @@ export default function DashboardLayout({
                       <div className="ml-[16px] mt-1 flex flex-col gap-1 overflow-hidden">
                         <button
                           onClick={() => handleNavigation('/mitra/settings/profile')}
+                          disabled={isLoggingOut || showLogoutRedirectLoader}
                           className={cn(
                             "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-all duration-150",
                             activeView === 'profile'
                               ? "bg-gradient-to-r from-[#7CE0A8]/90 to-[#5DD494]/90 text-white font-medium shadow-sm dark:from-[#7CE0A8]/90 dark:to-[#5DD494]/90 dark:text-white" 
-                              : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750"
+                              : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750",
+                            (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
                           )}
                         >
                           <IconUser className="h-4 w-4 flex-shrink-0" />
@@ -313,11 +375,13 @@ export default function DashboardLayout({
                         </button>
                         <button
                           onClick={() => handleNavigation('/mitra/settings/services')}
+                          disabled={isLoggingOut || showLogoutRedirectLoader}
                           className={cn(
                             "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-all duration-150",
                             activeView === 'services'
                               ? "bg-gradient-to-r from-[#7CE0A8]/90 to-[#5DD494]/90 text-white font-medium shadow-sm dark:from-[#7CE0A8]/90 dark:to-[#5DD494]/90 dark:text-white" 
-                              : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750"
+                              : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750",
+                            (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
                           )}
                         >
                           <IconBriefcase className="h-4 w-4 flex-shrink-0" />
@@ -330,10 +394,12 @@ export default function DashboardLayout({
 
                 <button
                   onClick={handleLogoutClick}
+                  disabled={isLoggingOut || showLogoutRedirectLoader}
                   className={cn(
                     "flex items-center group/sidebar py-2 rounded-md transition-all duration-150",
                     open ? "justify-start gap-2 px-2" : "justify-center",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200"
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
+                    (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   <div className="flex-shrink-0">
@@ -350,9 +416,11 @@ export default function DashboardLayout({
             <div className="mt-auto">
               <button
                 onClick={() => handleNavigation('/mitra/settings/profile')}
+                disabled={isLoggingOut || showLogoutRedirectLoader}
                 className={cn(
                   "flex items-center rounded-md transition-all duration-150 hover:bg-neutral-200 dark:hover:bg-neutral-700",
-                  open ? "justify-start gap-2 py-2 px-2" : "justify-center py-2"
+                  open ? "justify-start gap-2 py-2 px-2" : "justify-center py-2",
+                  (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
                 )}
               >
                 <img
@@ -383,8 +451,9 @@ export default function DashboardLayout({
 
       <LogoutModal
         isOpen={logoutModalOpen}
-        onClose={() => setLogoutModalOpen(false)}
+        onClose={() => !isLoggingOut && setLogoutModalOpen(false)}
         onConfirm={handleLogoutConfirm}
+        isLoggingOut={isLoggingOut}
       />
     </>
   );

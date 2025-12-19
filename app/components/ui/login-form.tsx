@@ -19,6 +19,7 @@ import { Input } from "../ui/input"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { LoaderTwo } from "@/app/components/transition/loader"
 
 type UserType = "user" | "mitra" | "admin"
 
@@ -34,6 +35,7 @@ export function LoginForm({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [showRedirectLoader, setShowRedirectLoader] = useState(false) // State baru untuk loader redirect
   const router = useRouter()
 
   // Konfigurasi konten berdasarkan tipe user
@@ -69,7 +71,7 @@ export function LoginForm({
       const response = await new Promise((resolve) => {
         setTimeout(() => {
           resolve({ success: true, token: "dummy-token" })
-        }, 1000)
+        }, 1500) // Tambah sedikit delay untuk simulasi
       })
       
       // Simpan token di localStorage
@@ -78,15 +80,22 @@ export function LoginForm({
         localStorage.setItem('mitraUser', JSON.stringify({ email }))
       }
       
-      // Redirect berdasarkan user type
-      if (userType === "mitra") {
-        router.push("/mitra/dashboard")
-        router.refresh()
-      } else if (userType === "user") {
-        router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
-      } else if (userType === "admin") {
-        router.push("/admin/dashboard")
-      }
+      // Tampilkan loader redirect
+      setShowRedirectLoader(true)
+      
+      // Tunggu sebentar untuk menampilkan loader redirect
+      setTimeout(() => {
+        // Redirect berdasarkan user type
+        if (userType === "mitra") {
+          router.push("/mitra/dashboard")
+          router.refresh()
+        } else if (userType === "user") {
+          router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
+        } else if (userType === "admin") {
+          router.push("/admin/dashboard")
+        }
+      }, 1000)
+      
     } catch (error) {
       console.error("Login error:", error)
     } finally {
@@ -95,90 +104,117 @@ export function LoginForm({
   }
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle>{config.title}</CardTitle>
-          <CardDescription>
-            {config.description}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="masukkan email"
-                  autoComplete="email"
-                />
-              </Field>
-              <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  {userType !== "admin" && (
-                    <a
-                      href="#"
-                      className="ml-auto inline-block text-sm text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline"
-                    >
-                      Lupa password?
-                    </a>
-                  )}
-                </div>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  required 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="masukkan password"
-                  autoComplete="current-password"
-                />
-              </Field>
-              <Field>
-                <Button 
-                  type="submit" 
-                  disabled={isLoading}
-                  className={cn(
-                    "w-full bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
-                    "focus:ring-[#7CE0A8] focus:ring-offset-2",
-                    "transition-colors duration-200"
-                  )}
-                >
-                  {isLoading ? "Memproses..." : "Login"}
-                </Button>
-                
-                {userType !== "admin" && (
+    <>
+      {showRedirectLoader && (
+        <div className="fixed inset-0 bg-white/90 dark:bg-neutral-900/90 z-50 flex flex-col items-center justify-center gap-6">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
+              Login Berhasil!
+            </h2>
+            <p className="text-neutral-600 dark:text-neutral-300">
+              Mengarahkan ke dashboard...
+            </p>
+          </div>
+          <LoaderTwo />
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-4">
+            Mohon tunggu sebentar
+          </p>
+        </div>
+      )}
+      
+      <div className={cn("flex flex-col gap-6", className)} {...props}>
+        <Card>
+          <CardHeader>
+            <CardTitle>{config.title}</CardTitle>
+            <CardDescription>
+              {config.description}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="email">Email</FieldLabel>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="masukkan email"
+                    autoComplete="email"
+                    disabled={isLoading || showRedirectLoader}
+                  />
+                </Field>
+                <Field>
+                  <div className="flex items-center">
+                    <FieldLabel htmlFor="password">Password</FieldLabel>
+                    {userType !== "admin" && (
+                      <a
+                        href="#"
+                        className="ml-auto inline-block text-sm text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline"
+                      >
+                        Lupa password?
+                      </a>
+                    )}
+                  </div>
+                  <Input 
+                    id="password" 
+                    type="password" 
+                    required 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="masukkan password"
+                    autoComplete="current-password"
+                    disabled={isLoading || showRedirectLoader}
+                  />
+                </Field>
+                <Field>
                   <Button 
-                    variant="outline" 
-                    type="button"
-                    className="w-full mt-3 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
+                    type="submit" 
+                    disabled={isLoading || showRedirectLoader}
+                    className={cn(
+                      "w-full bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
+                      "focus:ring-[#7CE0A8] focus:ring-offset-2",
+                      "transition-colors duration-200 flex items-center justify-center gap-2"
+                    )}
                   >
-                    Login dengan Google
+                    {isLoading ? (
+                      <>
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Memproses...
+                      </>
+                    ) : showRedirectLoader ? "Mengalihkan..." : "Login"}
                   </Button>
-                )}
-                
-                {config.registerLink && (
-                  <FieldDescription className="text-center mt-4">
-                    Belum punya akun?{" "}
-                    <Link 
-                      href={config.registerLink} 
-                      className="text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline"
+                  
+                  {userType !== "admin" && !showRedirectLoader && (
+                    <Button 
+                      variant="outline" 
+                      type="button"
+                      disabled={isLoading}
+                      className="w-full mt-3 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
                     >
-                      {config.registerText}
-                    </Link>
-                  </FieldDescription>
-                )}
-              </Field>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+                      Login dengan Google
+                    </Button>
+                  )}
+                  
+                  {config.registerLink && !showRedirectLoader && (
+                    <FieldDescription className="text-center mt-4">
+                      Belum punya akun?{" "}
+                      <Link 
+                        href={config.registerLink} 
+                        className="text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline"
+                      >
+                        {config.registerText}
+                      </Link>
+                    </FieldDescription>
+                  )}
+                </Field>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   )
 }

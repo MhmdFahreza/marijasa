@@ -322,47 +322,47 @@ const VoiceRecorder = ({ onSend, onCancel }: any) => {
   };
 
   return (
-    <div className="fixed inset-0 md:absolute md:bottom-24 md:left-1/2 md:transform md:-translate-x-1/2 bg-white md:rounded-2xl shadow-2xl border border-gray-200 p-6 z-50 md:min-w-[320px]">
-      <div className="flex flex-col items-center gap-4">
+    <div className="fixed bottom-24 right-4 md:right-8 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 z-50 w-[90%] max-w-[300px]">
+      <div className="flex flex-col items-center gap-3">
         <div className="relative">
-          <div className={`h-20 w-20 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'}`}>
-            <Mic className="h-10 w-10 text-white" />
+          <div className={`h-12 w-12 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'}`}>
+            <Mic className="h-6 w-6 text-white" />
           </div>
         </div>
 
         <div className="text-center">
-          <div className="text-3xl font-mono font-bold text-gray-800">
+          <div className="text-2xl font-mono font-bold text-gray-800">
             {formatTime(recordingTime)}
           </div>
-          <p className="text-sm text-gray-600 mt-2">
+          <p className="text-xs text-gray-600 mt-1">
             {isRecording ? 'Merekam...' : 'Siap dikirim'}
           </p>
         </div>
 
-        <div className="flex gap-3 w-full max-w-xs">
+        <div className="flex gap-2 w-full">
           <Button
             onClick={onCancel}
             variant="outline"
-            className="flex-1 rounded-full"
+            className="flex-1 rounded-full text-sm h-9"
           >
-            <X className="h-4 w-4 mr-2" />
+            <X className="h-3.5 w-3.5 mr-1" />
             Batal
           </Button>
 
           {isRecording ? (
             <Button
               onClick={stopRecording}
-              className="flex-1 rounded-full bg-red-500 hover:bg-red-600"
+              className="flex-1 rounded-full bg-red-500 hover:bg-red-600 text-sm h-9"
             >
               Stop
             </Button>
           ) : (
             <Button
               onClick={handleSend}
-              className="flex-1 rounded-full bg-green-500 hover:bg-green-600"
+              className="flex-1 rounded-full bg-green-500 hover:bg-green-600 text-sm h-9"
               disabled={!audioBlob}
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="h-3.5 w-3.5 mr-1" />
               Kirim
             </Button>
           )}
@@ -372,7 +372,7 @@ const VoiceRecorder = ({ onSend, onCancel }: any) => {
   );
 };
 
-// WhatsApp-style Voice Message Player
+// WhatsApp-style Voice Message Player - FIXED VERSION dengan spacing yang lebih baik
 const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message, isMitra: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -382,6 +382,11 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message, isMitra: boolean }
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+
+  // Memoize waveform heights to prevent regeneration on every render
+  const waveformHeights = useRef<number[]>(
+    Array.from({ length: 40 }, () => Math.random() * 60 + 40)
+  );
 
   useEffect(() => {
     if (!msg.audioUrl) {
@@ -473,37 +478,35 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message, isMitra: boolean }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
   const WaveformBars = () => {
-    const bars = 40;
-    const heights = Array.from({ length: bars }, () => Math.random() * 100 + 20);
+    const heights = waveformHeights.current;
+    const progressWidth = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return (
-      <div className="flex items-center gap-[2px] h-8 flex-1 mx-3">
-        {heights.map((height, i) => {
-          const barProgress = (i / bars) * 100;
-          const isActive = barProgress <= progress;
+      <div className="relative h-8 flex-1 min-w-[120px] mr-2">
+        {/* Background dan Progress menggunakan per-bar calculation */}
+        <div className="absolute inset-0 flex items-center gap-[2px]">
+          {heights.map((height, i) => {
+            const barPosition = ((i + 1) / heights.length) * 100;
+            const isActive = barPosition <= progressWidth;
 
-          return (
-            <div
-              key={i}
-              className={`flex-1 rounded-full transition-all duration-100 ${isActive
-                  ? isMitra
-                    ? 'bg-white'
-                    : 'bg-green-500'
-                  : isMitra
-                    ? 'bg-green-300'
-                    : 'bg-gray-300'
-                }`}
-              style={{
-                height: `${height}%`,
-                minHeight: '4px',
-                maxHeight: '100%'
-              }}
-            />
-          );
-        })}
+            return (
+              <div
+                key={i}
+                className={`flex-1 rounded-full transition-colors duration-100 ${isActive
+                  ? (isMitra ? 'bg-white' : 'bg-green-500')
+                  : (isMitra ? 'bg-green-300/50' : 'bg-gray-300')
+                  }`}
+                style={{
+                  height: `${height}%`,
+                  minHeight: '6px',
+                  maxHeight: '100%',
+                  minWidth: '2px'
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -511,8 +514,8 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message, isMitra: boolean }
   if (hasError) {
     return (
       <div className={`flex items-center gap-2 p-3 rounded-xl min-w-[200px] max-w-[300px] ${isMitra
-          ? 'bg-gradient-to-r from-green-500 to-green-600'
-          : 'bg-white border border-gray-200'
+        ? 'bg-gradient-to-r from-green-500 to-green-600'
+        : 'bg-white border border-gray-200'
         }`}>
         <p className={`text-sm ${isMitra ? 'text-white' : 'text-gray-600'}`}>
           ⚠️ Tidak dapat memutar audio
@@ -522,16 +525,17 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message, isMitra: boolean }
   }
 
   return (
-    <div className={`flex items-center gap-2 p-2 rounded-xl min-w-[200px] max-w-[300px] ${isMitra
-        ? 'bg-gradient-to-r from-green-500 to-green-600'
-        : 'bg-white border border-gray-200'
+    <div className={`flex items-center gap-3 p-2 rounded-xl min-w-[200px] max-w-[300px] ${isMitra
+      ? 'bg-gradient-to-r from-green-500 to-green-600'
+      : 'bg-white border border-gray-200'
       }`}>
+      {/* Play/Pause Button */}
       <button
         onClick={handlePlayPause}
         disabled={isLoading || hasError}
         className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isMitra
-            ? 'bg-white/20 hover:bg-white/30'
-            : 'bg-green-500 hover:bg-green-600'
+          ? 'bg-white/20 hover:bg-white/30'
+          : 'bg-green-500 hover:bg-green-600'
           } ${(isLoading || hasError) ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         {isLoading ? (
@@ -550,9 +554,11 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message, isMitra: boolean }
         )}
       </button>
 
+      {/* Waveform */}
       <WaveformBars />
 
-      <div className={`text-xs font-medium whitespace-nowrap ${isMitra ? 'text-white' : 'text-gray-600'}`}>
+      {/* Time Display dengan padding kanan yang lebih besar */}
+      <div className={`text-xs font-medium whitespace-nowrap flex-shrink-0 ${isMitra ? 'text-white' : 'text-gray-600'}`}>
         {isPlaying ? formatTime(currentTime) : formatTime(duration)}
       </div>
     </div>
@@ -1582,10 +1588,10 @@ export default function MitraChatPage() {
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: idx * 0.05 }}
                               className={`flex ${isMitra
-                                  ? "justify-end"
-                                  : msg.sender === "customer"
-                                    ? "justify-start"
-                                    : "justify-center"
+                                ? "justify-end"
+                                : msg.sender === "customer"
+                                  ? "justify-start"
+                                  : "justify-center"
                                 } items-end`}
                             >
                               {msg.sender === "system" ? (
@@ -1607,9 +1613,9 @@ export default function MitraChatPage() {
                                   )}
 
                                   <div className={`relative ${msg.isImage || msg.isVideo ? "" :
-                                      isMitra
-                                        ? 'bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl rounded-br-none shadow-lg px-4 py-3'
-                                        : 'bg-white border shadow-sm rounded-2xl rounded-bl-none px-4 py-3'
+                                    isMitra
+                                      ? 'bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl rounded-br-none shadow-lg px-4 py-3'
+                                      : 'bg-white border shadow-sm rounded-2xl rounded-bl-none px-4 py-3'
                                     }`}>
                                     {renderMessageContent(msg)}
 
@@ -1657,8 +1663,8 @@ export default function MitraChatPage() {
 
                                     {(!msg.isVoiceMessage && !msg.isImage && !msg.isVideo) && (
                                       <div className={`absolute bottom-0 w-3 h-3 ${isMitra
-                                          ? '-right-1 bg-green-500'
-                                          : '-left-1 bg-white border-l border-b'
+                                        ? '-right-1 bg-green-500'
+                                        : '-left-1 bg-white border-l border-b'
                                         }`} style={{
                                           clipPath: isMitra
                                             ? "polygon(100% 0, 0 100%, 100% 100%)"
@@ -1821,8 +1827,8 @@ export default function MitraChatPage() {
                         size="icon"
                         disabled={!newMessage.trim()}
                         className={`rounded-full shadow-lg hover:shadow-xl transition-all duration-300 h-10 w-10 md:h-12 md:w-12 flex-shrink-0 ${newMessage.trim()
-                            ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
-                            : 'bg-gray-300'
+                          ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                          : 'bg-gray-300'
                           }`}
                       >
                         <Send className="h-5 w-5" />

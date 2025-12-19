@@ -20,6 +20,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import { 
+  History, 
+  Heart, 
+  User, 
+  LogOut,
+  Package,
+  Store 
+} from "lucide-react";
 
 const LANG_STORAGE_KEY = "appLanguage";
 const AUTH_STORAGE_KEY = "authData";
@@ -122,7 +130,27 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleProfileClick = () => {
-    router.push("/profile");
+    setIsMobileMenuOpen(false);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push("/profile");
+    }, 300);
+  };
+
+  const handleOrderHistoryClick = () => {
+    setIsMobileMenuOpen(false);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push("/orders/history");
+    }, 300);
+  };
+
+  const handleFavoriteVendorsClick = () => {
+    setIsMobileMenuOpen(false);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push("/vendors/favorites");
+    }, 300);
   };
 
   const defaultAvatar = "/profile.svg";
@@ -171,11 +199,34 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       </span>
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 mt-2">
-                    <DropdownMenuItem onClick={handleProfileClick}>
+                  <DropdownMenuContent align="end" className="w-56 mt-2">
+                    <DropdownMenuItem 
+                      onClick={handleProfileClick}
+                      className="flex items-center gap-2 cursor-pointer py-2.5"
+                    >
+                      <User className="w-4 h-4" />
                       Profil Saya
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                    <DropdownMenuItem 
+                      onClick={handleOrderHistoryClick}
+                      className="flex items-center gap-2 cursor-pointer py-2.5"
+                    >
+                      <Package className="w-4 h-4" />
+                      Riwayat Pesanan
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={handleFavoriteVendorsClick}
+                      className="flex items-center gap-2 cursor-pointer py-2.5"
+                    >
+                      <Heart className="w-4 h-4" />
+                      Vendor Favorit
+                    </DropdownMenuItem>
+                    <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
+                    <DropdownMenuItem 
+                      onClick={handleLogout} 
+                      className="flex items-center gap-2 text-red-600 cursor-pointer py-2.5"
+                    >
+                      <LogOut className="w-4 h-4" />
                       Keluar
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -252,18 +303,35 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <button
                       onClick={handleProfileClick}
-                      className="w-full px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
                     >
-                      Profil Saya
+                      <User className="w-5 h-5" />
+                      <span>Profil Saya</span>
                     </button>
                     <button
-                      onClick={handleLogout}
-                      className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      onClick={handleOrderHistoryClick}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
                     >
-                      Keluar
+                      <Package className="w-5 h-5" />
+                      <span>Riwayat Pesanan</span>
+                    </button>
+                    <button
+                      onClick={handleFavoriteVendorsClick}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                    >
+                      <Heart className="w-5 h-5" />
+                      <span>Vendor Favorit</span>
+                    </button>
+                    <div className="border-t border-gray-200 dark:border-neutral-700 my-2"></div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span>Keluar</span>
                     </button>
                   </div>
 

@@ -1,3 +1,4 @@
+// (/form)
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -18,11 +19,12 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, Home, MapPin, Navigation } from "lucide-react";
+import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Vendors } from "@/app/data/dataVendor";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
+import { toast } from "sonner";
 
 const PRICES = {
   ac: {
@@ -72,6 +74,24 @@ const PRICES = {
   }
 };
 
+// Biaya transaksi untuk setiap metode pembayaran
+const PAYMENT_FEES = {
+  "dana": 1440,
+  "ovo": 1440,
+  "gopay": 1440,
+  "bca-va": 3850,
+  "bni-va": 3700,
+  "bri-va": 3700,
+  "mandiri-va": 3700,
+  "bsi-va": 3850,
+  "debit-credit": 2784,
+  "qris": 1571,
+  "tunai": 0
+};
+
+// Biaya layanan tetap
+const SERVICE_FEE = 10000;
+
 function getServiceCategory(tags: string[]): string {
   const firstTag = tags[0]?.toLowerCase() || "";
 
@@ -94,9 +114,31 @@ export default function VendorFormPage() {
   const [leaving, setLeaving] = useState(false);
   const [navigationUrl, setNavigationUrl] = useState<string | null>(null);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [currentStep, setCurrentStep] = useState<'form' | 'confirmation'>('form');
+  const [selectedPayment, setSelectedPayment] = useState<string>("");
+  const [cardData, setCardData] = useState({
+    cardNumber: "",
+    expiryDate: "",
+    cvv: ""
+  });
 
+  // Load user profile saat component mount
   useEffect(() => {
     setMounted(true);
+    
+    // Load profile data dari localStorage
+    const savedProfile = localStorage.getItem("userProfile");
+    if (savedProfile) {
+      const profile = JSON.parse(savedProfile);
+      // Auto-fill form dengan data dari profile
+      setFormData({
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        address: profile.address || "",
+        gpsLink: profile.gpsLink || ""
+      });
+    }
   }, []);
 
   const handleNavigation = async (url: string) => {
@@ -116,34 +158,127 @@ export default function VendorFormPage() {
     handleNavigation(`/jasa/detailjasa/${vendorId}`);
   };
 
-  const handleGetLocation = () => {
-    setGettingLocation(true);
-    
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          const mapsUrl = `https://maps.google.com/?q=${latitude},${longitude}`;
-          setFormData({ ...formData, gpsLink: mapsUrl });
-          setGettingLocation(false);
-        },
-        (error) => {
-          console.error("Error getting location:", error);
-          alert("Tidak dapat mengakses lokasi. Pastikan izin lokasi telah diberikan.");
-          setGettingLocation(false);
-        }
-      );
+  // Handler untuk menggunakan lokasi dari profile
+  const handleUseProfileLocation = () => {
+    const savedProfile = localStorage.getItem("userProfile");
+    if (savedProfile) {
+      const profile = JSON.parse(savedProfile);
+      if (profile.gpsLink) {
+        setFormData({ ...formData, gpsLink: profile.gpsLink });
+        toast.success("Lokasi dari profile berhasil dimuat!");
+      } else {
+        toast.error("Belum ada lokasi tersimpan di profile. Silakan isi di halaman Profile terlebih dahulu.");
+      }
     } else {
-      alert("Browser Anda tidak mendukung fitur geolokasi.");
-      setGettingLocation(false);
+      toast.error("Belum ada data profile. Silakan isi profile terlebih dahulu.");
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
-    alert("Pesanan berhasil dikirim! Kami akan menghubungi Anda segera.");
+    console.log("Form submitted, moving to confirmation:", formData);
+    setCurrentStep('confirmation');
+  };
+
+  const handleFinalSubmit = async () => {
+    if (!selectedPayment) {
+      toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
+      return;
+    }
+    
+    // Validasi untuk kartu debit/kredit
+    if (selectedPayment === "debit-credit") {
+      if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
+        toast.error("Silakan lengkapi data kartu debit/kredit.");
+        return;
+      }
+      
+      // Validasi format nomor kartu (minimal 12 digit)
+      const cleanedCardNumber = cardData.cardNumber.replace(/\s/g, '');
+      if (cleanedCardNumber.length < 12 || !/^\d+$/.test(cleanedCardNumber)) {
+        toast.error("Nomor kartu tidak valid. Harus minimal 12 digit angka.");
+        return;
+      }
+      
+      // Validasi format tanggal kadaluarsa (MM/YY)
+      if (!/^\d{2}\/\d{2}$/.test(cardData.expiryDate)) {
+        toast.error("Format masa berlaku tidak valid. Gunakan format MM/YY (contoh: 01/24).");
+        return;
+      }
+      
+      // Validasi CVV (3-4 digit)
+      if (!/^\d{3,4}$/.test(cardData.cvv)) {
+        toast.error("CVV tidak valid. Harus 3 atau 4 digit angka.");
+        return;
+      }
+    }
+    
+    const orderData = {
+      ...formData,
+      paymentMethod: selectedPayment,
+      cardData: selectedPayment === "debit-credit" ? cardData : null,
+      transactionFee: PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0,
+      serviceFee: SERVICE_FEE,
+      totalPrice: calculateTotalPrice(),
+      orderDate: new Date().toISOString()
+    };
+    
+    console.log("Final order submitted:", orderData);
+    toast.success("Pesanan berhasil dikirim! Kami akan menghubungi Anda segera.");
     await handleNavigation("/");
+  };
+
+  const calculateServicePrice = () => {
+    const vendorId = params.vendorId as string;
+    const vendor = Vendors.find((v) => v.id === vendorId);
+    if (!vendor) return 0;
+
+    const serviceCategory = getServiceCategory(vendor.tags);
+    
+    switch (serviceCategory) {
+      case "ac":
+        if (formData.serviceType && PRICES.ac[formData.serviceType as keyof typeof PRICES.ac]) {
+          const servicePrice = PRICES.ac[formData.serviceType as keyof typeof PRICES.ac].base;
+          const count = parseInt(formData.acCount) || 1;
+          return servicePrice * count;
+        }
+        return 0;
+      case "listrik":
+        const works = formData.electricalWork || [];
+        return works.reduce((sum: number, work: string) => {
+          return sum + (PRICES.electrical[work as keyof typeof PRICES.electrical] || 0);
+        }, 0);
+      case "cleaning":
+        if (!formData.cleaningType) return 0;
+        const basePrice = PRICES.cleaning[formData.cleaningType as keyof typeof PRICES.cleaning]?.base || 0;
+        const areaSize = parseInt(formData.areaSize) || 0;
+        const pricePerSqm = basePrice / 50;
+        return Math.round(pricePerSqm * areaSize);
+      default:
+        return formData.totalPrice || 0;
+    }
+  };
+
+  const calculateTotalPrice = () => {
+    const servicePrice = calculateServicePrice();
+    const paymentFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
+    return servicePrice + SERVICE_FEE + paymentFee;
+  };
+
+  // Format nomor kartu dengan spasi setiap 4 digit
+  const formatCardNumber = (value: string) => {
+    const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
+    const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
+    return formatted.substring(0, 19); // Maksimal 16 digit + 3 spasi
+  };
+
+  // Format tanggal kadaluarsa (MM/YY)
+  const formatExpiryDate = (value: string) => {
+    const cleaned = value.replace(/\D/g, '');
+    if (cleaned.length >= 2) {
+      return `${cleaned.substring(0, 2)}/${cleaned.substring(2, 4)}`;
+    }
+    return cleaned;
   };
 
   if (!mounted) {
@@ -167,6 +302,8 @@ export default function VendorFormPage() {
   }
 
   const serviceCategory = getServiceCategory(vendor.tags);
+  const servicePrice = calculateServicePrice();
+  const totalPrice = calculateTotalPrice();
 
   return (
     <>
@@ -222,190 +359,42 @@ export default function VendorFormPage() {
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage>Form Pemesanan</BreadcrumbPage>
+                <BreadcrumbPage>
+                  {currentStep === 'form' ? 'Form Pemesanan' : 'Konfirmasi Pemesanan'}
+                </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </div>
 
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
-                <AvatarImage src={vendor.avatar ?? ""} alt={vendor.name} />
-                <AvatarFallback>
-                  {vendor.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <h2 className="text-xl font-bold">{vendor.name}</h2>
-                <p className="text-sm text-muted-foreground">{vendor.tags.join(" • ")}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Form Pemesanan Layanan</CardTitle>
-            <CardDescription>
-              Lengkapi formulir di bawah untuk memesan layanan {vendor.tags[0]}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Data Pelanggan
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nama Lengkap *</Label>
-                    <Input
-                      id="name"
-                      placeholder="Masukkan nama lengkap"
-                      required
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">No. Telepon *</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="08xxxxxxxxxx"
-                      required
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gpsLink" className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4" />
-                    Link Google Maps / GPS *
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="gpsLink"
-                      type="url"
-                      placeholder="https://maps.google.com/... atau https://maps.app.goo.gl/..."
-                      required
-                      value={formData.gpsLink || ""}
-                      onChange={(e) => setFormData({ ...formData, gpsLink: e.target.value })}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleGetLocation}
-                      disabled={gettingLocation}
-                      className="whitespace-nowrap"
-                    >
-                      {gettingLocation ? (
-                        <>
-                          <span className="animate-spin mr-2">⟳</span>
-                          Mencari...
-                        </>
-                      ) : (
-                        <>
-                          <Navigation className="h-4 w-4 mr-2" />
-                          Lokasi Saya
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Tempelkan link lokasi dari Google Maps atau klik tombol "Lokasi Saya" untuk otomatis mengisi lokasi Anda saat ini
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="address">Alamat Lengkap *</Label>
-                  <Textarea
-                    id="address"
-                    placeholder="Masukkan alamat lengkap (jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota)"
-                    rows={3}
-                    required
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <ServiceSpecificFormWithPrice
-                category={serviceCategory}
-                formData={formData}
-                setFormData={setFormData}
-              />
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Jadwal Layanan
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="date">Tanggal Pengerjaan *</Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      required
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="time">Waktu Pengerjaan *</Label>
-                    <Select onValueChange={(value) => setFormData({ ...formData, time: value })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih waktu" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="08:00-10:00">08:00 - 10:00</SelectItem>
-                        <SelectItem value="10:00-12:00">10:00 - 12:00</SelectItem>
-                        <SelectItem value="13:00-15:00">13:00 - 15:00</SelectItem>
-                        <SelectItem value="15:00-17:00">15:00 - 17:00</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Catatan Tambahan</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Informasi tambahan yang perlu diketahui vendor..."
-                  rows={4}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleCancel}
-                >
-                  Batal
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1 text-white transition-colors duration-200"
-                  style={{ backgroundColor: '#7CE0A8' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
-                >
-                  Kirim Pesanan
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {currentStep === 'form' ? (
+          <OrderForm 
+            vendor={vendor}
+            serviceCategory={serviceCategory}
+            formData={formData}
+            setFormData={setFormData}
+            handleFormSubmit={handleFormSubmit}
+            handleCancel={handleCancel}
+            handleUseProfileLocation={handleUseProfileLocation}
+            gettingLocation={gettingLocation}
+          />
+        ) : (
+          <ConfirmationStep
+            vendor={vendor}
+            formData={formData}
+            serviceCategory={serviceCategory}
+            servicePrice={servicePrice}
+            selectedPayment={selectedPayment}
+            setSelectedPayment={setSelectedPayment}
+            cardData={cardData}
+            setCardData={setCardData}
+            formatCardNumber={formatCardNumber}
+            formatExpiryDate={formatExpiryDate}
+            totalPrice={totalPrice}
+            onBack={() => setCurrentStep('form')}
+            onConfirm={handleFinalSubmit}
+          />
+        )}
       </motion.main>
 
       <AnimatePresence>
@@ -426,6 +415,922 @@ export default function VendorFormPage() {
   );
 }
 
+function OrderForm({ 
+  vendor, 
+  serviceCategory, 
+  formData, 
+  setFormData, 
+  handleFormSubmit, 
+  handleCancel, 
+  handleUseProfileLocation,
+  gettingLocation 
+}: any) {
+  return (
+    <>
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-16 w-16">
+              <AvatarImage src={vendor.avatar ?? ""} alt={vendor.name} />
+              <AvatarFallback>
+                {vendor.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h2 className="text-xl font-bold">{vendor.name}</h2>
+              <p className="text-sm text-muted-foreground">{vendor.tags.join(" • ")}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Form Pemesanan Layanan</CardTitle>
+          <CardDescription>
+            Lengkapi formulir di bawah untuk memesan layanan {vendor.tags[0]}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleFormSubmit} className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Data Pelanggan
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nama Lengkap *</Label>
+                  <Input
+                    id="name"
+                    placeholder="Masukkan nama lengkap"
+                    required
+                    value={formData.name || ""}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">No. Telepon *</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="08xxxxxxxxxx"
+                    required
+                    value={formData.phone || ""}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="gpsLink" className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  Link Google Maps / GPS *
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="gpsLink"
+                    type="url"
+                    placeholder="https://maps.google.com/... atau https://maps.app.goo.gl/..."
+                    required
+                    value={formData.gpsLink || ""}
+                    onChange={(e) => setFormData({ ...formData, gpsLink: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleUseProfileLocation}
+                    disabled={gettingLocation}
+                    className="whitespace-nowrap"
+                  >
+                    {gettingLocation ? (
+                      <>
+                        <span className="animate-spin mr-2">⟳</span>
+                        Mencari...
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="h-4 w-4 mr-2" />
+                        Lokasi Saya
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tempelkan link lokasi dari Google Maps atau klik tombol "Lokasi Saya" untuk otomatis mengisi lokasi yang tersimpan di Profile Anda
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="address">Alamat Lengkap *</Label>
+                <Textarea
+                  id="address"
+                  placeholder="Masukkan alamat lengkap (jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota)"
+                  rows={3}
+                  required
+                  value={formData.address || ""}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <ServiceSpecificFormWithPrice
+              category={serviceCategory}
+              formData={formData}
+              setFormData={setFormData}
+            />
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Jadwal Layanan
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="date">Tanggal Pengerjaan *</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    required
+                    value={formData.date || ""}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="time">Waktu Pengerjaan *</Label>
+                  <Select 
+                    onValueChange={(value) => setFormData({ ...formData, time: value })}
+                    value={formData.time || ""}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih waktu" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="08:00-10:00">08:00 - 10:00</SelectItem>
+                      <SelectItem value="10:00-12:00">10:00 - 12:00</SelectItem>
+                      <SelectItem value="13:00-15:00">13:00 - 15:00</SelectItem>
+                      <SelectItem value="15:00-17:00">15:00 - 17:00</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Catatan Tambahan</Label>
+              <Textarea
+                id="notes"
+                placeholder="Informasi tambahan yang perlu diketahui vendor..."
+                rows={4}
+                value={formData.notes || ""}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={handleCancel}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 text-white transition-colors duration-200"
+                style={{ backgroundColor: '#7CE0A8' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
+              >
+                Selanjutnya
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function ConfirmationStep({
+  vendor,
+  formData,
+  serviceCategory,
+  servicePrice,
+  selectedPayment,
+  setSelectedPayment,
+  cardData,
+  setCardData,
+  formatCardNumber,
+  formatExpiryDate,
+  totalPrice,
+  onBack,
+  onConfirm
+}: any) {
+  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    ewallet: true,
+    va: false,
+    card: false,
+    qris: false,
+    cash: false
+  });
+
+  const paymentMethods = {
+    ewallet: [
+      { id: "dana", name: "DANA", icon: Wallet, fee: 1440, color: "#10B981" },
+      { id: "ovo", name: "OVO", icon: SmartphoneIcon, fee: 1440, color: "#4F46E5" },
+      { id: "gopay", name: "GoPay", icon: SmartphoneIcon, fee: 1440, color: "#00AA13" },
+    ],
+    va: [
+      { id: "bca-va", name: "BCA Virtual Account", icon: Building, fee: 3850, color: "#1E3A8A" },
+      { id: "bni-va", name: "BNI Virtual Account", icon: Building, fee: 3700, color: "#F59E0B" },
+      { id: "bri-va", name: "BRI Virtual Account", icon: Building, fee: 3700, color: "#DC2626" },
+      { id: "mandiri-va", name: "Mandiri Virtual Account", icon: Building, fee: 3700, color: "#059669" },
+      { id: "bsi-va", name: "BSI Virtual Account", icon: Building, fee: 3850, color: "#7C3AED" },
+    ],
+    card: [
+      { id: "debit-credit", name: "Kartu Debit/Kredit", icon: CreditCardIcon, fee: 2784, color: "#3B82F6" },
+    ],
+    qris: [
+      { id: "qris", name: "QRIS", icon: QrCode, fee: 1571, color: "#EF4444" },
+    ],
+    cash: [
+      { id: "tunai", name: "Tunai", icon: Banknote, fee: 0, color: "#6B7280" },
+    ]
+  };
+
+  const getPaymentMethodName = (id: string) => {
+    for (const category of Object.values(paymentMethods)) {
+      const method = category.find(m => m.id === id);
+      if (method) return method.name;
+    }
+    return "";
+  };
+
+  const getServiceDescription = () => {
+    if (serviceCategory === "ac") {
+      const serviceType = PRICES.ac[formData.serviceType as keyof typeof PRICES.ac]?.label || "Layanan AC";
+      const acType = formData.acType || "";
+      const acCount = formData.acCount || "1";
+      const acPk = formData.acPk || "";
+      
+      return `${serviceType} ${acType} ${acPk} PK (${acCount} unit)`;
+    }
+    
+    return vendor.tags[0];
+  };
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Informasi Pemesanan */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Informasi Pemesanan</span>
+            <Button variant="outline" size="sm" onClick={onBack}>
+              Ubah
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-bold text-lg">{formData.name || "Nama Pelanggan"}</h3>
+              <p className="text-muted-foreground">{formData.email || "dinosaur123@gmail.com"}</p>
+              <p className="text-muted-foreground">{formData.phone || "08838553739"}</p>
+            </div>
+            
+            <div className="border-t pt-3">
+              <div className="flex items-center gap-2 mb-2">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Alamat:</span>
+              </div>
+              <p className="text-sm">{formData.address || "Alamat lengkap belum diisi"}</p>
+              {formData.gpsLink && (
+                <a 
+                  href={formData.gpsLink} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-500 hover:underline inline-flex items-center gap-1 mt-1"
+                >
+                  <Navigation className="h-3 w-3" />
+                  Lihat di Google Maps
+                </a>
+              )}
+            </div>
+            
+            <div className="border-t pt-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Jadwal:</span>
+              </div>
+              <p className="text-sm">
+                {formData.date ? new Date(formData.date).toLocaleDateString('id-ID', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                }) : "Tanggal belum dipilih"} • {formData.time || "Waktu belum dipilih"}
+              </p>
+            </div>
+          </div>
+
+          {/* Detail Layanan */}
+          <div className="border-t pt-4">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="font-semibold">Detail Layanan</h4>
+              <Button variant="outline" size="sm" onClick={onBack}>
+                Ubah
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="font-medium">{getServiceDescription()}</p>
+                  <p className="text-sm text-muted-foreground">{vendor.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium">Rp {servicePrice.toLocaleString('id-ID')}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ringkasan Harga */}
+          <div className="border-t pt-4">
+            <h4 className="font-semibold mb-3">Ringkasan Harga</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>Rp {servicePrice.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Biaya Layanan</span>
+                <span>Rp {SERVICE_FEE.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Biaya Transaksi</span>
+                <span>
+                  {selectedPayment ? 
+                    `Rp ${PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID') || '0'}` : 
+                    "Pilih metode pembayaran"
+                  }
+                </span>
+              </div>
+              <div className="border-t pt-2 mt-2">
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span>Rp {totalPrice.toLocaleString('id-ID')}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  * Biaya transaksi tidak bisa dikembalikan
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pilih Metode Pembayaran */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              <span>Pilih Metode Pembayaran</span>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowPaymentOptions(!showPaymentOptions)}
+            >
+              {selectedPayment ? 'Ubah' : 'Pilih'}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {selectedPayment ? (
+            <div className="mb-6 p-4 border rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{getPaymentMethodName(selectedPayment)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Biaya Transaksi: Rp {PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID')}
+                  </p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setShowPaymentOptions(true)}
+                >
+                  Ubah
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-4 border-2 border-dashed rounded-lg text-center">
+              <p className="text-muted-foreground">Belum memilih metode pembayaran</p>
+              <Button 
+                variant="outline" 
+                className="mt-2"
+                onClick={() => setShowPaymentOptions(true)}
+              >
+                Pilih Metode Pembayaran
+              </Button>
+            </div>
+          )}
+
+          {/* Form Kartu Debit/Kredit */}
+          {selectedPayment === "debit-credit" && (
+            <div className="mb-6 p-6 border rounded-lg bg-white shadow-sm">
+              <div className="mb-4">
+                <h3 className="text-xl font-bold">Kartu Debit/Kredit</h3>
+                <p className="text-muted-foreground">
+                  <strong>Kartu Debit/Kredit</strong><br />
+                  Biaya Transaksi Rp2.784
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h4 className="font-semibold mb-2 flex items-center gap-2">
+                    <CreditCardIcon className="h-5 w-5" />
+                    VISA
+                  </h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="cardNumber" className="text-sm font-medium">
+                      Nomor Kartu
+                    </Label>
+                    <Input
+                      id="cardNumber"
+                      placeholder="Contoh: 1234 5678 9012 3456"
+                      value={formatCardNumber(cardData.cardNumber)}
+                      onChange={(e) => {
+                        const formatted = formatCardNumber(e.target.value);
+                        setCardData({ ...cardData, cardNumber: formatted });
+                      }}
+                      maxLength={19}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Nomor yang terletak pada kartu debit/credit Anda
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="expiryDate" className="text-sm font-medium">
+                      Masa Berlaku
+                    </Label>
+                    <Input
+                      id="expiryDate"
+                      placeholder="MM/YY"
+                      value={cardData.expiryDate}
+                      onChange={(e) => {
+                        const formatted = formatExpiryDate(e.target.value);
+                        setCardData({ ...cardData, expiryDate: formatted });
+                      }}
+                      maxLength={5}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Masa berlaku pada kartu Anda
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="cvv" className="text-sm font-medium">
+                      CVV
+                    </Label>
+                    <Input
+                      id="cvv"
+                      type="password"
+                      placeholder="123"
+                      value={cardData.cvv}
+                      onChange={(e) => {
+                        const cleaned = e.target.value.replace(/\D/g, '');
+                        if (cleaned.length <= 4) {
+                          setCardData({ ...cardData, cvv: cleaned });
+                        }
+                      }}
+                      maxLength={4}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      3 atau 4 digit terakhir pada kartu Anda
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal/Popup Payment Options */}
+          <AnimatePresence>
+            {showPaymentOptions && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+                onClick={() => setShowPaymentOptions(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.95 }}
+                  className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sticky top-0 bg-white border-b px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Pilih Metode Pembayaran</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowPaymentOptions(false)}
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="overflow-y-auto max-h-[60vh] p-6">
+                    <RadioGroup 
+                      value={selectedPayment} 
+                      onValueChange={(value) => {
+                        setSelectedPayment(value);
+                        if (value !== "debit-credit") {
+                          setCardData({ cardNumber: "", expiryDate: "", cvv: "" });
+                        }
+                      }}
+                      className="space-y-4"
+                    >
+                      {/* E-Wallet */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
+                          onClick={() => toggleSection('ewallet')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Wallet className="h-5 w-5" />
+                            <span className="font-medium">E-Wallet</span>
+                          </div>
+                          {expandedSections.ewallet ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        <AnimatePresence>
+                          {expandedSections.ewallet && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4 space-y-2">
+                                {paymentMethods.ewallet.map((method) => (
+                                  <label
+                                    key={method.id}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
+                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <RadioGroupItem value={method.id} id={method.id} />
+                                      <div className="flex items-center gap-2">
+                                        <div 
+                                          className="w-8 h-8 rounded-full flex items-center justify-center"
+                                          style={{ backgroundColor: method.color }}
+                                        >
+                                          <method.icon className="h-4 w-4 text-white" />
+                                        </div>
+                                        <span>{method.name}</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      Rp{method.fee.toLocaleString('id-ID')}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Virtual Account */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
+                          onClick={() => toggleSection('va')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Building className="h-5 w-5" />
+                            <span className="font-medium">Virtual Account</span>
+                          </div>
+                          {expandedSections.va ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        <AnimatePresence>
+                          {expandedSections.va && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4 space-y-2">
+                                {paymentMethods.va.map((method) => (
+                                  <label
+                                    key={method.id}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
+                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <RadioGroupItem value={method.id} id={method.id} />
+                                      <div className="flex items-center gap-2">
+                                        <div 
+                                          className="w-8 h-8 rounded-full flex items-center justify-center"
+                                          style={{ backgroundColor: method.color }}
+                                        >
+                                          <method.icon className="h-4 w-4 text-white" />
+                                        </div>
+                                        <span>{method.name}</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      Rp{method.fee.toLocaleString('id-ID')}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Kartu Debit/Kredit */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
+                          onClick={() => toggleSection('card')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <CreditCardIcon className="h-5 w-5" />
+                            <span className="font-medium">Kartu Debit/Kredit</span>
+                          </div>
+                          {expandedSections.card ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        <AnimatePresence>
+                          {expandedSections.card && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4">
+                                {paymentMethods.card.map((method) => (
+                                  <label
+                                    key={method.id}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
+                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <RadioGroupItem value={method.id} id={method.id} />
+                                      <div className="flex items-center gap-2">
+                                        <div 
+                                          className="w-8 h-8 rounded-full flex items-center justify-center"
+                                          style={{ backgroundColor: method.color }}
+                                        >
+                                          <method.icon className="h-4 w-4 text-white" />
+                                        </div>
+                                        <span>{method.name}</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      Rp{method.fee.toLocaleString('id-ID')}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* QRIS */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
+                          onClick={() => toggleSection('qris')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <QrCode className="h-5 w-5" />
+                            <span className="font-medium">Code QR</span>
+                          </div>
+                          {expandedSections.qris ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        <AnimatePresence>
+                          {expandedSections.qris && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4">
+                                {paymentMethods.qris.map((method) => (
+                                  <label
+                                    key={method.id}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
+                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <RadioGroupItem value={method.id} id={method.id} />
+                                      <div className="flex items-center gap-2">
+                                        <div 
+                                          className="w-8 h-8 rounded-full flex items-center justify-center"
+                                          style={{ backgroundColor: method.color }}
+                                        >
+                                          <method.icon className="h-4 w-4 text-white" />
+                                        </div>
+                                        <span>{method.name}</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      Rp{method.fee.toLocaleString('id-ID')}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Tunai */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
+                          onClick={() => toggleSection('cash')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Banknote className="h-5 w-5" />
+                            <span className="font-medium">Tunai</span>
+                          </div>
+                          {expandedSections.cash ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        <AnimatePresence>
+                          {expandedSections.cash && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4">
+                                {paymentMethods.cash.map((method) => (
+                                  <label
+                                    key={method.id}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
+                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <RadioGroupItem value={method.id} id={method.id} />
+                                      <div className="flex items-center gap-2">
+                                        <div 
+                                          className="w-8 h-8 rounded-full flex items-center justify-center"
+                                          style={{ backgroundColor: method.color }}
+                                        >
+                                          <method.icon className="h-4 w-4 text-white" />
+                                        </div>
+                                        <span>{method.name}</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      {method.fee === 0 ? 'Gratis' : `Rp${method.fee.toLocaleString('id-ID')}`}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </RadioGroup>
+
+                    <div className="mt-6 pt-4 border-t">
+                      <Button
+                        type="button"
+                        className="w-full text-white transition-colors duration-200"
+                        style={{ backgroundColor: '#7CE0A8' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
+                        onClick={() => setShowPaymentOptions(false)}
+                      >
+                        Simpan Metode Pembayaran
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="mt-6 pt-6 border-t">
+            <div className="bg-muted/30 p-4 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-medium">Estimasi Harga</span>
+                <span className="font-bold text-lg">Rp {totalPrice.toLocaleString('id-ID')}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Minimum transaksi Rp75.000
+              </p>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={onBack}
+              >
+                Kembali
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 text-white transition-colors duration-200"
+                style={{ backgroundColor: '#7CE0A8' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
+                onClick={onConfirm}
+                disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv))}
+              >
+                Bayar Sekarang
+              </Button>
+            </div>
+
+            <p className="text-xs text-center text-muted-foreground mt-4">
+              Dengan mengklik "Bayar Sekarang", Anda menyetujui kebijakan dan privasi dari Selsas
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Komponen-komponen ServiceSpecificFormWithPrice dan lainnya...
 function ServiceSpecificFormWithPrice({ category, formData, setFormData }: { category: string; formData: any; setFormData: (data: any) => void }) {
   switch (category) {
     case "ac":
