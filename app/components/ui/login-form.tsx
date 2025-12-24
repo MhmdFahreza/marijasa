@@ -35,7 +35,8 @@ export function LoginForm({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [showRedirectLoader, setShowRedirectLoader] = useState(false) // State baru untuk loader redirect
+  const [showRedirectLoader, setShowRedirectLoader] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   // Konfigurasi konten berdasarkan tipe user
@@ -54,7 +55,7 @@ export function LoginForm({
     },
     admin: {
       title: "Login ke Akun Admin",
-      description: "Masukkan kredensial admin Anda untuk login",
+      description: "Masukkan gmail dan password Anda untuk login ke halaman Admin",
       registerLink: null,
       registerText: null,
     },
@@ -62,8 +63,43 @@ export function LoginForm({
 
   const config = userConfig[userType]
 
+  // Validasi email format
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    return emailRegex.test(email)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
+    
+    // Validasi khusus untuk admin
+    if (userType === "admin") {
+      if (!validateEmail(email)) {
+        setError("Format email tidak valid. Gunakan format email yang benar (contoh: admin@gmail.com)")
+        return
+      }
+      
+      if (password.length < 8) {
+        setError("Password minimal 8 karakter")
+        return
+      }
+      
+      // Validasi dummy - bisa diganti dengan API call
+      const dummyAdminCredentials = [
+        { email: "Sejasa@gmail.com", password: "admin1234" },
+      ]
+      
+      const isValid = dummyAdminCredentials.some(
+        cred => cred.email === email && cred.password === password
+      )
+      
+      if (!isValid) {
+        setError("Email atau password salah.")
+        return
+      }
+    }
+    
     setIsLoading(true)
     
     try {
@@ -71,13 +107,22 @@ export function LoginForm({
       const response = await new Promise((resolve) => {
         setTimeout(() => {
           resolve({ success: true, token: "dummy-token" })
-        }, 1500) // Tambah sedikit delay untuk simulasi
+        }, 1500)
       })
       
-      // Simpan token di localStorage
+      // Simpan token di localStorage berdasarkan user type
       if (typeof window !== 'undefined') {
-        localStorage.setItem('mitraToken', 'dummy-token')
-        localStorage.setItem('mitraUser', JSON.stringify({ email }))
+        if (userType === "admin") {
+          localStorage.setItem('adminToken', 'dummy-token')
+          localStorage.setItem('adminUser', JSON.stringify({ 
+            email,
+            name: "Administrator",
+            role: "admin"
+          }))
+        } else if (userType === "mitra") {
+          localStorage.setItem('mitraToken', 'dummy-token')
+          localStorage.setItem('mitraUser', JSON.stringify({ email }))
+        }
       }
       
       // Tampilkan loader redirect
@@ -88,16 +133,17 @@ export function LoginForm({
         // Redirect berdasarkan user type
         if (userType === "mitra") {
           router.push("/mitra/dashboard")
-          router.refresh()
         } else if (userType === "user") {
           router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
         } else if (userType === "admin") {
           router.push("/admin/dashboard")
         }
+        router.refresh()
       }, 1000)
       
     } catch (error) {
       console.error("Login error:", error)
+      setError("Terjadi kesalahan saat login. Silakan coba lagi.")
     } finally {
       setIsLoading(false)
     }
@@ -112,7 +158,7 @@ export function LoginForm({
               Login Berhasil!
             </h2>
             <p className="text-neutral-600 dark:text-neutral-300">
-              Mengarahkan ke dashboard...
+              Mengarahkan ke dashboard admin...
             </p>
           </div>
           <LoaderTwo />
@@ -131,6 +177,11 @@ export function LoginForm({
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit}>
               <FieldGroup>
                 <Field>
@@ -141,7 +192,7 @@ export function LoginForm({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="masukkan email"
+                    placeholder={userType === "admin" ? "admin@gmail.com" : "masukkan email"}
                     autoComplete="email"
                     disabled={isLoading || showRedirectLoader}
                   />
@@ -164,10 +215,15 @@ export function LoginForm({
                     required 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="masukkan password"
+                    placeholder={userType === "admin" ? "minimal 8 karakter" : "masukkan password"}
                     autoComplete="current-password"
                     disabled={isLoading || showRedirectLoader}
                   />
+                  {userType === "admin" && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Password harus minimal 8 karakter
+                    </p>
+                  )}
                 </Field>
                 <Field>
                   <Button 

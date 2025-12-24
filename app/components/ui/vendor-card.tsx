@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { Card, CardHeader } from "@/app/components/ui/card";
 import { Badge } from "@/app/components/ui/badge";
@@ -30,29 +30,80 @@ export type Vendor = {
   avatar?: string;
 };
 
+const FAVORITES_STORAGE_KEY = "favoriteVendors";
+
+// Helper function untuk manage favorites
+const getFavorites = (): string[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveFavorites = (ids: string[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(ids));
+  } catch (error) {
+    console.error("Error saving favorites:", error);
+  }
+};
+
 export default function VendorCard({ vendor }: { vendor: Vendor }) {
   const { id, name, verified, rating, reviewCount, tags, summary, gallery, avatar } = vendor;
   const router = useRouter();
   const prefersReduced = useReducedMotion();
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
 
-  const handleViewProfile = async () => {
-    setIsNavigating(true);
-    await new Promise((r) => setTimeout(r, prefersReduced ? 100 : 400));
-    router.push(`/jasa/detailjasa/${id}`);
-  };
+  // Check if vendor is in favorites on mount - optimized
+  useEffect(() => {
+    const favorites = getFavorites();
+    setIsFavorite(favorites.includes(id));
+  }, [id]);
 
-  const handleOrderNow = async () => {
+  const handleToggleFavorite = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const favorites = getFavorites();
+    const newIsFavorite = !isFavorite;
+    
+    setIsFavorite(newIsFavorite);
+    setIsAnimating(true);
+
+    if (newIsFavorite) {
+      if (!favorites.includes(id)) {
+        saveFavorites([...favorites, id]);
+      }
+    } else {
+      saveFavorites(favorites.filter(favId => favId !== id));
+    }
+
+    setTimeout(() => setIsAnimating(false), 400);
+  }, [id, isFavorite]);
+
+  const handleViewProfile = useCallback(() => {
     setIsNavigating(true);
-    await new Promise((r) => setTimeout(r, prefersReduced ? 100 : 400));
-    router.push(`/jasa/detailjasa/${id}/form`);
-  };
+    setTimeout(() => {
+      router.push(`/jasa/detailjasa/${id}`);
+    }, prefersReduced ? 50 : 250);
+  }, [router, id, prefersReduced]);
+
+  const handleOrderNow = useCallback(() => {
+    setIsNavigating(true);
+    setTimeout(() => {
+      router.push(`/jasa/detailjasa/${id}/form`);
+    }, prefersReduced ? 50 : 250);
+  }, [router, id, prefersReduced]);
 
   return (
     <>
       <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl">
         <CardHeader className="p-3 sm:p-5 md:p-6">
-          {/* Mobile: flex-col, Tablet/Desktop: 2 kolom grid fix */}
           <div
             className="
             flex flex-col gap-3
@@ -90,16 +141,26 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0"
-                          aria-label="Simpan"
+                        <button
+                          onClick={handleToggleFavorite}
+                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative"
+                          aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                         >
-                          <Heart className="h-3 w-3" />
-                        </Button>
+                          <Heart
+                            className={`h-3 w-3 transition-all duration-200 ${
+                              isFavorite
+                                ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
+                                : "text-muted-foreground scale-100"
+                            }`}
+                          />
+                          {isAnimating && (
+                            <span className="absolute inset-0 rounded-full bg-[#7CE0A8]/20 animate-ping" />
+                          )}
+                        </button>
                       </TooltipTrigger>
-                      <TooltipContent>Simpan</TooltipContent>
+                      <TooltipContent>
+                        {isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
+                      </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
@@ -111,7 +172,7 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                   <span>({reviewCount})</span>
                 </div>
 
-                {/* Tag mobile: max 2 + N lainnya */}
+                {/* Tag mobile */}
                 <div className="mt-1.5 flex flex-wrap gap-1 items-center md:hidden">
                   {tags.slice(0, 1).map((t, i) => (
                     <Badge
@@ -129,7 +190,7 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                   )}
                 </div>
 
-                {/* Tag tablet/desktop: max 3 + N lainnya */}
+                {/* Tag tablet/desktop */}
                 <div className="mt-2 hidden md:flex flex-wrap gap-1.5 items-center">
                   {tags.slice(0, 3).map((t, i) => (
                     <Badge
@@ -147,12 +208,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                   )}
                 </div>
 
-                {/* Deskripsi clamp */}
+                {/* Deskripsi */}
                 <p className="mt-1.5 text-[10px] sm:text-sm md:text-base text-foreground/80 leading-relaxed line-clamp-2 md:line-clamp-5">
                   {summary}
                 </p>
 
-                {/* Aksi mobile - PERBAIKAN UTAMA: Tombol sebaris dengan teks kecil */}
+                {/* Aksi mobile */}
                 <div className="mt-2 flex gap-1.5 md:hidden">
                   <Button
                     className="flex-1 px-1.5 py-1 h-7 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] text-[9px] font-medium whitespace-nowrap"
@@ -177,16 +238,26 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Simpan"
-                      className="self-end"
+                    <button
+                      onClick={handleToggleFavorite}
+                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95"
+                      aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                     >
-                      <Heart className="h-5 w-5" />
-                    </Button>
+                      <Heart
+                        className={`h-5 w-5 transition-all duration-200 ${
+                          isFavorite
+                            ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
+                            : "text-muted-foreground scale-100"
+                        }`}
+                      />
+                      {isAnimating && (
+                        <span className="absolute inset-0 rounded-full bg-[#7CE0A8]/20 animate-ping" />
+                      )}
+                    </button>
                   </TooltipTrigger>
-                  <TooltipContent>Simpan</TooltipContent>
+                  <TooltipContent>
+                    {isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
 

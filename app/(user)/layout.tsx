@@ -32,7 +32,6 @@ import {
 const LANG_STORAGE_KEY = "appLanguage";
 const AUTH_STORAGE_KEY = "authData";
 
-// Type untuk data user
 interface UserData {
   name: string;
   email: string;
@@ -48,7 +47,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Cek status login dari localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -57,7 +55,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setSelectedLanguage(savedLang);
     }
 
-    // Cek status login
     const authData = window.localStorage.getItem(AUTH_STORAGE_KEY);
     if (authData) {
       try {
@@ -71,7 +68,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Reset loading state ketika pathname berubah
   useEffect(() => {
     setIsLoading(false);
   }, [pathname]);
@@ -92,7 +88,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const handleLoginClick = () => {
     setIsLoading(true);
 
-    // Simulasi delay untuk menampilkan loader
     const connection = (navigator as any).connection ||
       (navigator as any).mozConnection ||
       (navigator as any).webkitConnection;
@@ -108,7 +103,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const handleRegisterClick = () => {
     setIsLoading(true);
 
-    // Simulasi delay untuk menampilkan loader
     const connection = (navigator as any).connection ||
       (navigator as any).mozConnection ||
       (navigator as any).webkitConnection;
@@ -121,8 +115,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, delay);
   };
 
+  const handleLogoClick = () => {
+    // Cek apakah sudah di halaman home
+    if (pathname === "/") {
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    
+    setIsMobileMenuOpen(false);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push("/");
+    }, 300);
+  };
+
   const handleLogout = () => {
-    // Hapus data auth dari localStorage
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setIsLoggedIn(false);
     setUserData(null);
@@ -130,6 +137,12 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleProfileClick = () => {
+    // Cek apakah sudah di halaman profile
+    if (pathname === "/profile") {
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
@@ -138,6 +151,12 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleOrderHistoryClick = () => {
+    // Cek apakah sudah di halaman order history
+    if (pathname === "/orders/history") {
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
@@ -146,10 +165,16 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleFavoriteVendorsClick = () => {
+    // Cek apakah sudah di halaman vendor favorit
+    if (pathname === "/vendor_favorit") {
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
-      router.push("/vendors/favorites");
+      router.push("/vendor_favorit");
     }, 300);
   };
 
@@ -157,7 +182,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative w-full min-h-screen">
-      {/* Loader Overlay - Tampil di atas semua konten */}
       {isLoading && (
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
           <LoaderTwo />
@@ -165,22 +189,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       )}
 
       <Navbar>
-        {/* Desktop & Tablet Layout - Tampil dari md (768px) ke atas */}
         <NavBody>
-          <NavbarLogo />
+          <div onClick={handleLogoClick} className="cursor-pointer">
+            <NavbarLogo />
+          </div>
 
-          {/* Container untuk tombol-tombol */}
           <div className="flex items-center gap-4">
             {isLoggedIn ? (
-              // User sudah login - Desktop & Tablet
               <div className="flex items-center gap-4">
-                {/* Tombol bahasa di kiri profil */}
                 <LanguageSelector
                   selectedLanguage={selectedLanguage}
                   onSelectLanguage={handleSelectLanguage}
                 />
 
-                {/* Profil user */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors">
@@ -203,23 +224,32 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <DropdownMenuItem 
                       onClick={handleProfileClick}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
+                      disabled={pathname === "/profile"}
                     >
                       <User className="w-4 h-4" />
-                      Profil Saya
+                      <span className={pathname === "/profile" ? "font-semibold text-[#7CE0A8]" : ""}>
+                        Profil Saya
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem 
                       onClick={handleOrderHistoryClick}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
+                      disabled={pathname === "/orders/history"}
                     >
                       <Package className="w-4 h-4" />
-                      Riwayat Pesanan
+                      <span className={pathname === "/orders/history" ? "font-semibold text-[#7CE0A8]" : ""}>
+                        Riwayat Pesanan
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem 
                       onClick={handleFavoriteVendorsClick}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
+                      disabled={pathname === "/vendor_favorit"}
                     >
                       <Heart className="w-4 h-4" />
-                      Vendor Favorit
+                      <span className={pathname === "/vendor_favorit" ? "font-semibold text-[#7CE0A8]" : ""}>
+                        Vendor Favorit
+                      </span>
                     </DropdownMenuItem>
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
                     <DropdownMenuItem 
@@ -233,9 +263,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                 </DropdownMenu>
               </div>
             ) : (
-              // User belum login - Desktop & Tablet
               <div className="flex items-center gap-4">
-                {/* Tombol Masuk */}
                 <NavbarButton
                   variant="outline"
                   onClick={handleLoginClick}
@@ -244,7 +272,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   Masuk
                 </NavbarButton>
 
-                {/* Tombol Daftar */}
                 <NavbarButton
                   variant="primary"
                   onClick={handleRegisterClick}
@@ -253,7 +280,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   Daftar
                 </NavbarButton>
 
-                {/* Tombol bahasa */}
                 <LanguageSelector
                   selectedLanguage={selectedLanguage}
                   onSelectLanguage={handleSelectLanguage}
@@ -263,10 +289,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           </div>
         </NavBody>
 
-        {/* Mobile Layout - Hanya tampil di < 768px */}
         <MobileNav>
           <MobileNavHeader>
-            <NavbarLogo />
+            <div onClick={handleLogoClick} className="cursor-pointer">
+              <NavbarLogo />
+            </div>
             <MobileNavToggle
               isOpen={isMobileMenuOpen}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -279,9 +306,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           >
             <div className="w-full">
               {isLoggedIn ? (
-                // Mobile menu untuk user yang sudah login
                 <div className="space-y-6">
-                  {/* Profile info */}
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-neutral-800">
                     <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                       <img
@@ -306,21 +331,36 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   <div className="space-y-2">
                     <button
                       onClick={handleProfileClick}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                      disabled={pathname === "/profile"}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                        pathname === "/profile"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                      }`}
                     >
                       <User className="w-5 h-5" />
                       <span>Profil Saya</span>
                     </button>
                     <button
                       onClick={handleOrderHistoryClick}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                      disabled={pathname === "/orders/history"}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                        pathname === "/orders/history"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                      }`}
                     >
                       <Package className="w-5 h-5" />
                       <span>Riwayat Pesanan</span>
                     </button>
                     <button
                       onClick={handleFavoriteVendorsClick}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                      disabled={pathname === "/vendor_favorit"}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                        pathname === "/vendor_favorit"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                      }`}
                     >
                       <Heart className="w-5 h-5" />
                       <span>Vendor Favorit</span>
@@ -335,7 +375,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </button>
                   </div>
 
-                  {/* Language selector */}
                   <div className="pt-4 border-t border-gray-200 dark:border-neutral-700">
                     <div className="flex justify-start">
                       <LanguageSelector
@@ -346,7 +385,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   </div>
                 </div>
               ) : (
-                // Mobile menu untuk user belum login
                 <div className="space-y-6">
                   <div className="space-y-3">
                     <button
@@ -363,7 +401,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </button>
                   </div>
 
-                  {/* Language selector */}
                   <div className="pt-4 border-t border-gray-200 dark:border-neutral-700">
                     <div className="flex justify-start">
                       <LanguageSelector

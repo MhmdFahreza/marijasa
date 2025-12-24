@@ -12,14 +12,27 @@ import {
     IconUser,
     IconBriefcase,
     IconChevronDown,
-    IconChevronRight,
 } from "@tabler/icons-react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { LoaderTwo } from "@/app/components/transition/loader"; 
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
 }
+
+// Loading Overlay Component
+const PageTransitionLoader = () => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    transition={{ duration: 0.2 }}
+    className="fixed inset-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm z-[150] flex flex-col items-center justify-center gap-4"
+  >
+    <LoaderTwo />
+    <p className="text-sm text-neutral-600 dark:text-neutral-400">Memuat halaman...</p>
+  </motion.div>
+);
 
 const LogoutModal = React.memo(({ 
   isOpen, 
@@ -36,14 +49,21 @@ const LogoutModal = React.memo(({
     <AnimatePresence initial={false}>
       {isOpen && (
         <>
-          <div
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 z-[200]"
             onClick={isLoggingOut ? undefined : onClose}
             style={{ willChange: 'opacity' }}
           />
           
           <div className="fixed inset-0 flex items-center justify-center z-[201] p-4 pointer-events-none">
-            <div
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.2 }}
               className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl max-w-md w-full p-6 pointer-events-auto"
               style={{ willChange: 'transform, opacity' }}
             >
@@ -84,7 +104,7 @@ const LogoutModal = React.memo(({
                   </div>
                 </>
               )}
-            </div>
+            </motion.div>
           </div>
         </>
       )}
@@ -149,6 +169,8 @@ export default function DashboardLayout({
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutRedirectLoader, setShowLogoutRedirectLoader] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -198,8 +220,61 @@ export default function DashboardLayout({
   ], []);
 
   const handleNavigation = useCallback((href: string) => {
+    // Jangan navigasi jika sudah di halaman yang sama
+    if (pathname === href) return;
+    
+    // Set state untuk navigasi dimulai
+    setIsNavigating(true);
+    setNavigationTarget(href);
+    
+    // Mulai navigasi
     router.push(href);
-  }, [router]);
+    
+    // Timeout fallback jika navigasi macet (10 detik)
+    const fallbackTimeout = setTimeout(() => {
+      console.warn("Navigation timeout, forcing end of loading");
+      setIsNavigating(false);
+      setNavigationTarget(null);
+    }, 10000);
+    
+    // Cleanup timeout saat komponen unmount atau navigasi selesai
+    return () => clearTimeout(fallbackTimeout);
+  }, [router, pathname]);
+
+  // Deteksi ketika halaman sudah benar-benar berpindah
+  useEffect(() => {
+    // Jika tidak sedang navigasi, tidak perlu melakukan apapun
+    if (!isNavigating || !navigationTarget) return;
+    
+    // Jika pathname sudah sama dengan target navigasi, artinya halaman sudah berpindah
+    if (pathname === navigationTarget) {
+      // Tunggu sedikit untuk memastikan render selesai
+      const renderCompleteTimeout = setTimeout(() => {
+        setIsNavigating(false);
+        setNavigationTarget(null);
+      }, 50);
+      
+      return () => clearTimeout(renderCompleteTimeout);
+    }
+  }, [pathname, isNavigating, navigationTarget]);
+
+  // Juga cek jika component sudah mount untuk kasus navigasi cepat
+  useEffect(() => {
+    const checkNavigationComplete = () => {
+      if (isNavigating && navigationTarget && pathname === navigationTarget) {
+        setIsNavigating(false);
+        setNavigationTarget(null);
+      }
+    };
+    
+    // Cek setelah mount
+    checkNavigationComplete();
+    
+    // Cek juga setelah waktu tertentu untuk memastikan
+    const safetyCheck = setTimeout(checkNavigationComplete, 300);
+    
+    return () => clearTimeout(safetyCheck);
+  }, [isNavigating, navigationTarget, pathname]);
 
   const toggleSettings = useCallback(() => {
     setSettingsOpen(prev => !prev);
@@ -213,7 +288,6 @@ export default function DashboardLayout({
   const handleLogoutConfirm = useCallback(() => {
     setIsLoggingOut(true);
     
-    // Simulasi proses logout dengan delay
     setTimeout(() => {
       setShowLogoutRedirectLoader(true);
       
@@ -240,22 +314,35 @@ export default function DashboardLayout({
 
   return (
     <>
-      {showLogoutRedirectLoader && (
-        <div className="fixed inset-0 bg-white dark:bg-neutral-900 z-50 flex flex-col items-center justify-center gap-6">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
-              Logout Berhasil!
-            </h2>
-            <p className="text-neutral-600 dark:text-neutral-300">
-              Mengalihkan ke halaman login...
+      {/* Logout Redirect Loader */}
+      <AnimatePresence>
+        {showLogoutRedirectLoader && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-white dark:bg-neutral-900 z-[300] flex flex-col items-center justify-center gap-6"
+          >
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
+                Logout Berhasil!
+              </h2>
+              <p className="text-neutral-600 dark:text-neutral-300">
+                Mengalihkan ke halaman login...
+              </p>
+            </div>
+            <LoaderTwo />
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-4">
+              Sesi Anda telah berakhir
             </p>
-          </div>
-          <LoaderTwo />
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-4">
-            Sesi Anda telah berakhir
-          </p>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Page Transition Loader */}
+      <AnimatePresence>
+        {isNavigating && <PageTransitionLoader />}
+      </AnimatePresence>
       
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar open={open} setOpen={setOpen}>
@@ -278,14 +365,14 @@ export default function DashboardLayout({
                   <button
                     key={link.id}
                     onClick={() => handleNavigation(link.href)}
-                    disabled={isLoggingOut || showLogoutRedirectLoader}
+                    disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
                     className={cn(
                       "flex items-center group/sidebar py-2 rounded-md transition-all duration-150",
                       open ? "justify-start gap-2 px-2" : "justify-center",
                       activeView === link.id
                         ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white"
                         : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
-                      (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
+                      (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className={cn(
@@ -307,14 +394,14 @@ export default function DashboardLayout({
                 <div className="flex flex-col">
                   <button
                     onClick={toggleSettings}
-                    disabled={isLoggingOut || showLogoutRedirectLoader}
+                    disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
                     className={cn(
                       "flex items-center justify-between gap-2 group/sidebar py-2 rounded-md transition-all duration-150 w-full",
                       open ? "px-2" : "px-0 justify-center",
                       (activeView === 'profile' || activeView === 'services')
                         ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white"
                         : "hover:bg-neutral-200 dark:hover:bg-neutral-700",
-                      (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
+                      (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className={cn("flex items-center gap-2", !open && "justify-center w-full")}>
@@ -336,38 +423,38 @@ export default function DashboardLayout({
                       )}
                     </div>
                     {open && (
-                      <>
-                        {settingsOpen ? (
-                          <IconChevronDown className={cn(
-                            "h-4 w-4 transition-transform duration-150",
-                            (activeView === 'profile' || activeView === 'services')
-                              ? "text-white"
-                              : "text-neutral-700 dark:text-neutral-200"
-                          )} />
-                        ) : (
-                          <IconChevronRight className={cn(
-                            "h-4 w-4 transition-transform duration-150",
-                            (activeView === 'profile' || activeView === 'services')
-                              ? "text-white"
-                              : "text-neutral-700 dark:text-neutral-200"
-                          )} />
-                        )}
-                      </>
+                      <motion.div
+                        animate={{ rotate: settingsOpen ? 0 : -90 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <IconChevronDown className={cn(
+                          "h-4 w-4",
+                          (activeView === 'profile' || activeView === 'services')
+                            ? "text-white"
+                            : "text-neutral-700 dark:text-neutral-200"
+                        )} />
+                      </motion.div>
                     )}
                   </button>
 
-                  <AnimatePresence initial={false}>
+                  <AnimatePresence>
                     {settingsOpen && open && (
-                      <div className="ml-[16px] mt-1 flex flex-col gap-1 overflow-hidden">
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="ml-[16px] mt-1 flex flex-col gap-1 overflow-hidden"
+                      >
                         <button
                           onClick={() => handleNavigation('/mitra/settings/profile')}
-                          disabled={isLoggingOut || showLogoutRedirectLoader}
+                          disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
                           className={cn(
                             "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-all duration-150",
                             activeView === 'profile'
                               ? "bg-gradient-to-r from-[#7CE0A8]/90 to-[#5DD494]/90 text-white font-medium shadow-sm dark:from-[#7CE0A8]/90 dark:to-[#5DD494]/90 dark:text-white" 
                               : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750",
-                            (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
+                            (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                           )}
                         >
                           <IconUser className="h-4 w-4 flex-shrink-0" />
@@ -375,31 +462,31 @@ export default function DashboardLayout({
                         </button>
                         <button
                           onClick={() => handleNavigation('/mitra/settings/services')}
-                          disabled={isLoggingOut || showLogoutRedirectLoader}
+                          disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
                           className={cn(
                             "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-all duration-150",
                             activeView === 'services'
                               ? "bg-gradient-to-r from-[#7CE0A8]/90 to-[#5DD494]/90 text-white font-medium shadow-sm dark:from-[#7CE0A8]/90 dark:to-[#5DD494]/90 dark:text-white" 
                               : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750",
-                            (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
+                            (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                           )}
                         >
                           <IconBriefcase className="h-4 w-4 flex-shrink-0" />
                           <span>Services</span>
                         </button>
-                      </div>
+                      </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
                 <button
                   onClick={handleLogoutClick}
-                  disabled={isLoggingOut || showLogoutRedirectLoader}
+                  disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
                   className={cn(
                     "flex items-center group/sidebar py-2 rounded-md transition-all duration-150",
                     open ? "justify-start gap-2 px-2" : "justify-center",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
-                    (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
+                    (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   <div className="flex-shrink-0">
@@ -416,11 +503,11 @@ export default function DashboardLayout({
             <div className="mt-auto">
               <button
                 onClick={() => handleNavigation('/mitra/settings/profile')}
-                disabled={isLoggingOut || showLogoutRedirectLoader}
+                disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
                 className={cn(
                   "flex items-center rounded-md transition-all duration-150 hover:bg-neutral-200 dark:hover:bg-neutral-700",
                   open ? "justify-start gap-2 py-2 px-2" : "justify-center py-2",
-                  (isLoggingOut || showLogoutRedirectLoader) && "opacity-50 cursor-not-allowed"
+                  (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                 )}
               >
                 <img
@@ -442,10 +529,17 @@ export default function DashboardLayout({
           </SidebarBody>
         </Sidebar>
         
-        <div className="flex-1 overflow-auto">
-          <div className="p-4 md:p-6 rounded-tl-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col gap-4 flex-1 w-full h-full">
+        <div className="flex-1 overflow-auto relative">
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="p-4 md:p-6 rounded-tl-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col gap-4 flex-1 w-full h-full"
+          >
             {children}
-          </div>
+          </motion.div>
         </div>
       </div>
 
@@ -458,3 +552,4 @@ export default function DashboardLayout({
     </>
   );
 }
+
