@@ -20,13 +20,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
-import { 
-  History, 
-  Heart, 
-  User, 
+import {
+  History,
+  Heart,
+  User,
   LogOut,
   Package,
-  Store 
+  Store
 } from "lucide-react";
 
 const LANG_STORAGE_KEY = "appLanguage";
@@ -121,7 +121,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setIsMobileMenuOpen(false);
       return;
     }
-    
+
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
@@ -142,7 +142,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setIsMobileMenuOpen(false);
       return;
     }
-    
+
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
@@ -152,15 +152,15 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   const handleOrderHistoryClick = () => {
     // Cek apakah sudah di halaman order history
-    if (pathname === "/orders/history") {
+    if (pathname === "/riwayat_pemesanan") {
       setIsMobileMenuOpen(false);
       return;
     }
-    
+
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
-      router.push("/orders/history");
+      router.push("/riwayat_pemesanan");
     }, 300);
   };
 
@@ -170,7 +170,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setIsMobileMenuOpen(false);
       return;
     }
-    
+
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
@@ -221,7 +221,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56 mt-2">
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={handleProfileClick}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
                       disabled={pathname === "/profile"}
@@ -231,17 +231,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         Profil Saya
                       </span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={handleOrderHistoryClick}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
-                      disabled={pathname === "/orders/history"}
+                      disabled={pathname === "/riwayat_pemesanan"}
                     >
                       <Package className="w-4 h-4" />
-                      <span className={pathname === "/orders/history" ? "font-semibold text-[#7CE0A8]" : ""}>
+                      <span className={pathname === "/riwayat_pemesanan" ? "font-semibold text-[#7CE0A8]" : ""}>
                         Riwayat Pesanan
                       </span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={handleFavoriteVendorsClick}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
                       disabled={pathname === "/vendor_favorit"}
@@ -252,8 +252,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       </span>
                     </DropdownMenuItem>
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
-                    <DropdownMenuItem 
-                      onClick={handleLogout} 
+                    <DropdownMenuItem
+                      onClick={handleLogout}
                       className="flex items-center gap-2 text-red-600 cursor-pointer py-2.5"
                     >
                       <LogOut className="w-4 h-4" />
@@ -332,23 +332,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <button
                       onClick={handleProfileClick}
                       disabled={pathname === "/profile"}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
-                        pathname === "/profile"
-                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
-                      }`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/profile"
+                        ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                        }`}
                     >
                       <User className="w-5 h-5" />
                       <span>Profil Saya</span>
                     </button>
                     <button
                       onClick={handleOrderHistoryClick}
-                      disabled={pathname === "/orders/history"}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
-                        pathname === "/orders/history"
+                      disabled={pathname === "/riwayat_pemesanan"}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/riwayat_pemesanan"
                           ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
-                      }`}
+                        }`}
                     >
                       <Package className="w-5 h-5" />
                       <span>Riwayat Pesanan</span>
@@ -356,11 +354,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <button
                       onClick={handleFavoriteVendorsClick}
                       disabled={pathname === "/vendor_favorit"}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
-                        pathname === "/vendor_favorit"
-                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
-                      }`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/vendor_favorit"
+                        ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                        }`}
                     >
                       <Heart className="w-5 h-5" />
                       <span>Vendor Favorit</span>

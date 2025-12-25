@@ -1,4 +1,3 @@
-// (/form)
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -19,7 +18,7 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon } from "lucide-react";
+import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Vendors } from "@/app/data/dataVendor";
 import { useParams, useRouter } from "next/navigation";
@@ -54,9 +53,9 @@ const PRICES = {
     "Instalasi water heater": 350000
   },
   sedotWC: {
-    "Penyedotan Septictank": 250000,
-    "Inspeksi": 200000,
-    "Pelancaran Saluran WC": 200000,
+    "Penyedotan Septictank": { base: 250000, label: "Penyedotan Septictank" },
+    "Inspeksi": { base: 200000, label: "Inspeksi" },
+    "Pelancaran Saluran WC": { base: 200000, label: "Pelancaran Saluran WC" },
   },
   garden: {
     "Pembuatan Taman Baru": 2000000,
@@ -96,12 +95,12 @@ function getServiceCategory(tags: string[]): string {
   const firstTag = tags[0]?.toLowerCase() || "";
 
   if (firstTag.includes("ac")) return "ac";
-  if (firstTag.includes("listrik")) return "listrik";
+  if (firstTag.includes("listrik") || firstTag.includes("electrical")) return "electrical";
   if (firstTag.includes("pembersihan") || firstTag.includes("cleaning")) return "cleaning";
-  if (firstTag.includes("ledeng") || firstTag.includes("pipa")) return "plumbing";
+  if (firstTag.includes("ledeng") || firstTag.includes("pipa") || firstTag.includes("plumbing")) return "plumbing";
   if (firstTag.includes("sedot")) return "sedot-wc";
-  if (firstTag.includes("kebun") || firstTag.includes("taman")) return "taman";
-  if (firstTag.includes("mebel") || firstTag.includes("furnitur")) return "furniture";
+  if (firstTag.includes("kebun") || firstTag.includes("taman") || firstTag.includes("garden")) return "taman";
+  if (firstTag.includes("mebel") || firstTag.includes("furnitur") || firstTag.includes("furniture")) return "furniture";
 
   return "general";
 }
@@ -121,11 +120,13 @@ export default function VendorFormPage() {
     expiryDate: "",
     cvv: ""
   });
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [initialOrderId, setInitialOrderId] = useState<string | null>(null);
 
   // Load user profile saat component mount
   useEffect(() => {
     setMounted(true);
-    
+
     // Load profile data dari localStorage
     const savedProfile = localStorage.getItem("userProfile");
     if (savedProfile) {
@@ -176,8 +177,111 @@ export default function VendorFormPage() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted, moving to confirmation:", formData);
-    setCurrentStep('confirmation');
+    
+    // Validasi waktu
+    const hour = formData.hour || "00";
+    const minute = formData.minute || "00";
+    
+    if (parseInt(hour) < 0 || parseInt(hour) > 23) {
+      toast.error("Jam harus antara 00-23");
+      return;
+    }
+    
+    if (parseInt(minute) < 0 || parseInt(minute) > 59) {
+      toast.error("Menit harus antara 00-59");
+      return;
+    }
+    
+    // Format waktu menjadi HH:MM
+    const formattedTime = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+    
+    // Hitung harga service
+    const servicePrice = calculateServicePrice();
+    const orderId = `ORD-${Date.now().toString().slice(-6)}`;
+    setInitialOrderId(orderId);
+    
+    const vendorId = params.vendorId as string;
+    const vendor = Vendors.find((v) => v.id === vendorId);
+    
+    // Buat data pesanan awal
+    const initialOrderData = {
+      id: orderId,
+      orderId: orderId,
+      vendorName: vendor?.name || "",
+      serviceType: getServiceDescription(),
+      serviceDate: formData.date ? new Date(formData.date).toLocaleDateString('id-ID', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      }) : "",
+      serviceTime: formattedTime,
+      status: "menunggu pembayaran",
+      statusColor: "bg-yellow-100 text-yellow-800",
+      totalPrice: servicePrice + SERVICE_FEE,
+      vendorAvatar: vendor?.avatar ?? "",
+      orderDate: new Date().toLocaleDateString('id-ID', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      }) + " - " + new Date().toLocaleTimeString('id-ID', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      paymentMethod: null,
+      paymentId: null,
+      customerInfo: {
+        name: formData.name || "",
+        email: formData.email || "",
+        phone: formData.phone || "",
+        address: formData.address || "",
+        gpsLink: formData.gpsLink || ""
+      },
+      serviceDetails: {
+        complaints: [],
+        services: [getServiceDescription()],
+        repairs: [],
+        freon: false,
+        installation: false,
+        propertyType: formData.propertyType || "",
+        date: formData.date || "",
+        time: formattedTime,
+        budget: ""
+      },
+      paymentDetails: {
+        subtotal: servicePrice,
+        minTransaction: 75000,
+        serviceFee: SERVICE_FEE,
+        transactionFee: 0,
+        total: servicePrice + SERVICE_FEE
+      },
+      orderHistory: [
+        { 
+          status: "Permintaan Dibuat", 
+          date: new Date().toLocaleDateString('id-ID', { 
+            day: 'numeric', 
+            month: 'long', 
+            year: 'numeric' 
+          }) + " - " + new Date().toLocaleTimeString('id-ID', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }) 
+        }
+      ],
+      vendorNotes: ""
+    };
+
+    // Simpan ke localStorage
+    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+    localStorage.setItem('userOrders', JSON.stringify([...existingOrders, initialOrderData]));
+
+    // Tampilkan popup sukses
+    setShowSuccessModal(true);
+    
+    // Setelah 2 detik, pindah ke konfirmasi
+    setTimeout(() => {
+      setShowSuccessModal(false);
+      setCurrentStep('confirmation');
+    }, 2000);
   };
 
   const handleFinalSubmit = async () => {
@@ -185,47 +289,80 @@ export default function VendorFormPage() {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
       return;
     }
-    
+
     // Validasi untuk kartu debit/kredit
     if (selectedPayment === "debit-credit") {
       if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
         toast.error("Silakan lengkapi data kartu debit/kredit.");
         return;
       }
-      
+
       // Validasi format nomor kartu (minimal 12 digit)
       const cleanedCardNumber = cardData.cardNumber.replace(/\s/g, '');
       if (cleanedCardNumber.length < 12 || !/^\d+$/.test(cleanedCardNumber)) {
         toast.error("Nomor kartu tidak valid. Harus minimal 12 digit angka.");
         return;
       }
-      
+
       // Validasi format tanggal kadaluarsa (MM/YY)
       if (!/^\d{2}\/\d{2}$/.test(cardData.expiryDate)) {
         toast.error("Format masa berlaku tidak valid. Gunakan format MM/YY (contoh: 01/24).");
         return;
       }
-      
+
       // Validasi CVV (3-4 digit)
       if (!/^\d{3,4}$/.test(cardData.cvv)) {
         toast.error("CVV tidak valid. Harus 3 atau 4 digit angka.");
         return;
       }
     }
+
+    // Update data pesanan di localStorage
+    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+    const updatedOrders = existingOrders.map((order: any) => {
+      if (order.id === initialOrderId) {
+        const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
+        const total = calculateTotalPrice();
+        
+        return {
+          ...order,
+          paymentMethod: selectedPayment,
+          paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
+          status: "diproses",
+          statusColor: "bg-blue-100 text-blue-800",
+          totalPrice: total,
+          paymentDetails: {
+            ...order.paymentDetails,
+            transactionFee: transactionFee,
+            total: total
+          },
+          orderHistory: [
+            ...order.orderHistory,
+            { 
+              status: "Pembayaran Diterima", 
+              date: new Date().toLocaleDateString('id-ID', { 
+                day: 'numeric', 
+                month: 'long', 
+                year: 'numeric' 
+              }) + " - " + new Date().toLocaleTimeString('id-ID', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+              }) 
+            }
+          ]
+        };
+      }
+      return order;
+    });
     
-    const orderData = {
-      ...formData,
-      paymentMethod: selectedPayment,
-      cardData: selectedPayment === "debit-credit" ? cardData : null,
-      transactionFee: PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0,
-      serviceFee: SERVICE_FEE,
-      totalPrice: calculateTotalPrice(),
-      orderDate: new Date().toISOString()
-    };
-    
-    console.log("Final order submitted:", orderData);
-    toast.success("Pesanan berhasil dikirim! Kami akan menghubungi Anda segera.");
-    await handleNavigation("/");
+    localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+
+    toast.success("Pembayaran berhasil! Redirect ke riwayat pemesanan...");
+
+    // Redirect ke riwayat pemesanan setelah delay
+    setTimeout(() => {
+      router.push('/riwayat_pemesanan');
+    }, 1500);
   };
 
   const calculateServicePrice = () => {
@@ -234,26 +371,64 @@ export default function VendorFormPage() {
     if (!vendor) return 0;
 
     const serviceCategory = getServiceCategory(vendor.tags);
-    
+
     switch (serviceCategory) {
       case "ac":
-        if (formData.serviceType && PRICES.ac[formData.serviceType as keyof typeof PRICES.ac]) {
-          const servicePrice = PRICES.ac[formData.serviceType as keyof typeof PRICES.ac].base;
-          const count = parseInt(formData.acCount) || 1;
-          return servicePrice * count;
-        }
-        return 0;
-      case "listrik":
+        const acServices = formData.acServices || [];
+        let acTotal = 0;
+        acServices.forEach((service: string) => {
+          if (service && PRICES.ac[service as keyof typeof PRICES.ac]) {
+            const servicePrice = PRICES.ac[service as keyof typeof PRICES.ac].base;
+            const count = parseInt(formData.acCount) || 1;
+            acTotal += servicePrice * count;
+          }
+        });
+        return acTotal;
+      
+      case "electrical":
         const works = formData.electricalWork || [];
         return works.reduce((sum: number, work: string) => {
           return sum + (PRICES.electrical[work as keyof typeof PRICES.electrical] || 0);
         }, 0);
+      
       case "cleaning":
-        if (!formData.cleaningType) return 0;
-        const basePrice = PRICES.cleaning[formData.cleaningType as keyof typeof PRICES.cleaning]?.base || 0;
-        const areaSize = parseInt(formData.areaSize) || 0;
-        const pricePerSqm = basePrice / 50;
-        return Math.round(pricePerSqm * areaSize);
+        const cleaningServices = formData.cleaningServices || [];
+        let cleaningTotal = 0;
+        cleaningServices.forEach((service: string) => {
+          if (service && PRICES.cleaning[service as keyof typeof PRICES.cleaning]) {
+            cleaningTotal += PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.base || 0;
+          }
+        });
+        return cleaningTotal;
+      
+      case "plumbing":
+        const plumbingIssues = formData.plumbingIssues || [];
+        return plumbingIssues.reduce((sum: number, issue: string) => {
+          return sum + (PRICES.plumbing[issue as keyof typeof PRICES.plumbing] || 0);
+        }, 0);
+      
+      case "sedot-wc":
+        const sedotWCServices = formData.sedotWCServices || [];
+        let sedotWCTotal = 0;
+        sedotWCServices.forEach((service: string) => {
+          if (service && PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]) {
+            sedotWCTotal += PRICES.sedotWC[service as keyof typeof PRICES.sedotWC].base;
+          }
+        });
+        return sedotWCTotal;
+      
+      case "taman":
+        const gardenServices = formData.gardenServices || [];
+        return gardenServices.reduce((sum: number, service: string) => {
+          return sum + (PRICES.garden[service as keyof typeof PRICES.garden] || 0);
+        }, 0);
+      
+      case "furniture":
+        const furnitureTypes = formData.furnitureTypes || [];
+        return furnitureTypes.reduce((sum: number, type: string) => {
+          return sum + (PRICES.furniture[type as keyof typeof PRICES.furniture] || 0);
+        }, 0);
+      
       default:
         return formData.totalPrice || 0;
     }
@@ -279,6 +454,54 @@ export default function VendorFormPage() {
       return `${cleaned.substring(0, 2)}/${cleaned.substring(2, 4)}`;
     }
     return cleaned;
+  };
+
+  // Helper function untuk mendapatkan deskripsi layanan
+  const getServiceDescription = () => {
+    const vendorId = params.vendorId as string;
+    const vendor = Vendors.find((v) => v.id === vendorId);
+    if (!vendor) return "Layanan";
+    
+    const serviceCategory = getServiceCategory(vendor.tags);
+    
+    if (serviceCategory === "ac") {
+      const acServices = formData.acServices || [];
+      if (acServices.length === 0) return "Layanan AC";
+      
+      const serviceNames = acServices.map((service: string) => {
+        const serviceType = PRICES.ac[service as keyof typeof PRICES.ac]?.label || "Layanan AC";
+        const acType = formData.acType || "";
+        const acPk = formData.acPk || "";
+        return `${serviceType} ${acType} ${acPk} PK`;
+      }).join(", ");
+      
+      const acCount = formData.acCount || "1";
+      return `${serviceNames} (${acCount} unit)`;
+    }
+    
+    if (serviceCategory === "cleaning") {
+      const cleaningServices = formData.cleaningServices || [];
+      if (cleaningServices.length === 0) return "Layanan Pembersihan";
+      
+      const serviceNames = cleaningServices.map((service: string) => {
+        return PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.label || service;
+      }).join(", ");
+      
+      return `${serviceNames}`;
+    }
+
+    if (serviceCategory === "sedot-wc") {
+      const sedotWCServices = formData.sedotWCServices || [];
+      if (sedotWCServices.length === 0) return "Layanan Sedot WC";
+      
+      const serviceNames = sedotWCServices.map((service: string) => {
+        return PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]?.label || service;
+      }).join(", ");
+      
+      return `${serviceNames}`;
+    }
+    
+    return vendor.tags[0] || "Layanan";
   };
 
   if (!mounted) {
@@ -368,7 +591,7 @@ export default function VendorFormPage() {
         </div>
 
         {currentStep === 'form' ? (
-          <OrderForm 
+          <OrderForm
             vendor={vendor}
             serviceCategory={serviceCategory}
             formData={formData}
@@ -397,6 +620,39 @@ export default function VendorFormPage() {
         )}
       </motion.main>
 
+      {/* Modal Sukses */}
+      <AnimatePresence>
+        {showSuccessModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                <Check className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Berhasil Mengajukan Pemesanan!
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Pesanan Anda telah berhasil diajukan dan tersimpan di riwayat pemesanan. 
+                Silakan lanjutkan ke pembayaran.
+              </p>
+              <div className="flex justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {leaving && (
           <motion.div
@@ -415,16 +671,52 @@ export default function VendorFormPage() {
   );
 }
 
-function OrderForm({ 
-  vendor, 
-  serviceCategory, 
-  formData, 
-  setFormData, 
-  handleFormSubmit, 
-  handleCancel, 
+function OrderForm({
+  vendor,
+  serviceCategory,
+  formData,
+  setFormData,
+  handleFormSubmit,
+  handleCancel,
   handleUseProfileLocation,
-  gettingLocation 
+  gettingLocation
 }: any) {
+  
+  const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    // Batasi input hanya angka dan maksimal 2 digit
+    value = value.replace(/\D/g, '');
+    if (value === '') {
+      setFormData({ ...formData, hour: '' });
+      return;
+    }
+    
+    let hour = parseInt(value, 10);
+    if (hour > 23) {
+      hour = 23;
+    }
+    
+    setFormData({ ...formData, hour: hour.toString() });
+  };
+
+  const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    // Batasi input hanya angka dan maksimal 2 digit
+    value = value.replace(/\D/g, '');
+    if (value === '') {
+      setFormData({ ...formData, minute: '' });
+      return;
+    }
+    
+    let minute = parseInt(value, 10);
+    if (minute > 59) {
+      minute = 59;
+    }
+    
+    // Simpan tanpa padding - biarkan fleksibel
+    setFormData({ ...formData, minute: minute.toString() });
+  };
+
   return (
     <>
       <Card className="mb-6">
@@ -562,20 +854,33 @@ function OrderForm({
 
                 <div className="space-y-2">
                   <Label htmlFor="time">Waktu Pengerjaan *</Label>
-                  <Select 
-                    onValueChange={(value) => setFormData({ ...formData, time: value })}
-                    value={formData.time || ""}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih waktu" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="08:00-10:00">08:00 - 10:00</SelectItem>
-                      <SelectItem value="10:00-12:00">10:00 - 12:00</SelectItem>
-                      <SelectItem value="13:00-15:00">13:00 - 15:00</SelectItem>
-                      <SelectItem value="15:00-17:00">15:00 - 17:00</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center space-x-2">
+                    <div className="flex-1">
+                      <div className="flex items-center border rounded-md overflow-hidden">
+                        <Input
+                          type="text"
+                          className="border-0 text-center focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
+                          placeholder="00"
+                          value={formData.hour || ""}
+                          onChange={handleHourChange}
+                          maxLength={2}
+                        />
+                        <div className="px-2 py-2 bg-gray-50">:</div>
+                        <Input
+                          type="text"
+                          className="border-0 text-center focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
+                          placeholder="00"
+                          value={formData.minute || ""}
+                          onChange={handleMinuteChange}
+                          maxLength={2}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-sm text-muted-foreground">WIB</div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Jam (00-23) : Menit (00-59). Contoh: 9:5 (untuk 09:05), 14:30
+                  </p>
                 </div>
               </div>
             </div>
@@ -607,7 +912,7 @@ function OrderForm({
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
               >
-                Selanjutnya
+                Ajukan Pemesanan
               </Button>
             </div>
           </form>
@@ -675,15 +980,50 @@ function ConfirmationStep({
 
   const getServiceDescription = () => {
     if (serviceCategory === "ac") {
-      const serviceType = PRICES.ac[formData.serviceType as keyof typeof PRICES.ac]?.label || "Layanan AC";
-      const acType = formData.acType || "";
-      const acCount = formData.acCount || "1";
-      const acPk = formData.acPk || "";
+      const acServices = formData.acServices || [];
+      if (acServices.length === 0) return "Layanan AC";
       
-      return `${serviceType} ${acType} ${acPk} PK (${acCount} unit)`;
+      const serviceNames = acServices.map((service: string) => {
+        const serviceType = PRICES.ac[service as keyof typeof PRICES.ac]?.label || "Layanan AC";
+        const acType = formData.acType || "";
+        const acPk = formData.acPk || "";
+        return `${serviceType} ${acType} ${acPk} PK`;
+      }).join(", ");
+      
+      const acCount = formData.acCount || "1";
+      return `${serviceNames} (${acCount} unit)`;
+    }
+    
+    if (serviceCategory === "cleaning") {
+      const cleaningServices = formData.cleaningServices || [];
+      if (cleaningServices.length === 0) return "Layanan Pembersihan";
+      
+      const serviceNames = cleaningServices.map((service: string) => {
+        return PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.label || service;
+      }).join(", ");
+      
+      return `${serviceNames}`;
+    }
+
+    if (serviceCategory === "sedot-wc") {
+      const sedotWCServices = formData.sedotWCServices || [];
+      if (sedotWCServices.length === 0) return "Layanan Sedot WC";
+      
+      const serviceNames = sedotWCServices.map((service: string) => {
+        return PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]?.label || service;
+      }).join(", ");
+      
+      return `${serviceNames}`;
     }
     
     return vendor.tags[0];
+  };
+
+  // Format waktu untuk display - dengan padding nol
+  const formatTimeForDisplay = () => {
+    const hour = formData.hour || "0";
+    const minute = formData.minute || "0";
+    return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')} WIB`;
   };
 
   const toggleSection = (section: string) => {
@@ -712,7 +1052,7 @@ function ConfirmationStep({
               <p className="text-muted-foreground">{formData.email || "dinosaur123@gmail.com"}</p>
               <p className="text-muted-foreground">{formData.phone || "08838553739"}</p>
             </div>
-            
+
             <div className="border-t pt-3">
               <div className="flex items-center gap-2 mb-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -720,9 +1060,9 @@ function ConfirmationStep({
               </div>
               <p className="text-sm">{formData.address || "Alamat lengkap belum diisi"}</p>
               {formData.gpsLink && (
-                <a 
-                  href={formData.gpsLink} 
-                  target="_blank" 
+                <a
+                  href={formData.gpsLink}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-blue-500 hover:underline inline-flex items-center gap-1 mt-1"
                 >
@@ -731,19 +1071,19 @@ function ConfirmationStep({
                 </a>
               )}
             </div>
-            
+
             <div className="border-t pt-3">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">Jadwal:</span>
               </div>
               <p className="text-sm">
-                {formData.date ? new Date(formData.date).toLocaleDateString('id-ID', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                }) : "Tanggal belum dipilih"} • {formData.time || "Waktu belum dipilih"}
+                {formData.date ? new Date(formData.date).toLocaleDateString('id-ID', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                }) : "Tanggal belum dipilih"} • {formatTimeForDisplay()}
               </p>
             </div>
           </div>
@@ -784,9 +1124,9 @@ function ConfirmationStep({
               <div className="flex justify-between">
                 <span>Biaya Transaksi</span>
                 <span>
-                  {selectedPayment ? 
-                    `Rp ${PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID') || '0'}` : 
-                    "Pilih metode pembayaran"
+                  {selectedPayment ?
+                    `Rp ${PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID') || '0'}` :
+                    "0"
                   }
                 </span>
               </div>
@@ -812,9 +1152,9 @@ function ConfirmationStep({
               <CreditCard className="h-5 w-5" />
               <span>Pilih Metode Pembayaran</span>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowPaymentOptions(!showPaymentOptions)}
             >
               {selectedPayment ? 'Ubah' : 'Pilih'}
@@ -831,8 +1171,8 @@ function ConfirmationStep({
                     Biaya Transaksi: Rp {PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID')}
                   </p>
                 </div>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="sm"
                   onClick={() => setShowPaymentOptions(true)}
                 >
@@ -843,8 +1183,8 @@ function ConfirmationStep({
           ) : (
             <div className="mb-6 p-4 border-2 border-dashed rounded-lg text-center">
               <p className="text-muted-foreground">Belum memilih metode pembayaran</p>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="mt-2"
                 onClick={() => setShowPaymentOptions(true)}
               >
@@ -966,10 +1306,10 @@ function ConfirmationStep({
                       </Button>
                     </div>
                   </div>
-                  
+
                   <div className="overflow-y-auto max-h-[60vh] p-6">
-                    <RadioGroup 
-                      value={selectedPayment} 
+                    <RadioGroup
+                      value={selectedPayment}
                       onValueChange={(value) => {
                         setSelectedPayment(value);
                         if (value !== "debit-credit") {
@@ -995,7 +1335,7 @@ function ConfirmationStep({
                             <ChevronDown className="h-4 w-4" />
                           )}
                         </button>
-                        
+
                         <AnimatePresence>
                           {expandedSections.ewallet && (
                             <motion.div
@@ -1009,14 +1349,13 @@ function ConfirmationStep({
                                 {paymentMethods.ewallet.map((method) => (
                                   <label
                                     key={method.id}
-                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
                                       <RadioGroupItem value={method.id} id={method.id} />
                                       <div className="flex items-center gap-2">
-                                        <div 
+                                        <div
                                           className="w-8 h-8 rounded-full flex items-center justify-center"
                                           style={{ backgroundColor: method.color }}
                                         >
@@ -1053,7 +1392,7 @@ function ConfirmationStep({
                             <ChevronDown className="h-4 w-4" />
                           )}
                         </button>
-                        
+
                         <AnimatePresence>
                           {expandedSections.va && (
                             <motion.div
@@ -1067,14 +1406,13 @@ function ConfirmationStep({
                                 {paymentMethods.va.map((method) => (
                                   <label
                                     key={method.id}
-                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
                                       <RadioGroupItem value={method.id} id={method.id} />
                                       <div className="flex items-center gap-2">
-                                        <div 
+                                        <div
                                           className="w-8 h-8 rounded-full flex items-center justify-center"
                                           style={{ backgroundColor: method.color }}
                                         >
@@ -1111,7 +1449,7 @@ function ConfirmationStep({
                             <ChevronDown className="h-4 w-4" />
                           )}
                         </button>
-                        
+
                         <AnimatePresence>
                           {expandedSections.card && (
                             <motion.div
@@ -1125,14 +1463,13 @@ function ConfirmationStep({
                                 {paymentMethods.card.map((method) => (
                                   <label
                                     key={method.id}
-                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
                                       <RadioGroupItem value={method.id} id={method.id} />
                                       <div className="flex items-center gap-2">
-                                        <div 
+                                        <div
                                           className="w-8 h-8 rounded-full flex items-center justify-center"
                                           style={{ backgroundColor: method.color }}
                                         >
@@ -1169,7 +1506,7 @@ function ConfirmationStep({
                             <ChevronDown className="h-4 w-4" />
                           )}
                         </button>
-                        
+
                         <AnimatePresence>
                           {expandedSections.qris && (
                             <motion.div
@@ -1183,14 +1520,13 @@ function ConfirmationStep({
                                 {paymentMethods.qris.map((method) => (
                                   <label
                                     key={method.id}
-                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
                                       <RadioGroupItem value={method.id} id={method.id} />
                                       <div className="flex items-center gap-2">
-                                        <div 
+                                        <div
                                           className="w-8 h-8 rounded-full flex items-center justify-center"
                                           style={{ backgroundColor: method.color }}
                                         >
@@ -1227,7 +1563,7 @@ function ConfirmationStep({
                             <ChevronDown className="h-4 w-4" />
                           )}
                         </button>
-                        
+
                         <AnimatePresence>
                           {expandedSections.cash && (
                             <motion.div
@@ -1241,14 +1577,13 @@ function ConfirmationStep({
                                 {paymentMethods.cash.map((method) => (
                                   <label
                                     key={method.id}
-                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                      selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
                                       <RadioGroupItem value={method.id} id={method.id} />
                                       <div className="flex items-center gap-2">
-                                        <div 
+                                        <div
                                           className="w-8 h-8 rounded-full flex items-center justify-center"
                                           style={{ backgroundColor: method.color }}
                                         >
@@ -1335,7 +1670,7 @@ function ServiceSpecificFormWithPrice({ category, formData, setFormData }: { cat
   switch (category) {
     case "ac":
       return <ACServiceForm formData={formData} setFormData={setFormData} />;
-    case "listrik":
+    case "electrical":
       return <ElectricalServiceForm formData={formData} setFormData={setFormData} />;
     case "cleaning":
       return <CleaningServiceForm formData={formData} setFormData={setFormData} />;
@@ -1380,14 +1715,26 @@ function PriceSummary({ totalPrice }: { totalPrice: number }) {
 
 function ACServiceForm({ formData, setFormData }: any) {
   const totalPrice = useMemo(() => {
+    const acServices = formData.acServices || [];
     let total = 0;
-    if (formData.serviceType && PRICES.ac[formData.serviceType as keyof typeof PRICES.ac]) {
-      const servicePrice = PRICES.ac[formData.serviceType as keyof typeof PRICES.ac].base;
-      const count = parseInt(formData.acCount) || 1;
-      total = servicePrice * count;
-    }
+    acServices.forEach((service: string) => {
+      if (service && PRICES.ac[service as keyof typeof PRICES.ac]) {
+        const servicePrice = PRICES.ac[service as keyof typeof PRICES.ac].base;
+        const count = parseInt(formData.acCount) || 1;
+        total += servicePrice * count;
+      }
+    });
     return total;
-  }, [formData.serviceType, formData.acCount]);
+  }, [formData.acServices, formData.acCount]);
+
+  const handleServiceChange = (serviceId: string, checked: boolean) => {
+    const current = formData.acServices || [];
+    if (checked) {
+      setFormData({ ...formData, acServices: [...current, serviceId] });
+    } else {
+      setFormData({ ...formData, acServices: current.filter((i: string) => i !== serviceId) });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1395,11 +1742,15 @@ function ACServiceForm({ formData, setFormData }: any) {
         <h3 className="text-lg font-semibold">Detail Layanan AC</h3>
         <div className="space-y-2">
           <Label>Jenis Layanan *</Label>
-          <RadioGroup onValueChange={(value) => setFormData({ ...formData, serviceType: value })}>
+          <div className="space-y-2">
             {Object.entries(PRICES.ac).map(([key, value]) => (
               <div key={key} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value={key} id={key} />
+                  <Checkbox
+                    id={key}
+                    checked={(formData.acServices || []).includes(key)}
+                    onCheckedChange={(checked) => handleServiceChange(key, checked as boolean)}
+                  />
                   <Label htmlFor={key} className="font-normal cursor-pointer">
                     {value.label}
                   </Label>
@@ -1409,7 +1760,7 @@ function ACServiceForm({ formData, setFormData }: any) {
                 </span>
               </div>
             ))}
-          </RadioGroup>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -1483,6 +1834,7 @@ function ElectricalServiceForm({ formData, setFormData }: any) {
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id={item.toLowerCase().replace(/\s/g, "-")}
+                    checked={(formData.electricalWork || []).includes(item)}
                     onCheckedChange={(checked) => {
                       const current = formData.electricalWork || [];
                       if (checked) {
@@ -1544,12 +1896,24 @@ function ElectricalServiceForm({ formData, setFormData }: any) {
 
 function CleaningServiceForm({ formData, setFormData }: any) {
   const totalPrice = useMemo(() => {
-    if (!formData.cleaningType) return 0;
-    const basePrice = PRICES.cleaning[formData.cleaningType as keyof typeof PRICES.cleaning]?.base || 0;
-    const areaSize = parseInt(formData.areaSize) || 0;
-    const pricePerSqm = basePrice / 50;
-    return Math.round(pricePerSqm * areaSize);
-  }, [formData.cleaningType, formData.areaSize]);
+    const cleaningServices = formData.cleaningServices || [];
+    let total = 0;
+    cleaningServices.forEach((service: string) => {
+      if (service && PRICES.cleaning[service as keyof typeof PRICES.cleaning]) {
+        total += PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.base || 0;
+      }
+    });
+    return total;
+  }, [formData.cleaningServices]);
+
+  const handleServiceChange = (serviceId: string, checked: boolean) => {
+    const current = formData.cleaningServices || [];
+    if (checked) {
+      setFormData({ ...formData, cleaningServices: [...current, serviceId] });
+    } else {
+      setFormData({ ...formData, cleaningServices: current.filter((i: string) => i !== serviceId) });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1557,21 +1921,25 @@ function CleaningServiceForm({ formData, setFormData }: any) {
         <h3 className="text-lg font-semibold">Detail Layanan Pembersihan</h3>
         <div className="space-y-2">
           <Label>Jenis Layanan *</Label>
-          <RadioGroup onValueChange={(value) => setFormData({ ...formData, cleaningType: value })}>
+          <div className="space-y-2">
             {Object.entries(PRICES.cleaning).map(([key, value]) => (
               <div key={key} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value={key} id={key} />
-                  <Label htmlFor={key} className="font-normal cursor-pointer">
+                  <Checkbox
+                    id={`cleaning-${key}`}
+                    checked={(formData.cleaningServices || []).includes(key)}
+                    onCheckedChange={(checked) => handleServiceChange(key, checked as boolean)}
+                  />
+                  <Label htmlFor={`cleaning-${key}`} className="font-normal cursor-pointer">
                     {value.label}
                   </Label>
                 </div>
                 <span className="text-sm font-semibold text-primary">
-                  Mulai Rp {value.base.toLocaleString('id-ID')}
+                  Rp {value.base.toLocaleString('id-ID')}
                 </span>
               </div>
             ))}
-          </RadioGroup>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -1593,6 +1961,7 @@ function CleaningServiceForm({ formData, setFormData }: any) {
           <Input
             id="areaSize"
             type="number"
+            min="1"
             placeholder="Contoh: 50"
             onChange={(e) => setFormData({ ...formData, areaSize: e.target.value })}
           />
@@ -1634,6 +2003,7 @@ function PlumbingServiceForm({ formData, setFormData }: any) {
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id={item.toLowerCase().replace(/\s/g, "-")}
+                    checked={(formData.plumbingIssues || []).includes(item)}
                     onCheckedChange={(checked) => {
                       const current = formData.plumbingIssues || [];
                       if (checked) {
@@ -1678,10 +2048,23 @@ function PlumbingServiceForm({ formData, setFormData }: any) {
 function SedotWCServiceForm({ formData, setFormData }: any) {
   const totalPrice = useMemo(() => {
     const services = formData.sedotWCServices || [];
-    return services.reduce((sum: number, service: string) => {
-      return sum + (PRICES.sedotWC[service as keyof typeof PRICES.sedotWC] || 0);
-    }, 0);
+    let total = 0;
+    services.forEach((service: string) => {
+      if (service && PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]) {
+        total += PRICES.sedotWC[service as keyof typeof PRICES.sedotWC].base;
+      }
+    });
+    return total;
   }, [formData.sedotWCServices]);
+
+  const handleServiceChange = (serviceId: string, checked: boolean) => {
+    const current = formData.sedotWCServices || [];
+    if (checked) {
+      setFormData({ ...formData, sedotWCServices: [...current, serviceId] });
+    } else {
+      setFormData({ ...formData, sedotWCServices: current.filter((i: string) => i !== serviceId) });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1690,72 +2073,24 @@ function SedotWCServiceForm({ formData, setFormData }: any) {
         <div className="space-y-2">
           <Label>Jenis Layanan *</Label>
           <div className="space-y-2">
-            {Object.entries(PRICES.sedotWC).map(([item, price]) => (
-              <div key={item} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
+            {Object.entries(PRICES.sedotWC).map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
                 <div className="flex items-center space-x-2">
                   <Checkbox
-                    id={`sedot-wc-${item.toLowerCase().replace(/\s/g, "-")}`}
-                    onCheckedChange={(checked) => {
-                      const current = formData.sedotWCServices || [];
-                      if (checked) {
-                        setFormData({ ...formData, sedotWCServices: [...current, item] });
-                      } else {
-                        setFormData({ ...formData, sedotWCServices: current.filter((i: string) => i !== item) });
-                      }
-                    }}
+                    id={`sedot-wc-${key}`}
+                    checked={(formData.sedotWCServices || []).includes(key)}
+                    onCheckedChange={(checked) => handleServiceChange(key, checked as boolean)}
                   />
-                  <Label
-                    htmlFor={`sedot-wc-${item.toLowerCase().replace(/\s/g, "-")}`}
-                    className="font-normal cursor-pointer"
-                  >
-                    {item}
+                  <Label htmlFor={`sedot-wc-${key}`} className="font-normal cursor-pointer">
+                    {value.label}
                   </Label>
                 </div>
                 <span className="text-sm font-semibold text-primary">
-                  Rp {price.toLocaleString('id-ID')}
+                  Rp {value.base.toLocaleString('id-ID')}
                 </span>
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="wcCount">Jumlah WC/Septic Tank *</Label>
-          <Input
-            id="wcCount"
-            type="number"
-            min="1"
-            placeholder="Jumlah WC"
-            onChange={(e) => setFormData({ ...formData, wcCount: e.target.value })}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="tankType">Tipe Septic Tank *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, tankType: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih tipe" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="standard">Standard</SelectItem>
-              <SelectItem value="biotech">Biotech</SelectItem>
-              <SelectItem value="traditional">Konvensional</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="accessibility">Akses Truk *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, accessibility: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih kondisi akses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="easy">Mudah (langsung ke lokasi)</SelectItem>
-              <SelectItem value="moderate">Sedang (perlu selang tambahan)</SelectItem>
-              <SelectItem value="difficult">Sulit (gang sempit)</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
@@ -1784,6 +2119,7 @@ function GardenServiceForm({ formData, setFormData }: any) {
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id={item.toLowerCase().replace(/\s/g, "-")}
+                    checked={(formData.gardenServices || []).includes(item)}
                     onCheckedChange={(checked) => {
                       const current = formData.gardenServices || [];
                       if (checked) {
@@ -1856,6 +2192,7 @@ function FurnitureServiceForm({ formData, setFormData }: any) {
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id={item.toLowerCase().replace(/\s/g, "-")}
+                    checked={(formData.furnitureTypes || []).includes(item)}
                     onCheckedChange={(checked) => {
                       const current = formData.furnitureTypes || [];
                       if (checked) {
