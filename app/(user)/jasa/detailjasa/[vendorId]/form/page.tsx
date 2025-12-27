@@ -18,7 +18,7 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check } from "lucide-react";
+import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Vendors } from "@/app/data/dataVendor";
 import { useParams, useRouter } from "next/navigation";
@@ -122,6 +122,8 @@ export default function VendorFormPage() {
   });
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [initialOrderId, setInitialOrderId] = useState<string | null>(null);
+  const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Load user profile saat component mount
   useEffect(() => {
@@ -317,51 +319,60 @@ export default function VendorFormPage() {
       }
     }
 
-    // Update data pesanan di localStorage
-    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    const updatedOrders = existingOrders.map((order: any) => {
-      if (order.id === initialOrderId) {
-        const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-        const total = calculateTotalPrice();
-        
-        return {
-          ...order,
-          paymentMethod: selectedPayment,
-          paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
-          status: "diproses",
-          statusColor: "bg-blue-100 text-blue-800",
-          totalPrice: total,
-          paymentDetails: {
-            ...order.paymentDetails,
-            transactionFee: transactionFee,
-            total: total
-          },
-          orderHistory: [
-            ...order.orderHistory,
-            { 
-              status: "Pembayaran Diterima", 
-              date: new Date().toLocaleDateString('id-ID', { 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
-              }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              }) 
-            }
-          ]
-        };
-      }
-      return order;
-    });
-    
-    localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+    setIsProcessingPayment(true);
 
-    toast.success("Pembayaran berhasil! Redirect ke riwayat pemesanan...");
-
-    // Redirect ke riwayat pemesanan setelah delay
+    // Simulasi proses pembayaran
     setTimeout(() => {
-      router.push('/riwayat_pemesanan');
+      // Update data pesanan di localStorage
+      const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+      const updatedOrders = existingOrders.map((order: any) => {
+        if (order.id === initialOrderId) {
+          const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
+          const total = calculateTotalPrice();
+          
+          return {
+            ...order,
+            paymentMethod: selectedPayment,
+            paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
+            status: "diproses",
+            statusColor: "bg-blue-100 text-blue-800",
+            totalPrice: total,
+            paymentDetails: {
+              ...order.paymentDetails,
+              transactionFee: transactionFee,
+              total: total
+            },
+            orderHistory: [
+              ...order.orderHistory,
+              { 
+                status: "Pembayaran Diterima", 
+                date: new Date().toLocaleDateString('id-ID', { 
+                  day: 'numeric', 
+                  month: 'long', 
+                  year: 'numeric' 
+                }) + " - " + new Date().toLocaleTimeString('id-ID', { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                }) 
+              }
+            ]
+          };
+        }
+        return order;
+      });
+      
+      localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+
+      setIsProcessingPayment(false);
+      
+      // Tampilkan popup pembayaran berhasil
+      setShowPaymentSuccessModal(true);
+      
+      // Setelah 3 detik, redirect ke riwayat pemesanan
+      setTimeout(() => {
+        setShowPaymentSuccessModal(false);
+        router.push('/riwayat_pemesanan');
+      }, 3000);
     }, 1500);
   };
 
@@ -616,11 +627,12 @@ export default function VendorFormPage() {
             totalPrice={totalPrice}
             onBack={() => setCurrentStep('form')}
             onConfirm={handleFinalSubmit}
+            isProcessingPayment={isProcessingPayment}
           />
         )}
       </motion.main>
 
-      {/* Modal Sukses */}
+      {/* Modal Sukses Ajukan Pemesanan */}
       <AnimatePresence>
         {showSuccessModal && (
           <motion.div
@@ -644,6 +656,41 @@ export default function VendorFormPage() {
               <p className="text-gray-600 mb-6">
                 Pesanan Anda telah berhasil diajukan dan tersimpan di riwayat pemesanan. 
                 Silakan lanjutkan ke pembayaran.
+              </p>
+              <div className="flex justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Sukses Pembayaran */}
+      <AnimatePresence>
+        {showPaymentSuccessModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                <Check className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Pembayaran Berhasil!
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Pembayaran Anda telah berhasil diproses. Pesanan Anda sekarang dalam proses pengerjaan.
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                Anda akan diarahkan ke halaman riwayat pemesanan...
               </p>
               <div className="flex justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
@@ -935,7 +982,8 @@ function ConfirmationStep({
   formatExpiryDate,
   totalPrice,
   onBack,
-  onConfirm
+  onConfirm,
+  isProcessingPayment
 }: any) {
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -1149,7 +1197,7 @@ function ConfirmationStep({
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
+              <CreditCardIcon className="h-5 w-5" />
               <span>Pilih Metode Pembayaran</span>
             </div>
             <Button
@@ -1649,9 +1697,16 @@ function ConfirmationStep({
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
                 onClick={onConfirm}
-                disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv))}
+                disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv)) || isProcessingPayment}
               >
-                Bayar Sekarang
+                {isProcessingPayment ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Memproses...
+                  </>
+                ) : (
+                  'Bayar Sekarang'
+                )}
               </Button>
             </div>
 

@@ -87,7 +87,7 @@ export function LoginForm({
       
       // Validasi dummy - bisa diganti dengan API call
       const dummyAdminCredentials = [
-        { email: "Sejasa@gmail.com", password: "admin1234" },
+        { email: "Marijasa@gmail.com", password: "admin1234" },
       ]
       
       const isValid = dummyAdminCredentials.some(

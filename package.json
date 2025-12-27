@@ -36,6 +36,7 @@
     "core-js": "^3.46.0",
     "date-fns": "^4.1.0",
     "emoji-picker-react": "^4.16.1",
+    "groq-sdk": "^0.37.0",
     "i18next": "^25.6.0",
     "i18next-browser-languagedetector": "^8.2.0",
     "input-otp": "^1.4.2",

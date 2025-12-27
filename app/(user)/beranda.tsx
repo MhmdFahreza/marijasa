@@ -22,6 +22,7 @@ import {
 import { ContainerTextFlip } from "@/app/components/ui/container-text-flip";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { AnimatePresence } from "motion/react";
+import Chatbot from "@/app/(user)/chatbot/Chatbot";
 
 type ContentCategoryProps = {
   sections?: ContentSection[];
@@ -65,7 +66,7 @@ export function CardHoverEffect() {
             >
               {/* Background effect */}
               <div className="absolute inset-0 bg-gradient-to-br from-white to-emerald-50 dark:from-neutral-900 dark:to-emerald-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              
+
               <div className="relative z-10">
                 {/* Icon container */}
                 <div className="mb-3 sm:mb-4">
@@ -481,6 +482,8 @@ export default function Beranda() {
       </motion.div>
 
       <SiteFooter />
+
+      <Chatbot />
 
       {/* Loader untuk transisi halaman */}
       <AnimatePresence>
