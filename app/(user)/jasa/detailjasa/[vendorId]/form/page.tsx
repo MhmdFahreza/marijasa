@@ -73,7 +73,6 @@ const PRICES = {
   }
 };
 
-// Biaya transaksi untuk setiap metode pembayaran
 const PAYMENT_FEES = {
   "dana": 1440,
   "ovo": 1440,
@@ -88,7 +87,6 @@ const PAYMENT_FEES = {
   "tunai": 0
 };
 
-// Biaya layanan tetap
 const SERVICE_FEE = 10000;
 
 function getServiceCategory(tags: string[]): string {
@@ -125,15 +123,12 @@ export default function VendorFormPage() {
   const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // Load user profile saat component mount
   useEffect(() => {
     setMounted(true);
 
-    // Load profile data dari localStorage
     const savedProfile = localStorage.getItem("userProfile");
     if (savedProfile) {
       const profile = JSON.parse(savedProfile);
-      // Auto-fill form dengan data dari profile
       setFormData({
         name: profile.name || "",
         email: profile.email || "",
@@ -161,7 +156,6 @@ export default function VendorFormPage() {
     handleNavigation(`/jasa/detailjasa/${vendorId}`);
   };
 
-  // Handler untuk menggunakan lokasi dari profile
   const handleUseProfileLocation = () => {
     const savedProfile = localStorage.getItem("userProfile");
     if (savedProfile) {
@@ -180,7 +174,6 @@ export default function VendorFormPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validasi waktu
     const hour = formData.hour || "00";
     const minute = formData.minute || "00";
 
@@ -194,10 +187,8 @@ export default function VendorFormPage() {
       return;
     }
 
-    // Format waktu menjadi HH:MM
     const formattedTime = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
 
-    // Hitung harga service
     const servicePrice = calculateServicePrice();
     const orderId = `ORD-${Date.now().toString().slice(-6)}`;
     setInitialOrderId(orderId);
@@ -205,7 +196,7 @@ export default function VendorFormPage() {
     const vendorId = params.vendorId as string;
     const vendor = Vendors.find((v) => v.id === vendorId);
 
-    // Buat data pesanan awal
+    // Buat data pesanan untuk user
     const initialOrderData = {
       id: orderId,
       orderId: orderId,
@@ -272,14 +263,95 @@ export default function VendorFormPage() {
       vendorNotes: ""
     };
 
-    // Simpan ke localStorage
+    // Simpan pesanan user
     const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
     localStorage.setItem('userOrders', JSON.stringify([...existingOrders, initialOrderData]));
 
-    // Tampilkan popup sukses
+    // LANGSUNG SIMPAN KE MITRA (sebelum pembayaran)
+    const buildServiceDetails = (category: string, formData: any, servicePrice: number) => {
+      switch (category) {
+        case 'ac':
+          return {
+            serviceType: formData.acServices?.[0] || "instalasi",
+            acType: formData.acType || "split",
+            acCount: formData.acCount || 1,
+            acPk: formData.acPk || "1",
+            totalPrice: servicePrice
+          };
+        case 'cleaning':
+          return {
+            cleaningType: formData.cleaningServices?.[0] || "general",
+            propertyType: formData.propertyType || "house",
+            areaSize: formData.areaSize || 0,
+            rooms: formData.rooms || 0,
+            totalPrice: servicePrice
+          };
+        case 'electrical':
+          return {
+            electricalWork: formData.electricalWork || [],
+            buildingType: formData.buildingType || "rumah",
+            powerCapacity: formData.powerCapacity || "2200",
+            totalPrice: servicePrice
+          };
+        case 'plumbing':
+          return {
+            plumbingIssues: formData.plumbingIssues || [],
+            urgency: formData.urgency || "normal",
+            totalPrice: servicePrice
+          };
+        case 'sedot-wc':
+          return {
+            serviceType: formData.sedotWCServices?.[0] || "Penyedotan Septictank",
+            totalPrice: servicePrice
+          };
+        case 'taman':
+          return {
+            gardenServices: formData.gardenServices || [],
+            gardenSize: formData.gardenSize || 0,
+            gardenStyle: formData.gardenStyle || "minimalis",
+            totalPrice: servicePrice
+          };
+        case 'furniture':
+          return {
+            furnitureTypes: formData.furnitureTypes || [],
+            material: formData.material || "kayu-jati",
+            finishing: formData.finishing || "natural",
+            dimensions: formData.dimensions || "",
+            totalPrice: servicePrice
+          };
+        default:
+          return {
+            totalPrice: servicePrice
+          };
+      }
+    };
+
+    const serviceCategory = getServiceCategory(vendor?.tags || []);
+    const serviceDetails = buildServiceDetails(serviceCategory, formData, servicePrice);
+
+    const newOrderForMitra = {
+      id: orderId,
+      customerName: formData.name || "",
+      customerEmail: formData.email || "",
+      customerPhone: formData.phone || "",
+      customerAddress: formData.address || "",
+      gpsLink: formData.gpsLink || "",
+      vendorId: vendorId,
+      serviceCategory: serviceCategory,
+      serviceDetails: serviceDetails,
+      workDate: formData.date || new Date().toISOString().split('T')[0],
+      workTime: formattedTime,
+      additionalNotes: formData.notes || "",
+      status: "pending", // Status pending (belum dibayar)
+      orderDate: new Date().toISOString().split('T')[0],
+      paymentStatus: "unpaid" // Belum dibayar
+    };
+
+    const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
+    localStorage.setItem('allOrders', JSON.stringify([...allOrders, newOrderForMitra]));
+
     setShowSuccessModal(true);
 
-    // Setelah 2 detik, pindah ke konfirmasi
     setTimeout(() => {
       setShowSuccessModal(false);
       setCurrentStep('confirmation');
@@ -292,27 +364,23 @@ export default function VendorFormPage() {
       return;
     }
 
-    // Validasi untuk kartu debit/kredit
     if (selectedPayment === "debit-credit") {
       if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
         toast.error("Silakan lengkapi data kartu debit/kredit.");
         return;
       }
 
-      // Validasi format nomor kartu (minimal 12 digit)
       const cleanedCardNumber = cardData.cardNumber.replace(/\s/g, '');
       if (cleanedCardNumber.length < 12 || !/^\d+$/.test(cleanedCardNumber)) {
         toast.error("Nomor kartu tidak valid. Harus minimal 12 digit angka.");
         return;
       }
 
-      // Validasi format tanggal kadaluarsa (MM/YY)
       if (!/^\d{2}\/\d{2}$/.test(cardData.expiryDate)) {
         toast.error("Format masa berlaku tidak valid. Gunakan format MM/YY (contoh: 01/24).");
         return;
       }
 
-      // Validasi CVV (3-4 digit)
       if (!/^\d{3,4}$/.test(cardData.cvv)) {
         toast.error("CVV tidak valid. Harus 3 atau 4 digit angka.");
         return;
@@ -321,9 +389,8 @@ export default function VendorFormPage() {
 
     setIsProcessingPayment(true);
 
-    // Simulasi proses pembayaran
     setTimeout(() => {
-      // Update data pesanan di localStorage
+      // Update pesanan user: status jadi diproses
       const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
       const updatedOrders = existingOrders.map((order: any) => {
         if (order.id === initialOrderId) {
@@ -363,99 +430,24 @@ export default function VendorFormPage() {
 
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
-      // Simpan ke allOrders untuk dilihat mitra
+      // Update pesanan mitra: status jadi in-progress, paymentStatus jadi paid
       const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-
-      // Build service details untuk mitra
-      const buildServiceDetails = (category: string, formData: any, servicePrice: number) => {
-        switch (category) {
-          case 'ac':
-            return {
-              serviceType: formData.acServices?.[0] || "instalasi",
-              acType: formData.acType || "split",
-              acCount: formData.acCount || 1,
-              acPk: formData.acPk || "1",
-              totalPrice: servicePrice
-            };
-          case 'cleaning':
-            return {
-              cleaningType: formData.cleaningServices?.[0] || "general",
-              propertyType: formData.propertyType || "house",
-              areaSize: formData.areaSize || 0,
-              rooms: formData.rooms || 0,
-              totalPrice: servicePrice
-            };
-          case 'electrical':
-            return {
-              electricalWork: formData.electricalWork || [],
-              buildingType: formData.buildingType || "rumah",
-              powerCapacity: formData.powerCapacity || "2200",
-              totalPrice: servicePrice
-            };
-          case 'plumbing':
-            return {
-              plumbingIssues: formData.plumbingIssues || [],
-              urgency: formData.urgency || "normal",
-              totalPrice: servicePrice
-            };
-          case 'sedot-wc':
-            return {
-              serviceType: formData.sedotWCServices?.[0] || "Penyedotan Septictank",
-              totalPrice: servicePrice
-            };
-          case 'taman':
-            return {
-              gardenServices: formData.gardenServices || [],
-              gardenSize: formData.gardenSize || 0,
-              gardenStyle: formData.gardenStyle || "minimalis",
-              totalPrice: servicePrice
-            };
-          case 'furniture':
-            return {
-              furnitureTypes: formData.furnitureTypes || [],
-              material: formData.material || "kayu-jati",
-              finishing: formData.finishing || "natural",
-              dimensions: formData.dimensions || "",
-              totalPrice: servicePrice
-            };
-          default:
-            return {
-              totalPrice: servicePrice
-            };
+      const updatedAllOrders = allOrders.map((order: any) => {
+        if (order.id === initialOrderId) {
+          return {
+            ...order,
+            status: "in-progress",
+            paymentStatus: "paid"
+          };
         }
-      };
+        return order;
+      });
 
-      const vendorId = params.vendorId as string;
-      const vendor = Vendors.find((v) => v.id === vendorId);
-      const serviceCategory = getServiceCategory(vendor?.tags || []);
-      const serviceDetails = buildServiceDetails(serviceCategory, formData, servicePrice);
-
-      const newOrderForMitra = {
-        id: initialOrderId,
-        customerName: formData.name || "",
-        customerEmail: formData.email || "",
-        customerPhone: formData.phone || "",
-        customerAddress: formData.address || "",
-        gpsLink: formData.gpsLink || "",
-        vendorId: vendorId,
-        serviceCategory: serviceCategory,
-        serviceDetails: serviceDetails,
-        workDate: formData.date || new Date().toISOString().split('T')[0],
-        workTime: `${formData.hour || "00"}:${formData.minute || "00"}`,
-        additionalNotes: formData.notes || "",
-        status: "in-progress", // Status awal untuk mitra
-        orderDate: new Date().toISOString().split('T')[0],
-        paymentStatus: "paid"
-      };
-
-      localStorage.setItem('allOrders', JSON.stringify([...allOrders, newOrderForMitra]));
+      localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
 
       setIsProcessingPayment(false);
-
-      // Tampilkan popup pembayaran berhasil
       setShowPaymentSuccessModal(true);
 
-      // Setelah 3 detik, redirect ke riwayat pemesanan
       setTimeout(() => {
         setShowPaymentSuccessModal(false);
         router.push('/riwayat_pemesanan');
@@ -538,14 +530,12 @@ export default function VendorFormPage() {
     return servicePrice + SERVICE_FEE + paymentFee;
   };
 
-  // Format nomor kartu dengan spasi setiap 4 digit
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
     const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
-    return formatted.substring(0, 19); // Maksimal 16 digit + 3 spasi
+    return formatted.substring(0, 19);
   };
 
-  // Format tanggal kadaluarsa (MM/YY)
   const formatExpiryDate = (value: string) => {
     const cleaned = value.replace(/\D/g, '');
     if (cleaned.length >= 2) {
@@ -554,7 +544,6 @@ export default function VendorFormPage() {
     return cleaned;
   };
 
-  // Helper function untuk mendapatkan deskripsi layanan
   const getServiceDescription = () => {
     const vendorId = params.vendorId as string;
     const vendor = Vendors.find((v) => v.id === vendorId);

@@ -592,7 +592,7 @@ export default function OrderHistoryPage() {
 
     // Simulasi proses pembatalan
     setTimeout(() => {
-      // Update data pesanan di localStorage
+      // Update data pesanan user di localStorage
       const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
       const updatedOrders = existingOrders.map((order: any) => {
         if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
@@ -622,6 +622,24 @@ export default function OrderHistoryPage() {
       });
 
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+
+      // ⭐ TAMBAHKAN KODE INI - Update status di mitra (allOrders)
+      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
+      const updatedAllOrders = allOrders.map((order: any) => {
+        if (order.id === selectedOrder.id) {
+          return {
+            ...order,
+            status: "rejected", // Status untuk mitra
+            cancellationReason: cancelReason,
+            cancelledBy: "user",
+            cancelledAt: new Date().toISOString()
+          };
+        }
+        return order;
+      });
+
+      localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
+      // ⭐ AKHIR KODE TAMBAHAN
 
       // Update state orders
       setOrders(prevOrders => prevOrders.map(order => {

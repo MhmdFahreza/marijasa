@@ -1,31 +1,32 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Breadcrumb, 
-  BreadcrumbItem, 
-  BreadcrumbLink, 
-  BreadcrumbList, 
-  BreadcrumbPage, 
-  BreadcrumbSeparator 
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator
 } from "@/app/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
-import { 
-  Clock, 
-  CheckCheck, 
-  MapPin, 
-  Calendar, 
-  User, 
-  Mail, 
+import {
+  Clock,
+  CheckCheck,
+  MapPin,
+  Calendar,
+  User,
+  Mail,
   Phone,
   Wrench,
   MessageSquare,
-  AlertCircle,
+  AlertCircle,  // ⭐ Pastikan ini ada untuk icon alert pembatalan
   ChevronLeft,
   ChevronRight,
-  Navigation
+  Navigation,
+  X  // ⭐ Pastikan ini ada untuk icon X di stats
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Separator } from "@/app/components/ui/separator";
@@ -42,7 +43,7 @@ const getServiceLabel = (category: string, details: any) => {
         bongkar: 'Bongkar Pasang AC'
       };
       return `${acServices[details.serviceType] || 'Layanan AC'} - ${details.acCount || 1} Unit ${details.acType || ''} ${details.acPk || ''} PK`;
-    
+
     case 'cleaning':
       const cleaningServices: Record<string, string> = {
         general: 'Pembersihan Rutin',
@@ -51,22 +52,22 @@ const getServiceLabel = (category: string, details: any) => {
         pindahan: 'Pembersihan Pindahan'
       };
       return `${cleaningServices[details.cleaningType] || 'Pembersihan'} - ${details.areaSize || 0} m² (${details.rooms || 0} ruangan)`;
-    
+
     case 'electrical':
       return `${details.electricalWork?.join(', ') || 'Pekerjaan Listrik'} - ${details.buildingType || ''} (${details.powerCapacity || ''} VA)`;
-    
+
     case 'plumbing':
       return `${details.plumbingIssues?.join(', ') || 'Pekerjaan Pipa'} - ${details.urgency === 'emergency' ? 'Darurat' : 'Normal'}`;
-    
+
     case 'garden':
       return `${details.gardenServices?.join(', ') || 'Layanan Taman'} - ${details.gardenSize || 0} m² (${details.gardenStyle || ''})`;
-    
+
     case 'furniture':
       return `${details.furnitureTypes?.join(', ') || 'Layanan Furniture'} - ${details.material || ''} (${details.finishing || ''})`;
-    
+
     case 'sedot-wc':
       return `${details.serviceType || 'Layanan Sedot WC'} - ${details.totalPrice ? `Rp ${details.totalPrice.toLocaleString('id-ID')}` : ''}`;
-    
+
     default:
       return 'Layanan Umum';
   }
@@ -100,25 +101,29 @@ export default function OrdersPage() {
         const savedOrders = localStorage.getItem('allOrders');
         if (savedOrders) {
           const parsedOrders = JSON.parse(savedOrders);
-          
+
           // Map status dari user ke status yang digunakan di mitra
           const mappedOrders = parsedOrders.map((order: any) => {
             let status = 'pending';
-            if (order.status === 'diproses' || order.status === 'in-progress') {
+
+            // ⭐ UPDATE MAPPING INI - tambahkan handling untuk rejected
+            if (order.status === 'pending') {
+              status = 'pending';
+            } else if (order.status === 'in-progress') {
               status = 'in-progress';
-            } else if (order.status === 'selesai' || order.status === 'completed') {
+            } else if (order.status === 'completed') {
               status = 'completed';
-            } else if (order.status === 'dibatalkan' || order.status === 'rejected') {
-              status = 'rejected';
+            } else if (order.status === 'rejected') {
+              status = 'rejected'; // ⭐ TAMBAHKAN INI
             }
-            
+
             return {
               ...order,
               status: status,
-              paymentStatus: order.paymentStatus || (order.paymentMethod !== 'Belum Dibayar' ? 'paid' : 'unpaid')
+              paymentStatus: order.paymentStatus || (order.status === 'pending' ? 'unpaid' : 'paid')
             };
           });
-          
+
           setOrders(mappedOrders);
         }
       } catch (error) {
@@ -128,17 +133,17 @@ export default function OrdersPage() {
     };
 
     loadOrders();
-    
-    // Tambahkan event listener untuk update real-time
+
+    // Event listener untuk update real-time
     const handleStorageChange = () => {
       loadOrders();
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
-    
+
     // Polling untuk update real-time (setiap 5 detik)
     const interval = setInterval(loadOrders, 5000);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
@@ -186,7 +191,7 @@ export default function OrdersPage() {
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       case 'in-progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'; // ⭐ TAMBAHKAN INI
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
   };
@@ -207,13 +212,13 @@ export default function OrdersPage() {
       case 'pending': return 'Menunggu Pembayaran';
       case 'in-progress': return 'Sedang Dikerjakan';
       case 'completed': return 'Selesai';
-      case 'rejected': return 'Dibatalkan';
+      case 'rejected': return 'Dibatalkan'; // ⭐ TAMBAHKAN INI
       default: return status;
     }
   };
 
   return (
-    <motion.div 
+    <motion.div
       className="min-h-screen bg-neutral-50 dark:bg-neutral-900 p-4 md:p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -235,7 +240,7 @@ export default function OrdersPage() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          
+
           <h1 className="text-2xl md:text-3xl font-bold text-neutral-900 dark:text-white mt-4">
             Manajemen Pesanan
           </h1>
@@ -319,7 +324,7 @@ export default function OrdersPage() {
                 <TabsTrigger value="in-progress" className="text-sm md:text-base">Dikerjakan</TabsTrigger>
                 <TabsTrigger value="completed" className="text-sm md:text-base">Selesai</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value={activeTab} className="mt-0">
                 {currentOrders.length === 0 ? (
                   <div className="text-center py-8">
@@ -330,8 +335,8 @@ export default function OrdersPage() {
                       Tidak ada pesanan
                     </h3>
                     <p className="text-neutral-600 dark:text-neutral-400">
-                      {activeTab === 'all' 
-                        ? 'Belum ada pesanan yang masuk' 
+                      {activeTab === 'all'
+                        ? 'Belum ada pesanan yang masuk'
                         : `Tidak ada pesanan dengan status ${getStatusLabel(activeTab).toLowerCase()}`
                       }
                     </p>
@@ -372,7 +377,7 @@ export default function OrdersPage() {
                                     {getServiceLabel(order.serviceCategory, order.serviceDetails)}
                                   </p>
                                 </div>
-                                
+
                                 <div className="text-right">
                                   <p className="text-2xl font-bold text-neutral-900 dark:text-white">
                                     Rp {order.serviceDetails.totalPrice?.toLocaleString('id-ID') || '0'}
@@ -391,7 +396,7 @@ export default function OrdersPage() {
                                   <User className="h-4 w-4" />
                                   Informasi Pelanggan
                                 </h4>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   <div className="space-y-3">
                                     <div className="flex items-center gap-2 p-2 bg-neutral-50 dark:bg-neutral-700/30 rounded">
@@ -416,20 +421,20 @@ export default function OrdersPage() {
                                       </div>
                                     </div>
                                   </div>
-                                  
+
                                   <div className="space-y-3">
                                     <div className="flex items-start gap-2 p-2 bg-neutral-50 dark:bg-neutral-700/30 rounded h-full">
                                       <MapPin className="h-4 w-4 text-neutral-500 mt-0.5 flex-shrink-0" />
                                       <div className="min-w-0">
                                         <span className="text-xs text-neutral-500 dark:text-neutral-400 block">Alamat Lengkap</span>
                                         <span className="text-sm">{order.customerAddress}</span>
-                                        
+
                                         {/* Tombol Google Maps */}
                                         {order.gpsLink && (
                                           <div className="mt-3">
-                                            <a 
-                                              href={order.gpsLink} 
-                                              target="_blank" 
+                                            <a
+                                              href={order.gpsLink}
+                                              target="_blank"
                                               rel="noopener noreferrer"
                                               className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors duration-200"
                                             >
@@ -453,7 +458,7 @@ export default function OrdersPage() {
                                   <Calendar className="h-4 w-4" />
                                   Jadwal Pengerjaan
                                 </h4>
-                                
+
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                                     <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center flex-shrink-0">
@@ -471,7 +476,7 @@ export default function OrdersPage() {
                                       </span>
                                     </div>
                                   </div>
-                                  
+
                                   <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                                     <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center flex-shrink-0">
                                       <Clock className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -499,8 +504,57 @@ export default function OrdersPage() {
                                 </div>
                               )}
 
+                              {/* Alasan Pembatalan */}
+                              {order.status === 'rejected' && order.cancellationReason && (
+                                <div className="mb-6">
+                                  <h4 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4" />
+                                    Alasan Pembatalan
+                                  </h4>
+                                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                                    <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                                      {order.cancellationReason}
+                                    </p>
+                                    {order.cancelledBy === 'user' && (
+                                      <div className="mt-2 flex items-center gap-2">
+                                        <User className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                        <p className="text-xs text-red-600 dark:text-red-400">
+                                          Dibatalkan oleh pelanggan pada {new Date(order.cancelledAt).toLocaleDateString('id-ID', {
+                                            day: 'numeric',
+                                            month: 'long',
+                                            year: 'numeric'
+                                          })} pukul {new Date(order.cancelledAt).toLocaleTimeString('id-ID', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Action Buttons */}
                               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                                {order.status === 'pending' && (
+                                  <div className="w-full">
+                                    <div className="mb-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                      <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                                        <span className="font-medium">Status:</span> Menunggu pembayaran dari pelanggan.
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-3">
+                                      <Button
+                                        onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                                      >
+                                        <MessageSquare className="h-4 w-4 mr-2" />
+                                        Chat dengan Pelanggan
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {order.status === 'in-progress' && (
                                   <div className="w-full">
                                     <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -529,7 +583,7 @@ export default function OrdersPage() {
                                     </div>
                                   </div>
                                 )}
-                                
+
                                 {order.status === 'completed' && (
                                   <div className="w-full space-y-3">
                                     <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
@@ -559,6 +613,16 @@ export default function OrdersPage() {
                                     </div>
                                   </div>
                                 )}
+
+                                {order.status === 'rejected' && (
+                                  <div className="w-full space-y-3">
+                                    <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20">
+                                      <p className="text-sm text-red-700 dark:text-red-300">
+                                        <span className="font-medium">Status:</span> Pesanan ini telah dibatalkan oleh pelanggan.
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </CardContent>
@@ -574,7 +638,7 @@ export default function OrdersPage() {
                     <div className="text-sm text-neutral-600 dark:text-neutral-400">
                       Menampilkan {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredOrders.length)} dari {filteredOrders.length} pesanan
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
@@ -585,7 +649,7 @@ export default function OrdersPage() {
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      
+
                       <div className="flex items-center gap-1">
                         {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                           // Tampilkan maksimal 5 nomor halaman
@@ -599,7 +663,7 @@ export default function OrdersPage() {
                           } else {
                             pageNumber = currentPage - 2 + i;
                           }
-                          
+
                           return (
                             <Button
                               key={pageNumber}
@@ -613,7 +677,7 @@ export default function OrdersPage() {
                           );
                         })}
                       </div>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"
