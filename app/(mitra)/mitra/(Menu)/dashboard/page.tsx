@@ -1,26 +1,26 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Breadcrumb, 
-  BreadcrumbItem, 
-  BreadcrumbLink, 
-  BreadcrumbList, 
-  BreadcrumbPage, 
-  BreadcrumbSeparator 
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator
 } from "@/app/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { 
-  Wallet, 
-  TrendingUp, 
-  TrendingDown, 
-  Calendar, 
-  User, 
-  CheckCircle, 
-  Clock, 
+import {
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  User,
+  CheckCircle,
+  Clock,
   AlertCircle,
   Download,
   CreditCard,
@@ -29,117 +29,39 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Filter,
-  MoreVertical,
   ChevronRight,
   RefreshCw,
   Plus,
   Check,
   X,
   Info,
-  Star
+  Star,
+  Lock
 } from 'lucide-react';
 import { Separator } from "@/app/components/ui/separator";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/app/components/ui/dropdown-menu";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
 } from "@/app/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/app/components/ui/tooltip";
 
-// Data dummy untuk statistik
-const initialStatData = {
-  balance: 12500000,
-  monthlyIncome: 4500000,
-  monthlyWithdrawal: 2000000,
-  pendingBalance: 3000000,
-  totalOrders: 45,
-  completedOrders: 38,
-  pendingOrders: 7,
-  averageRating: 4.8,
-  totalReviews: 128,
-  totalRevenue: 89000000
-};
-
-// Data dummy untuk history transaksi
-const initialTransactionHistory = [
-  {
-    id: "TRX-001",
-    type: "income",
-    amount: 1500000,
-    date: "2024-01-15 10:30:00",
-    description: "Pembayaran dari Budi Santoso",
-    customerName: "Budi Santoso",
-    orderId: "ORD-001",
-    service: "Instalasi AC",
-    status: "completed",
-    paymentMethod: "transfer_bank"
-  },
-  {
-    id: "TRX-002",
-    type: "withdrawal",
-    amount: 2000000,
-    date: "2024-01-14 14:20:00",
-    description: "Penarikan ke Bank BCA",
-    bankName: "BCA",
-    accountNumber: "1234567890",
-    status: "completed",
-    reference: "WD-20240114-001"
-  },
-  {
-    id: "TRX-003",
-    type: "income",
-    amount: 850000,
-    date: "2024-01-13 09:15:00",
-    description: "Pembayaran dari Sari Dewi",
-    customerName: "Sari Dewi",
-    orderId: "ORD-002",
-    service: "Pembersihan Rumah",
-    status: "completed",
-    paymentMethod: "gopay"
-  },
-  {
-    id: "TRX-004",
-    type: "income",
-    amount: 1200000,
-    date: "2024-01-12 16:45:00",
-    description: "Pembayaran dari Rudi Hartono",
-    customerName: "Rudi Hartono",
-    orderId: "ORD-003",
-    service: "Perbaikan Listrik",
-    status: "pending",
-    paymentMethod: "ovo"
-  },
-  {
-    id: "TRX-005",
-    type: "withdrawal",
-    amount: 1000000,
-    date: "2024-01-11 11:10:00",
-    description: "Penarikan ke Dana",
-    bankName: "Dana",
-    accountNumber: "081234567890",
-    status: "processing",
-    reference: "WD-20240111-001"
-  }
-];
-
-// Data dummy untuk bank/ewallet
+// Data dummy untuk metode pembayaran
 const paymentMethods = [
   { id: "bca", name: "BCA", type: "bank", accountNumber: "1234567890", accountName: "John Doe" },
   { id: "mandiri", name: "Mandiri", type: "bank", accountNumber: "0987654321", accountName: "John Doe" },
@@ -149,15 +71,15 @@ const paymentMethods = [
   { id: "dana", name: "Dana", type: "ewallet", accountNumber: "083456789012", accountName: "John Doe" }
 ];
 
-// Komponen WithdrawDialog yang terpisah
-const WithdrawDialog = ({ 
-  open, 
-  onOpenChange, 
-  balance, 
+// Komponen WithdrawDialog
+const WithdrawDialog = ({
+  open,
+  onOpenChange,
+  balance,
   onWithdraw,
-  loading 
-}: { 
-  open: boolean; 
+  loading
+}: {
+  open: boolean;
   onOpenChange: (open: boolean) => void;
   balance: number;
   onWithdraw: (amount: number, method: string) => void;
@@ -166,7 +88,6 @@ const WithdrawDialog = ({
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [selectedMethod, setSelectedMethod] = useState("");
 
-  // Calculate max withdrawal (90% of balance)
   const maxWithdrawal = Math.floor(balance * 0.9);
 
   const handleWithdraw = () => {
@@ -206,9 +127,8 @@ const WithdrawDialog = ({
             Tarik saldo Anda ke rekening bank atau e-wallet
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="flex-1 overflow-y-auto space-y-4 py-2 px-1">
-          {/* Saldo Info */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4">
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm text-neutral-600 dark:text-neutral-400">Saldo Tersedia</span>
@@ -229,25 +149,24 @@ const WithdrawDialog = ({
               </TooltipProvider>
             </div>
             <div className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">
-              {new Intl.NumberFormat('id-ID', { 
-                style: 'currency', 
+              {new Intl.NumberFormat('id-ID', {
+                style: 'currency',
                 currency: 'IDR',
-                minimumFractionDigits: 0 
+                minimumFractionDigits: 0
               }).format(balance)}
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-neutral-600 dark:text-neutral-400">Bisa ditarik:</span>
               <span className="font-semibold text-green-600 dark:text-green-400">
-                {new Intl.NumberFormat('id-ID', { 
-                  style: 'currency', 
+                {new Intl.NumberFormat('id-ID', {
+                  style: 'currency',
                   currency: 'IDR',
-                  minimumFractionDigits: 0 
+                  minimumFractionDigits: 0
                 }).format(maxWithdrawal)}
               </span>
             </div>
           </div>
-          
-          {/* Amount Input */}
+
           <div className="space-y-2">
             <Label htmlFor="amount" className="text-sm">Jumlah Penarikan</Label>
             <div className="relative">
@@ -307,8 +226,7 @@ const WithdrawDialog = ({
               </Button>
             </div>
           </div>
-          
-          {/* Payment Method */}
+
           <div className="space-y-2">
             <Label className="text-sm">Pilih Metode Penarikan</Label>
             <div className="max-h-60 overflow-y-auto border border-neutral-200 dark:border-neutral-700 rounded-lg p-2">
@@ -317,11 +235,10 @@ const WithdrawDialog = ({
                   <div key={method.id} className="flex items-center space-x-2 p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-md">
                     <RadioGroupItem value={method.id} id={method.id} />
                     <Label htmlFor={method.id} className="flex items-center gap-3 cursor-pointer flex-1">
-                      <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
-                        method.type === 'bank' 
-                          ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
-                          : 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
-                      }`}>
+                      <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${method.type === 'bank'
+                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
+                        : 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
+                        }`}>
                         {method.type === 'bank' ? (
                           <Banknote className="h-4 w-4" />
                         ) : (
@@ -341,8 +258,7 @@ const WithdrawDialog = ({
               </RadioGroup>
             </div>
           </div>
-          
-          {/* Fee Info */}
+
           <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3">
             <div className="flex items-start gap-2">
               <Info className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
@@ -356,7 +272,7 @@ const WithdrawDialog = ({
             </div>
           </div>
         </div>
-        
+
         <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t border-neutral-200 dark:border-neutral-700 mt-2">
           <Button
             variant="outline"
@@ -386,7 +302,7 @@ const WithdrawDialog = ({
   );
 };
 
-// Komponen Skeleton untuk loading
+// Komponen Skeleton
 const DashboardSkeleton = () => (
   <div className="space-y-6">
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -414,58 +330,183 @@ const DashboardSkeleton = () => (
 );
 
 export default function DashboardPage() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
-  const [statData, setStatData] = useState(initialStatData);
-  const [transactionHistory, setTransactionHistory] = useState(initialTransactionHistory);
+  const [statData, setStatData] = useState({
+    availableBalance: 0,
+    pendingBalance: 0,
+    monthlyIncome: 0,
+    monthlyWithdrawal: 0,
+    totalOrders: 0,
+    completedOrders: 0,
+    pendingOrders: 0,
+    inProgressOrders: 0,
+    averageRating: 0,
+    totalReviews: 0,
+    totalRevenue: 0
+  });
+  const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Fungsi untuk refresh data
-  const handleRefresh = () => {
-    setIsLoading(true);
-    
-    // Simulasi loading data baru
-    setTimeout(() => {
-      // Update dengan data baru (dalam implementasi nyata, ini akan fetching dari API)
-      setStatData(prev => ({
-        ...prev,
-        balance: prev.balance + Math.floor(Math.random() * 100000),
-        monthlyIncome: prev.monthlyIncome + Math.floor(Math.random() * 500000),
-        totalOrders: prev.totalOrders + Math.floor(Math.random() * 3)
-      }));
-      
-      // Add a new transaction for demo
-      const newTransaction = {
-        id: `TRX-${Date.now()}`,
-        type: "income",
-        amount: Math.floor(Math.random() * 1000000) + 500000,
-        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        description: "Pembayaran dari Pelanggan Baru",
-        customerName: "Pelanggan Baru",
-        orderId: `ORD-${Math.floor(Math.random() * 1000)}`,
-        service: "Layanan Umum",
-        status: "completed",
-        paymentMethod: "transfer_bank"
-      };
-      
-      setTransactionHistory(prev => [newTransaction, ...prev]);
-      setIsLoading(false);
-      setRefreshKey(prev => prev + 1);
-      
-      // Show success message
-      const event = new CustomEvent('showToast', {
-        detail: {
-          message: 'Data berhasil diperbarui',
-          type: 'success'
+  // Load data dari localStorage
+  useEffect(() => {
+    loadDashboardData();
+
+    const interval = setInterval(loadDashboardData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadDashboardData = () => {
+    try {
+      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
+
+      // Hitung statistik
+      let availableBalance = 0;
+      let pendingBalance = 0;
+      let monthlyIncome = 0;
+      let monthlyWithdrawal = 0;
+      let totalOrders = allOrders.length;
+      let completedOrders = 0;
+      let pendingOrders = 0;
+      let inProgressOrders = 0;
+      let totalRating = 0;
+      let ratingCount = 0;
+
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+
+      const transactions: any[] = [];
+
+      // Hitung total dari completed orders
+      allOrders.forEach((order: any) => {
+        const orderDate = new Date(order.orderDate);
+        const orderMonth = orderDate.getMonth();
+        const orderYear = orderDate.getFullYear();
+
+        // Hitung berdasarkan status
+        if (order.status === 'completed') {
+          completedOrders++;
+          const orderAmount = order.serviceDetails?.totalPrice || 0;
+          availableBalance += orderAmount;
+
+          // Tambahkan ke transaksi income
+          transactions.push({
+            id: `INC-${order.id}`,
+            type: "income",
+            amount: orderAmount,
+            date: order.orderDate,
+            description: `Pembayaran dari ${order.customerName}`,
+            customerName: order.customerName,
+            orderId: order.id,
+            service: getServiceLabel(order),
+            status: "completed",
+            paymentMethod: "transfer_bank"
+          });
+
+          if (orderMonth === currentMonth && orderYear === currentYear) {
+            monthlyIncome += orderAmount;
+          }
+        } else if (order.status === 'in-progress' && order.paymentStatus === 'paid') {
+          inProgressOrders++;
+          pendingBalance += order.serviceDetails?.totalPrice || 0;
+        } else if (order.status === 'pending' || order.paymentStatus === 'unpaid') {
+          pendingOrders++;
+        }
+
+        // Hitung rating
+        if (order.rating) {
+          totalRating += order.rating;
+          ratingCount++;
         }
       });
-      window.dispatchEvent(event);
+
+      console.log('Available Balance BEFORE withdrawal:', availableBalance);
+
+      // Load withdrawal history dan kurangi dari available balance
+      const withdrawalHistory = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
+      let totalWithdrawn = 0;
+
+      withdrawalHistory.forEach((withdrawal: any) => {
+        transactions.push(withdrawal);
+
+        // Kurangi available balance dengan withdrawal yang sudah completed
+        if (withdrawal.status === 'completed') {
+          totalWithdrawn += withdrawal.amount;
+          console.log('Withdrawal:', withdrawal.amount, 'Total withdrawn so far:', totalWithdrawn);
+        }
+
+        const withdrawDate = new Date(withdrawal.date);
+        if (withdrawDate.getMonth() === currentMonth && withdrawDate.getFullYear() === currentYear) {
+          monthlyWithdrawal += withdrawal.amount;
+        }
+      });
+
+      console.log('Total Withdrawn:', totalWithdrawn);
+
+      // Kurangi available balance dengan total yang sudah ditarik
+      availableBalance = Math.max(0, availableBalance - totalWithdrawn);
+
+      console.log('Available Balance AFTER withdrawal:', availableBalance);
+
+      // Sort transactions by date
+      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setStatData({
+        availableBalance,
+        pendingBalance,
+        monthlyIncome,
+        monthlyWithdrawal,
+        totalOrders,
+        completedOrders,
+        pendingOrders,
+        inProgressOrders,
+        averageRating: ratingCount > 0 ? totalRating / ratingCount : 0,
+        totalReviews: ratingCount,
+        totalRevenue: availableBalance + pendingBalance
+      });
+
+      setTransactionHistory(transactions);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      setIsLoading(false);
+    }
+  };
+
+  const getServiceLabel = (order: any) => {
+    const category = order.serviceCategory;
+    const details = order.serviceDetails;
+
+    switch (category) {
+      case 'ac':
+        return `Layanan AC - ${details.acCount || 1} Unit ${details.acType || ''} ${details.acPk || ''} PK`;
+      case 'cleaning':
+        return `Pembersihan - ${details.areaSize || 0} m²`;
+      case 'electrical':
+        return `Listrik - ${details.buildingType || ''}`;
+      case 'plumbing':
+        return `Ledeng/Pipa`;
+      case 'sedot-wc':
+        return `Sedot WC`;
+      case 'taman':
+        return `Taman - ${details.gardenSize || 0} m²`;
+      case 'furniture':
+        return `Furniture`;
+      default:
+        return 'Layanan Umum';
+    }
+  };
+
+  const handleRefresh = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+      loadDashboardData();
+      setRefreshKey(prev => prev + 1);
     }, 1000);
   };
 
-  // Filter transaksi berdasarkan tab
   const filteredTransactions = transactionHistory.filter(transaction => {
     if (activeTab === "all") return true;
     if (activeTab === "income") return transaction.type === "income";
@@ -473,13 +514,11 @@ export default function DashboardPage() {
     return true;
   });
 
-  // Format tanggal
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return format(date, 'dd MMM yyyy, HH:mm', { locale: id });
   };
 
-  // Format mata uang
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -488,7 +527,6 @@ export default function DashboardPage() {
     }).format(amount);
   };
 
-  // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -504,7 +542,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Get status icon
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -520,62 +557,50 @@ export default function DashboardPage() {
     }
   };
 
-  // Handle withdraw
   const handleWithdraw = (amount: number, method: string) => {
     setWithdrawLoading(true);
-    
-    // Simulasi proses penarikan
+
     setTimeout(() => {
-      // Update balance
-      setStatData(prev => ({
-        ...prev,
-        balance: prev.balance - amount,
-        monthlyWithdrawal: prev.monthlyWithdrawal + amount
-      }));
-      
-      // Add withdrawal transaction
       const methodData = paymentMethods.find(m => m.id === method);
+
+      // Set status completed langsung agar langsung mengurangi saldo
       const newWithdrawal = {
         id: `WD-${Date.now()}`,
         type: "withdrawal",
         amount: amount,
-        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        date: new Date().toISOString(),
         description: `Penarikan ke ${methodData?.name}`,
         bankName: methodData?.name || '',
         accountNumber: methodData?.accountNumber || '',
-        status: "processing",
+        status: "completed", // Changed from "processing" to "completed"
         reference: `WD-${Date.now()}`
       };
-      
-      setTransactionHistory(prev => [newWithdrawal, ...prev]);
+
+      // Simpan withdrawal history
+      const withdrawalHistory = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
+      withdrawalHistory.push(newWithdrawal);
+      localStorage.setItem('withdrawalHistory', JSON.stringify(withdrawalHistory));
+
       setWithdrawLoading(false);
       setShowWithdrawDialog(false);
-      
-      // Show success message
-      const event = new CustomEvent('showToast', {
-        detail: {
-          message: `Penarikan sebesar ${formatCurrency(amount)} berhasil diproses`,
-          type: 'success'
-        }
-      });
-      window.dispatchEvent(event);
+
+      // Reload data untuk memperbarui saldo
+      loadDashboardData();
     }, 1500);
   };
 
-  // Fungsi untuk menampilkan bintang rating
   const renderStars = (rating: number) => {
     return (
       <div className="flex items-center gap-0.5">
         {[1, 2, 3, 4, 5].map((star) => (
           <Star
             key={star}
-            className={`h-3 w-3 md:h-4 md:w-4 ${
-              star <= Math.floor(rating)
-                ? 'fill-yellow-400 text-yellow-400'
-                : star === Math.ceil(rating) && rating % 1 !== 0
+            className={`h-3 w-3 md:h-4 md:w-4 ${star <= Math.floor(rating)
+              ? 'fill-yellow-400 text-yellow-400'
+              : star === Math.ceil(rating) && rating % 1 !== 0
                 ? 'fill-yellow-400/50 text-yellow-400'
                 : 'text-neutral-300 dark:text-neutral-600'
-            }`}
+              }`}
           />
         ))}
       </div>
@@ -584,7 +609,7 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <motion.div 
+      <motion.div
         className="min-h-screen bg-neutral-50 dark:bg-neutral-900 p-4 md:p-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -599,21 +624,21 @@ export default function DashboardPage() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       className="min-h-screen bg-neutral-50 dark:bg-neutral-900 p-4 md:p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
       key={refreshKey}
     >
-      <WithdrawDialog 
+      <WithdrawDialog
         open={showWithdrawDialog}
         onOpenChange={setShowWithdrawDialog}
-        balance={statData.balance}
+        balance={statData.availableBalance}
         onWithdraw={handleWithdraw}
         loading={withdrawLoading}
       />
-      
+
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 md:mb-8">
@@ -627,7 +652,7 @@ export default function DashboardPage() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            
+
             <h1 className="text-2xl md:text-3xl font-bold text-neutral-900 dark:text-white">
               Dashboard Mitra
             </h1>
@@ -635,10 +660,10 @@ export default function DashboardPage() {
               Selamat datang kembali! Kelola keuangan dan pesanan Anda di sini
             </p>
           </div>
-          
+
           <div className="flex items-center gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               className="border-neutral-300 dark:border-neutral-600"
               onClick={handleRefresh}
@@ -651,10 +676,11 @@ export default function DashboardPage() {
               )}
               {isLoading ? 'Memperbarui...' : 'Refresh'}
             </Button>
-            
-            <Button 
+
+            <Button
               className="bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] hover:from-[#6bcb96] hover:to-[#4cc383] text-white shadow-md"
               onClick={() => setShowWithdrawDialog(true)}
+              disabled={statData.availableBalance === 0}
             >
               <Download className="h-4 w-4 mr-2" />
               Tarik Saldo
@@ -662,37 +688,62 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Balance Card - Simplified */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <Card className="bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] text-white border-0 shadow-xl mb-6 md:mb-8">
-            <CardContent className="p-6 md:p-8">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-center gap-4 md:gap-6">
-                  <div className="h-12 w-12 md:h-16 md:w-16 rounded-full bg-white/20 flex items-center justify-center">
-                    <Wallet className="h-6 w-6 md:h-8 md:w-8" />
+        {/* Balance Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 md:mb-8">
+          {/* Available Balance */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
+            <Card className="bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] text-white border-0 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                    <Wallet className="h-6 w-6" />
                   </div>
-                  <div>
-                    <p className="text-sm md:text-base opacity-90">Saldo Mitra</p>
-                    <p className="text-3xl md:text-4xl lg:text-5xl font-bold mt-1">
-                      {formatCurrency(statData.balance)}
-                    </p>
+                  <Badge className="bg-white/20 text-white border-0">
+                    Siap Ditarik
+                  </Badge>
+                </div>
+                <p className="text-sm opacity-90 mb-1">Saldo Tersedia</p>
+                <p className="text-3xl md:text-4xl font-bold">
+                  {formatCurrency(statData.availableBalance)}
+                </p>
+                <p className="text-xs opacity-75 mt-2">
+                  Dari pesanan yang sudah selesai
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Pending Balance */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <Card className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white border-0 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                    <Lock className="h-6 w-6" />
                   </div>
+                  <Badge className="bg-white/20 text-white border-0">
+                    Menunggu
+                  </Badge>
                 </div>
-                
-                <div className="md:text-right">
-                  <p className="text-xs md:text-sm opacity-90 mb-1">Update Terakhir</p>
-                  <p className="text-sm md:text-base font-medium">
-                    {format(new Date(), 'dd MMMM yyyy', { locale: id })}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+                <p className="text-sm opacity-90 mb-1">Saldo Pending</p>
+                <p className="text-3xl md:text-4xl font-bold">
+                  {formatCurrency(statData.pendingBalance)}
+                </p>
+                <p className="text-xs opacity-75 mt-2">
+                  Dari pesanan yang sedang dikerjakan
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
@@ -700,7 +751,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
           >
             <Card className="h-full hover:shadow-lg transition-shadow duration-200">
               <CardContent className="p-4 md:p-6">
@@ -715,10 +766,6 @@ export default function DashboardPage() {
                     <TrendingUp className="h-5 w-5 md:h-6 md:w-6 text-blue-600 dark:text-blue-400" />
                   </div>
                 </div>
-                <div className="flex items-center gap-1 mt-2 md:mt-3">
-                  <ArrowUpRight className="h-3 w-3 md:h-4 md:w-4 text-blue-600" />
-                  <span className="text-xs md:text-sm text-blue-600">+8.2%</span>
-                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -727,7 +774,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.3 }}
+            transition={{ duration: 0.3, delay: 0.4 }}
           >
             <Card className="h-full hover:shadow-lg transition-shadow duration-200">
               <CardContent className="p-4 md:p-6">
@@ -742,10 +789,6 @@ export default function DashboardPage() {
                     <TrendingDown className="h-5 w-5 md:h-6 md:w-6 text-red-600 dark:text-red-400" />
                   </div>
                 </div>
-                <div className="flex items-center gap-1 mt-2 md:mt-3">
-                  <ArrowDownRight className="h-3 w-3 md:h-4 md:w-4 text-red-600" />
-                  <span className="text-xs md:text-sm text-red-600">-5.2%</span>
-                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -754,7 +797,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.4 }}
+            transition={{ duration: 0.3, delay: 0.5 }}
           >
             <Card className="h-full hover:shadow-lg transition-shadow duration-200">
               <CardContent className="p-4 md:p-6">
@@ -763,21 +806,21 @@ export default function DashboardPage() {
                     <p className="text-xs md:text-sm text-neutral-600 dark:text-neutral-400 mb-1">Total Rating</p>
                     <div className="flex items-center gap-2">
                       <p className="text-xl md:text-2xl font-bold text-neutral-900 dark:text-white">
-                        {statData.averageRating.toFixed(1)}
+                        {statData.averageRating > 0 ? statData.averageRating.toFixed(1) : '-'}
                       </p>
-                      <div className="flex items-center">
-                        {renderStars(statData.averageRating)}
-                      </div>
+                      {statData.averageRating > 0 && (
+                        <div className="flex items-center">
+                          {renderStars(statData.averageRating)}
+                        </div>
+                      )}
                     </div>
                     <p className="text-xs text-neutral-500 mt-1">
-                      dari {statData.totalReviews} ulasan
+                      {statData.totalReviews > 0 ? `dari ${statData.totalReviews} ulasan` : 'Belum ada ulasan'}
                     </p>
                   </div>
                   <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
                     <Star className="h-5 w-5 md:h-6 md:w-6 text-yellow-600 dark:text-yellow-400" />
                   </div>
-                </div>
-                <div className="flex items-center gap-1 mt-2 md:mt-3">
                 </div>
               </CardContent>
             </Card>
@@ -787,7 +830,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.5 }}
+            transition={{ duration: 0.3, delay: 0.6 }}
           >
             <Card className="h-full hover:shadow-lg transition-shadow duration-200">
               <CardContent className="p-4 md:p-6">
@@ -818,7 +861,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.6 }}
+            transition={{ duration: 0.3, delay: 0.7 }}
             className="lg:col-span-1"
           >
             <Card className="h-full">
@@ -835,11 +878,10 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   {paymentMethods.slice(0, 4).map((method) => (
                     <div key={method.id} className="flex items-center gap-3 p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
-                      <div className={`h-9 w-9 md:h-10 md:w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        method.type === 'bank' 
-                          ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
-                          : 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
-                      }`}>
+                      <div className={`h-9 w-9 md:h-10 md:w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${method.type === 'bank'
+                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
+                        : 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
+                        }`}>
                         {method.type === 'bank' ? (
                           <Banknote className="h-4 w-4 md:h-5 md:w-5" />
                         ) : (
@@ -850,16 +892,15 @@ export default function DashboardPage() {
                         <p className="font-medium text-sm truncate">{method.name}</p>
                         <p className="text-xs text-neutral-500 truncate">{method.accountNumber}</p>
                       </div>
-                      <Badge className={`text-xs ${
-                        method.type === 'bank' 
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                      }`}>
+                      <Badge className={`text-xs ${method.type === 'bank'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                        : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
                         {method.type === 'bank' ? 'Bank' : 'E-Wallet'}
                       </Badge>
                     </div>
                   ))}
-                  
+
                   <Button variant="outline" className="w-full text-sm h-9 md:h-10">
                     <Plus className="h-3 w-3 md:h-4 md:w-4 mr-2" />
                     Tambah Metode
@@ -873,7 +914,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.7 }}
+            transition={{ duration: 0.3, delay: 0.8 }}
             className="lg:col-span-2"
           >
             <Card className="h-full">
@@ -887,7 +928,7 @@ export default function DashboardPage() {
                     Catatan pemasukan dan penarikan Anda
                   </CardDescription>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
                     <TabsList className="grid grid-cols-3 w-full sm:w-auto">
@@ -896,7 +937,7 @@ export default function DashboardPage() {
                       <TabsTrigger value="withdrawal" className="text-xs px-2 sm:px-3">Penarikan</TabsTrigger>
                     </TabsList>
                   </Tabs>
-                  
+
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="icon" className="h-8 w-8 md:h-9 md:w-9">
@@ -912,7 +953,7 @@ export default function DashboardPage() {
                   </DropdownMenu>
                 </div>
               </CardHeader>
-              
+
               <CardContent className="p-4 md:p-6 pt-0">
                 {filteredTransactions.length === 0 ? (
                   <div className="text-center py-8">
@@ -923,11 +964,11 @@ export default function DashboardPage() {
                       Tidak ada transaksi
                     </h3>
                     <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      {activeTab === 'all' 
-                        ? 'Belum ada transaksi yang tercatat' 
+                      {activeTab === 'all'
+                        ? 'Belum ada transaksi yang tercatat'
                         : activeTab === 'income'
-                        ? 'Belum ada pemasukan yang tercatat'
-                        : 'Belum ada penarikan yang tercatat'
+                          ? 'Belum ada pemasukan yang tercatat'
+                          : 'Belum ada penarikan yang tercatat'
                       }
                     </p>
                   </div>
@@ -939,9 +980,9 @@ export default function DashboardPage() {
                       <div className="col-span-2">Status</div>
                       <div className="col-span-3 text-right">Jumlah</div>
                     </div>
-                    
+
                     <div className="space-y-2 md:space-y-3">
-                      {filteredTransactions.map((transaction) => (
+                      {filteredTransactions.slice(0, 5).map((transaction) => (
                         <motion.div
                           key={transaction.id}
                           initial={{ opacity: 0 }}
@@ -949,15 +990,14 @@ export default function DashboardPage() {
                           className="group"
                         >
                           <div className="flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-3 md:p-4 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
-                            {/* Mobile View - Compact */}
+                            {/* Mobile View */}
                             <div className="md:hidden flex items-start justify-between">
                               <div className="flex-1">
                                 <div className="flex items-start gap-2 mb-2">
-                                  <div className={`h-8 w-8 rounded-full flex items-center justify-center mt-0.5 ${
-                                    transaction.type === 'income'
-                                      ? 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
-                                      : 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
-                                  }`}>
+                                  <div className={`h-8 w-8 rounded-full flex items-center justify-center mt-0.5 ${transaction.type === 'income'
+                                    ? 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
+                                    : 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
+                                    }`}>
                                     {transaction.type === 'income' ? (
                                       <ArrowDownRight className="h-4 w-4" />
                                     ) : (
@@ -972,41 +1012,33 @@ export default function DashboardPage() {
                                     <div className="flex items-center gap-2 mt-2">
                                       <Badge className={`${getStatusColor(transaction.status)} flex items-center gap-1 text-xs`}>
                                         {getStatusIcon(transaction.status)}
-                                        {transaction.status === 'completed' ? 'Selesai' : 
-                                         transaction.status === 'pending' ? 'Pending' :
-                                         transaction.status === 'processing' ? 'Diproses' : 'Gagal'}
+                                        {transaction.status === 'completed' ? 'Selesai' :
+                                          transaction.status === 'pending' ? 'Pending' :
+                                            transaction.status === 'processing' ? 'Diproses' : 'Gagal'}
                                       </Badge>
-                                      {transaction.type === 'income' && (
-                                        <span className="text-xs text-neutral-500 truncate">
-                                          {transaction.customerName}
-                                        </span>
-                                      )}
                                     </div>
                                   </div>
                                 </div>
-                                
+
                                 <div className="flex items-center justify-between mt-2">
-                                  <div className={`font-bold text-sm ${
-                                    transaction.type === 'income'
-                                      ? 'text-green-600 dark:text-green-400'
-                                      : 'text-blue-600 dark:text-blue-400'
-                                  }`}>
+                                  <div className={`font-bold text-sm ${transaction.type === 'income'
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : 'text-blue-600 dark:text-blue-400'
+                                    }`}>
                                     {transaction.type === 'income' ? '+' : '-'}
                                     {formatCurrency(transaction.amount)}
                                   </div>
                                 </div>
                               </div>
                             </div>
-                            
+
                             {/* Desktop View */}
                             <div className="hidden md:contents">
-                              {/* Transaction Details */}
                               <div className="col-span-5 flex items-center gap-3">
-                                <div className={`h-9 w-9 rounded-full flex items-center justify-center ${
-                                  transaction.type === 'income'
-                                    ? 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
-                                    : 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
-                                }`}>
+                                <div className={`h-9 w-9 rounded-full flex items-center justify-center ${transaction.type === 'income'
+                                  ? 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400'
+                                  : 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
+                                  }`}>
                                   {transaction.type === 'income' ? (
                                     <ArrowDownRight className="h-4 w-4" />
                                   ) : (
@@ -1019,42 +1051,46 @@ export default function DashboardPage() {
                                     <div className="flex items-center gap-2 text-xs text-neutral-500 mt-1">
                                       <User className="h-3 w-3" />
                                       <span className="truncate">{transaction.customerName}</span>
-                                      <span>•</span>
-                                      <span className="truncate">{transaction.service}</span>
+                                      {transaction.service && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="truncate">{transaction.service}</span>
+                                        </>
+                                      )}
                                     </div>
                                   ) : (
                                     <div className="flex items-center gap-2 text-xs text-neutral-500 mt-1">
                                       <Banknote className="h-3 w-3" />
                                       <span className="truncate">{transaction.bankName}</span>
-                                      <span>•</span>
-                                      <span className="truncate">{transaction.accountNumber}</span>
+                                      {transaction.accountNumber && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="truncate">{transaction.accountNumber}</span>
+                                        </>
+                                      )}
                                     </div>
                                   )}
                                 </div>
                               </div>
-                              
-                              {/* Date */}
+
                               <div className="col-span-2 flex items-center text-xs text-neutral-600 dark:text-neutral-400">
                                 {formatDate(transaction.date)}
                               </div>
-                              
-                              {/* Status */}
+
                               <div className="col-span-2 flex items-center">
                                 <Badge className={`${getStatusColor(transaction.status)} flex items-center gap-1 text-xs`}>
                                   {getStatusIcon(transaction.status)}
-                                  {transaction.status === 'completed' ? 'Selesai' : 
-                                   transaction.status === 'pending' ? 'Pending' :
-                                   transaction.status === 'processing' ? 'Diproses' : 'Gagal'}
+                                  {transaction.status === 'completed' ? 'Selesai' :
+                                    transaction.status === 'pending' ? 'Pending' :
+                                      transaction.status === 'processing' ? 'Diproses' : 'Gagal'}
                                 </Badge>
                               </div>
-                              
-                              {/* Amount */}
+
                               <div className="col-span-3 flex items-center justify-end">
-                                <div className={`font-bold text-sm ${
-                                  transaction.type === 'income'
-                                    ? 'text-green-600 dark:text-green-400'
-                                    : 'text-blue-600 dark:text-blue-400'
-                                }`}>
+                                <div className={`font-bold text-sm ${transaction.type === 'income'
+                                  ? 'text-green-600 dark:text-green-400'
+                                  : 'text-blue-600 dark:text-blue-400'
+                                  }`}>
                                   {transaction.type === 'income' ? '+' : '-'}
                                   {formatCurrency(transaction.amount)}
                                 </div>
@@ -1064,8 +1100,7 @@ export default function DashboardPage() {
                         </motion.div>
                       ))}
                     </div>
-                    
-                    {/* View More */}
+
                     {filteredTransactions.length > 5 && (
                       <div className="text-center pt-3 md:pt-4">
                         <Button variant="ghost" className="text-[#7CE0A8] hover:text-[#6bcb96] hover:bg-[#7CE0A8]/10 text-sm">
