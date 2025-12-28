@@ -22,11 +22,11 @@ import {
   Phone,
   Wrench,
   MessageSquare,
-  AlertCircle,  // ⭐ Pastikan ini ada untuk icon alert pembatalan
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   Navigation,
-  X  // ⭐ Pastikan ini ada untuk icon X di stats
+  X
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Separator } from "@/app/components/ui/separator";
@@ -106,7 +106,6 @@ export default function OrdersPage() {
           const mappedOrders = parsedOrders.map((order: any) => {
             let status = 'pending';
 
-            // ⭐ UPDATE MAPPING INI - tambahkan handling untuk rejected
             if (order.status === 'pending') {
               status = 'pending';
             } else if (order.status === 'in-progress') {
@@ -114,7 +113,7 @@ export default function OrdersPage() {
             } else if (order.status === 'completed') {
               status = 'completed';
             } else if (order.status === 'rejected') {
-              status = 'rejected'; // ⭐ TAMBAHKAN INI
+              status = 'rejected';
             }
 
             return {
@@ -161,6 +160,7 @@ export default function OrdersPage() {
     if (activeTab === 'pending') return order.status === 'pending';
     if (activeTab === 'in-progress') return order.status === 'in-progress';
     if (activeTab === 'completed') return order.status === 'completed';
+    if (activeTab === 'rejected') return order.status === 'rejected';
     return true;
   });
 
@@ -191,7 +191,7 @@ export default function OrdersPage() {
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       case 'in-progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'; // ⭐ TAMBAHKAN INI
+      case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
   };
@@ -202,6 +202,7 @@ export default function OrdersPage() {
       case 'pending': return <Clock className="h-4 w-4 mr-1" />;
       case 'in-progress': return <Wrench className="h-4 w-4 mr-1" />;
       case 'completed': return <CheckCheck className="h-4 w-4 mr-1" />;
+      case 'rejected': return <X className="h-4 w-4 mr-1" />;
       default: return <AlertCircle className="h-4 w-4 mr-1" />;
     }
   };
@@ -212,7 +213,7 @@ export default function OrdersPage() {
       case 'pending': return 'Menunggu Pembayaran';
       case 'in-progress': return 'Sedang Dikerjakan';
       case 'completed': return 'Selesai';
-      case 'rejected': return 'Dibatalkan'; // ⭐ TAMBAHKAN INI
+      case 'rejected': return 'Dibatalkan';
       default: return status;
     }
   };
@@ -250,13 +251,13 @@ export default function OrdersPage() {
         </div>
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 md:mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 md:mb-8">
           <Card className="bg-white dark:bg-neutral-800">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Total Pesanan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white">{filteredOrders.length}</p>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Total Pesanan</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{orders.length}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                   <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -269,9 +270,9 @@ export default function OrdersPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Menunggu Pembayaran</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white">
-                    {filteredOrders.filter(o => o.status === 'pending').length}
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Menunggu Pembayaran</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
+                    {orders.filter(o => o.status === 'pending').length}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
@@ -285,9 +286,9 @@ export default function OrdersPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Sedang Dikerjakan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white">
-                    {filteredOrders.filter(o => o.status === 'in-progress').length}
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Sedang Dikerjakan</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
+                    {orders.filter(o => o.status === 'in-progress').length}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
@@ -301,13 +302,29 @@ export default function OrdersPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Selesai</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white">
-                    {filteredOrders.filter(o => o.status === 'completed').length}
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Selesai</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
+                    {orders.filter(o => o.status === 'completed').length}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
                   <CheckCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white dark:bg-neutral-800">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Dibatalkan</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
+                    {orders.filter(o => o.status === 'rejected').length}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                  <X className="h-5 w-5 text-red-600 dark:text-red-400" />
                 </div>
               </div>
             </CardContent>
@@ -318,11 +335,12 @@ export default function OrdersPage() {
         <Card className="bg-white dark:bg-neutral-800 mb-6 md:mb-8">
           <CardContent className="p-4 md:p-6">
             <Tabs defaultValue="all" onValueChange={setActiveTab}>
-              <TabsList className="grid grid-cols-4 mb-6">
+              <TabsList className="grid grid-cols-5 mb-6">
                 <TabsTrigger value="all" className="text-sm md:text-base">Semua</TabsTrigger>
                 <TabsTrigger value="pending" className="text-sm md:text-base">Menunggu</TabsTrigger>
                 <TabsTrigger value="in-progress" className="text-sm md:text-base">Dikerjakan</TabsTrigger>
                 <TabsTrigger value="completed" className="text-sm md:text-base">Selesai</TabsTrigger>
+                <TabsTrigger value="rejected" className="text-sm md:text-base">Dibatalkan</TabsTrigger>
               </TabsList>
 
               <TabsContent value={activeTab} className="mt-0">
@@ -652,7 +670,6 @@ export default function OrdersPage() {
 
                       <div className="flex items-center gap-1">
                         {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                          // Tampilkan maksimal 5 nomor halaman
                           let pageNumber;
                           if (totalPages <= 5) {
                             pageNumber = i + 1;
