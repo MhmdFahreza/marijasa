@@ -18,14 +18,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/ta
 import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
 import { Input } from "@/app/components/ui/input";
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  User, 
-  Phone, 
-  Mail, 
-  ChevronRight, 
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  User,
+  Phone,
+  Mail,
+  ChevronRight,
   ChevronDown,
   Package,
   FileText,
@@ -108,7 +108,7 @@ export default function OrderHistoryPage() {
     cash: false
   });
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  
+
   // State untuk modal konfirmasi pembatalan
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -185,17 +185,17 @@ export default function OrderHistoryPage() {
         const savedOrders = localStorage.getItem('userOrders');
         if (savedOrders) {
           const parsedOrders = JSON.parse(savedOrders);
-          
+
           // Format orders sesuai dengan kebutuhan komponen
           const formattedOrders = parsedOrders.map((order: any) => {
             // Pastikan paymentDetails ada dan lengkap
             let paymentDetails = order.paymentDetails || {};
-            
+
             // Jika paymentDetails tidak lengkap, hitung ulang
             if (!paymentDetails.subtotal || paymentDetails.subtotal === 0) {
               // Coba hitung subtotal dari service details atau total price
               let subtotal = 0;
-              
+
               // Coba ambil dari order yang ada
               if (order.servicePrice) {
                 subtotal = order.servicePrice;
@@ -204,7 +204,7 @@ export default function OrderHistoryPage() {
                 const transactionFee = PAYMENT_FEES[order.paymentMethod?.toLowerCase()] || 0;
                 subtotal = order.totalPrice - SERVICE_FEE - transactionFee;
               }
-              
+
               paymentDetails = {
                 subtotal: subtotal > 0 ? subtotal : 0,
                 minTransaction: 75000,
@@ -213,7 +213,7 @@ export default function OrderHistoryPage() {
                 total: order.totalPrice || (subtotal + SERVICE_FEE + (PAYMENT_FEES[order.paymentMethod?.toLowerCase()] || 0))
               };
             }
-            
+
             return {
               id: order.id || order.orderId,
               vendorName: order.vendor?.name || order.vendorName || "Vendor",
@@ -276,7 +276,7 @@ export default function OrderHistoryPage() {
               review: order.review || ""
             };
           });
-          
+
           setOrders(formattedOrders);
         } else {
           setOrders([]);
@@ -290,14 +290,14 @@ export default function OrderHistoryPage() {
     };
 
     loadOrders();
-    
+
     // Tambahkan event listener untuk update real-time
     const handleStorageChange = () => {
       loadOrders();
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
@@ -453,7 +453,7 @@ export default function OrderHistoryPage() {
         const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
         const subtotal = order.paymentDetails?.subtotal || selectedOrder.paymentDetails?.subtotal || (order.totalPrice - SERVICE_FEE - transactionFee);
         const total = subtotal + SERVICE_FEE + transactionFee;
-        
+
         return {
           ...order,
           paymentMethod: selectedPayment,
@@ -470,7 +470,7 @@ export default function OrderHistoryPage() {
       }
       return order;
     });
-    
+
     localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
     // Update state orders
@@ -479,7 +479,7 @@ export default function OrderHistoryPage() {
         const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
         const subtotal = order.paymentDetails.subtotal || (order.totalPrice - SERVICE_FEE - transactionFee);
         const total = subtotal + SERVICE_FEE + transactionFee;
-        
+
         return {
           ...order,
           paymentMethod: selectedPayment,
@@ -522,23 +522,23 @@ export default function OrderHistoryPage() {
             statusColor: "bg-blue-100 text-blue-800",
             orderHistory: [
               ...(o.orderHistory || []),
-              { 
-                status: "Pembayaran Diterima", 
-                date: new Date().toLocaleDateString('id-ID', { 
-                  day: 'numeric', 
-                  month: 'long', 
-                  year: 'numeric' 
-                }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                }) 
+              {
+                status: "Pembayaran Diterima",
+                date: new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
               }
             ]
           };
         }
         return o;
       });
-      
+
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
       // Update state orders
@@ -550,16 +550,16 @@ export default function OrderHistoryPage() {
             statusColor: "bg-blue-100 text-blue-800",
             orderHistory: [
               ...o.orderHistory,
-              { 
-                status: "Pembayaran Diterima", 
-                date: new Date().toLocaleDateString('id-ID', { 
-                  day: 'numeric', 
-                  month: 'long', 
-                  year: 'numeric' 
-                }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                }) 
+              {
+                status: "Pembayaran Diterima",
+                date: new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
               }
             ]
           };
@@ -602,15 +602,15 @@ export default function OrderHistoryPage() {
             statusColor: "bg-red-100 text-red-800",
             orderHistory: [
               ...(order.orderHistory || []),
-              { 
-                status: "Pesanan Dibatalkan", 
-                date: new Date().toLocaleDateString('id-ID', { 
-                  day: 'numeric', 
-                  month: 'long', 
-                  year: 'numeric' 
-                }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
+              {
+                status: "Pesanan Dibatalkan",
+                date: new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit'
                 }),
                 reason: cancelReason
               }
@@ -620,7 +620,7 @@ export default function OrderHistoryPage() {
         }
         return order;
       });
-      
+
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
       // Update state orders
@@ -632,15 +632,15 @@ export default function OrderHistoryPage() {
             statusColor: "bg-red-100 text-red-800",
             orderHistory: [
               ...order.orderHistory,
-              { 
-                status: "Pesanan Dibatalkan", 
-                date: new Date().toLocaleDateString('id-ID', { 
-                  day: 'numeric', 
-                  month: 'long', 
-                  year: 'numeric' 
-                }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
+              {
+                status: "Pesanan Dibatalkan",
+                date: new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit'
                 }),
                 reason: cancelReason
               }
@@ -690,15 +690,15 @@ export default function OrderHistoryPage() {
           statusColor: "bg-green-100 text-green-800",
           orderHistory: [
             ...(order.orderHistory || []),
-            { 
-              status: "Pekerjaan Selesai", 
-              date: new Date().toLocaleDateString('id-ID', { 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
-              }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+            {
+              status: "Pekerjaan Selesai",
+              date: new Date().toLocaleDateString('id-ID', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit'
               })
             }
           ]
@@ -710,13 +710,13 @@ export default function OrderHistoryPage() {
           updatedOrder.review = ratingData.comment;
           updatedOrder.orderHistory.push({
             status: "Rating dan Ulasan Diberikan",
-            date: new Date().toLocaleDateString('id-ID', { 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
-            }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-              hour: '2-digit', 
-              minute: '2-digit' 
+            date: new Date().toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            }) + " - " + new Date().toLocaleTimeString('id-ID', {
+              hour: '2-digit',
+              minute: '2-digit'
             })
           });
         }
@@ -725,8 +725,22 @@ export default function OrderHistoryPage() {
       }
       return order;
     });
-    
+
     localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+
+    // Update status di allOrders untuk mitra
+    const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
+    const updatedAllOrders = allOrders.map((order: any) => {
+      if (order.id === selectedOrder.id) {
+        return {
+          ...order,
+          status: "completed" // Status selesai untuk mitra
+        };
+      }
+      return order;
+    });
+
+    localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
 
     // Update state orders
     setOrders(prevOrders => prevOrders.map(order => {
@@ -737,15 +751,15 @@ export default function OrderHistoryPage() {
           statusColor: "bg-green-100 text-green-800",
           orderHistory: [
             ...order.orderHistory,
-            { 
-              status: "Pekerjaan Selesai", 
-              date: new Date().toLocaleDateString('id-ID', { 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
-              }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+            {
+              status: "Pekerjaan Selesai",
+              date: new Date().toLocaleDateString('id-ID', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit'
               })
             }
           ]
@@ -757,13 +771,13 @@ export default function OrderHistoryPage() {
           updatedOrder.review = ratingData.comment;
           updatedOrder.orderHistory.push({
             status: "Rating dan Ulasan Diberikan",
-            date: new Date().toLocaleDateString('id-ID', { 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
-            }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-              hour: '2-digit', 
-              minute: '2-digit' 
+            date: new Date().toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            }) + " - " + new Date().toLocaleTimeString('id-ID', {
+              hour: '2-digit',
+              minute: '2-digit'
             })
           });
         }
@@ -774,7 +788,7 @@ export default function OrderHistoryPage() {
     }));
 
     setShowCompletionModal(false);
-    
+
     // Tampilkan modal terima kasih jika memberikan rating
     if (hasRating) {
       setShowThankYouModal(true);
@@ -913,10 +927,9 @@ export default function OrderHistoryPage() {
               transition={{ duration: 0.3 }}
             >
               {/* Order Card */}
-              <Card 
-                className={`overflow-hidden border hover:border-[#7CE0A8] transition-all duration-300 cursor-pointer ${
-                  expandedOrderId === order.id ? 'ring-2 ring-[#7CE0A8]' : ''
-                }`}
+              <Card
+                className={`overflow-hidden border hover:border-[#7CE0A8] transition-all duration-300 cursor-pointer ${expandedOrderId === order.id ? 'ring-2 ring-[#7CE0A8]' : ''
+                  }`}
                 onClick={() => handleOrderClick(order)}
               >
                 <CardContent className="p-4 md:p-6">
@@ -929,7 +942,7 @@ export default function OrderHistoryPage() {
                           {getServiceIcon(order.serviceType)}
                         </AvatarFallback>
                       </Avatar>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mb-2">
                           <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base md:text-lg truncate">
@@ -945,7 +958,7 @@ export default function OrderHistoryPage() {
                             </div>
                           )}
                         </div>
-                        
+
                         <div className="space-y-1 text-sm md:text-base">
                           <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                             <Package className="h-4 w-4 flex-shrink-0" />
@@ -973,11 +986,10 @@ export default function OrderHistoryPage() {
                           Total Pembayaran
                         </p>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
-                        <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${
-                          expandedOrderId === order.id ? 'rotate-90' : ''
-                        }`} />
+                        <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${expandedOrderId === order.id ? 'rotate-90' : ''
+                          }`} />
                       </div>
                     </div>
                   </div>
@@ -1028,9 +1040,8 @@ export default function OrderHistoryPage() {
                                   {order.orderHistory.map((history: any, index: number) => (
                                     <div key={index} className="flex items-start gap-3">
                                       <div className="flex flex-col items-center">
-                                        <div className={`h-3 w-3 rounded-full ${
-                                          index === 0 ? 'bg-[#7CE0A8]' : 'bg-gray-300'
-                                        }`} />
+                                        <div className={`h-3 w-3 rounded-full ${index === 0 ? 'bg-[#7CE0A8]' : 'bg-gray-300'
+                                          }`} />
                                         {index < order.orderHistory.length - 1 && (
                                           <div className="h-8 w-0.5 bg-gray-300" />
                                         )}
@@ -1164,7 +1175,7 @@ export default function OrderHistoryPage() {
                                         </Button>
                                       </div>
                                     )}
-                                    
+
                                     <div className="mt-6 pt-6 border-t">
                                       <div className="bg-muted/30 p-4 rounded-lg mb-4">
                                         <div className="flex justify-between items-center mb-2">
@@ -1334,10 +1345,10 @@ export default function OrderHistoryPage() {
                               <MessageSquare className="h-4 w-4 mr-2" />
                               Chat Vendor
                             </Button>
-                            
+
                             {/* Tombol Konfirmasi Pekerjaan Selesai - hanya muncul jika status diproses */}
                             {order.status === "diproses" && (
-                              <Button 
+                              <Button
                                 className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white"
                                 onClick={() => handleOpenCompletionModal(order)}
                               >
@@ -1345,11 +1356,11 @@ export default function OrderHistoryPage() {
                                 Konfirmasi Selesai
                               </Button>
                             )}
-                            
+
                             {/* Tombol Batalkan Pesanan - hanya muncul jika status menunggu pembayaran */}
                             {order.status === "menunggu pembayaran" && (
-                              <Button 
-                                variant="outline" 
+                              <Button
+                                variant="outline"
                                 className="flex-1 min-w-[140px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
                                 onClick={() => handleOpenCancelModal(order)}
                               >
@@ -1357,7 +1368,7 @@ export default function OrderHistoryPage() {
                                 Batalkan Pesanan
                               </Button>
                             )}
-                            
+
                             {/* Informasi jika status sudah selesai */}
                             {order.status === "selesai" && (
                               <div className="flex-1 min-w-[140px] p-3 border rounded-lg text-center bg-green-50 dark:bg-green-900/20">
@@ -1634,9 +1645,8 @@ export default function OrderHistoryPage() {
                                           {paymentMethods.ewallet.map((method) => (
                                             <label
                                               key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                                selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                              }`}
+                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                                }`}
                                             >
                                               <div className="flex items-center gap-3">
                                                 <RadioGroupItem value={method.id} id={method.id} />
@@ -1692,9 +1702,8 @@ export default function OrderHistoryPage() {
                                           {paymentMethods.va.map((method) => (
                                             <label
                                               key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                                selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                              }`}
+                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                                }`}
                                             >
                                               <div className="flex items-center gap-3">
                                                 <RadioGroupItem value={method.id} id={method.id} />
@@ -1750,9 +1759,8 @@ export default function OrderHistoryPage() {
                                           {paymentMethods.card.map((method) => (
                                             <label
                                               key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                                selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                              }`}
+                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                                }`}
                                             >
                                               <div className="flex items-center gap-3">
                                                 <RadioGroupItem value={method.id} id={method.id} />
@@ -1808,9 +1816,8 @@ export default function OrderHistoryPage() {
                                           {paymentMethods.qris.map((method) => (
                                             <label
                                               key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                                selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                              }`}
+                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                                }`}
                                             >
                                               <div className="flex items-center gap-3">
                                                 <RadioGroupItem value={method.id} id={method.id} />
@@ -1866,9 +1873,8 @@ export default function OrderHistoryPage() {
                                           {paymentMethods.cash.map((method) => (
                                             <label
                                               key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                                selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                              }`}
+                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                                }`}
                                             >
                                               <div className="flex items-center gap-3">
                                                 <RadioGroupItem value={method.id} id={method.id} />
@@ -2028,7 +2034,7 @@ export default function OrderHistoryPage() {
                         {ratingData.rating > 0 ? `${ratingData.rating}/5` : "Pilih bintang"}
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center justify-center gap-1 mb-4">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <button
@@ -2122,7 +2128,7 @@ export default function OrderHistoryPage() {
                 Terima Kasih!
               </h3>
               <p className="text-gray-600 mb-4">
-                Terima kasih telah memberikan rating dan ulasan. 
+                Terima kasih telah memberikan rating dan ulasan.
                 Ini akan membantu vendor meningkatkan kualitas layanan.
               </p>
               <div className="flex items-center justify-center gap-1 mb-4">
@@ -2353,7 +2359,7 @@ export default function OrderHistoryPage() {
                     <p className="text-sm text-gray-500 mb-3">
                       Upload foto untuk mendukung permintaan layanan tambahan
                     </p>
-                    
+
                     {/* Preview Images */}
                     {newServiceData.previews.length > 0 && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">

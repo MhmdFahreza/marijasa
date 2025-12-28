@@ -1,3 +1,4 @@
+// mitra-layout.tsx
 "use client";
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -20,17 +21,31 @@ function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
 }
 
-// Loading Overlay Component
-const PageTransitionLoader = () => (
+// Page Navigation Loader Component
+const PageNavigationLoader = () => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
     transition={{ duration: 0.2 }}
-    className="fixed inset-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm z-[150] flex flex-col items-center justify-center gap-4"
+    className="fixed inset-0 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm z-[150] flex flex-col items-center justify-center gap-6"
   >
-    <LoaderTwo />
-    <p className="text-sm text-neutral-600 dark:text-neutral-400">Memuat halaman...</p>
+    <div className="flex flex-col items-center gap-4">
+      <LoaderTwo />
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="text-center"
+      >
+        <p className="text-base font-medium text-neutral-700 dark:text-neutral-300">
+          Memuat halaman...
+        </p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+          Mohon tunggu sebentar
+        </p>
+      </motion.div>
+    </div>
   </motion.div>
 );
 
@@ -63,7 +78,7 @@ const LogoutModal = React.memo(({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.15 }}
               className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl max-w-md w-full p-6 pointer-events-auto"
               style={{ willChange: 'transform, opacity' }}
             >
@@ -170,9 +185,52 @@ export default function DashboardLayout({
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutRedirectLoader, setShowLogoutRedirectLoader] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+
+  // State untuk profile data
+  const [mitraProfile, setMitraProfile] = useState({
+    name: "Nama Mitra",
+    avatar: "https://assets.aceternity.com/manu.png"
+  });
+
+  // Handle hydration
+  useEffect(() => {
+    setMounted(true);
+    
+    // Load profile dari localStorage saat mount
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('mitraProfile');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setMitraProfile(parsed);
+        } catch (e) {
+          console.error('Error parsing stored profile:', e);
+        }
+      }
+    }
+  }, []);
+
+  // Listen untuk update profile
+  useEffect(() => {
+    const handleProfileUpdate = (event: CustomEvent) => {
+      const { name, avatar } = event.detail;
+      setMitraProfile({ name, avatar });
+    };
+
+    window.addEventListener('mitraProfileUpdated' as any, handleProfileUpdate);
+
+    return () => {
+      window.removeEventListener('mitraProfileUpdated' as any, handleProfileUpdate);
+    };
+  }, []);
+
+  // Reset navigation state when pathname changes
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
 
   // Determine active view based on pathname
   const activeView = useMemo(() => {
@@ -220,61 +278,17 @@ export default function DashboardLayout({
   ], []);
 
   const handleNavigation = useCallback((href: string) => {
-    // Jangan navigasi jika sudah di halaman yang sama
-    if (pathname === href) return;
+    // Jangan navigasi jika sudah di halaman yang sama atau sedang navigasi
+    if (pathname === href || isNavigating) return;
     
-    // Set state untuk navigasi dimulai
+    // Show loading
     setIsNavigating(true);
-    setNavigationTarget(href);
     
-    // Mulai navigasi
-    router.push(href);
-    
-    // Timeout fallback jika navigasi macet (10 detik)
-    const fallbackTimeout = setTimeout(() => {
-      console.warn("Navigation timeout, forcing end of loading");
-      setIsNavigating(false);
-      setNavigationTarget(null);
-    }, 10000);
-    
-    // Cleanup timeout saat komponen unmount atau navigasi selesai
-    return () => clearTimeout(fallbackTimeout);
-  }, [router, pathname]);
-
-  // Deteksi ketika halaman sudah benar-benar berpindah
-  useEffect(() => {
-    // Jika tidak sedang navigasi, tidak perlu melakukan apapun
-    if (!isNavigating || !navigationTarget) return;
-    
-    // Jika pathname sudah sama dengan target navigasi, artinya halaman sudah berpindah
-    if (pathname === navigationTarget) {
-      // Tunggu sedikit untuk memastikan render selesai
-      const renderCompleteTimeout = setTimeout(() => {
-        setIsNavigating(false);
-        setNavigationTarget(null);
-      }, 50);
-      
-      return () => clearTimeout(renderCompleteTimeout);
-    }
-  }, [pathname, isNavigating, navigationTarget]);
-
-  // Juga cek jika component sudah mount untuk kasus navigasi cepat
-  useEffect(() => {
-    const checkNavigationComplete = () => {
-      if (isNavigating && navigationTarget && pathname === navigationTarget) {
-        setIsNavigating(false);
-        setNavigationTarget(null);
-      }
-    };
-    
-    // Cek setelah mount
-    checkNavigationComplete();
-    
-    // Cek juga setelah waktu tertentu untuk memastikan
-    const safetyCheck = setTimeout(checkNavigationComplete, 300);
-    
-    return () => clearTimeout(safetyCheck);
-  }, [isNavigating, navigationTarget, pathname]);
+    // Simulate minimum loading time for better UX
+    setTimeout(() => {
+      router.push(href);
+    }, 300);
+  }, [router, pathname, isNavigating]);
 
   const toggleSettings = useCallback(() => {
     setSettingsOpen(prev => !prev);
@@ -298,6 +312,7 @@ export default function DashboardLayout({
         if (typeof window !== 'undefined') {
           localStorage.removeItem('mitraToken');
           localStorage.removeItem('mitraUser');
+          localStorage.removeItem('mitraProfile'); // Hapus profile data juga
           sessionStorage.clear();
           
           document.cookie.split(";").forEach((c) => {
@@ -312,8 +327,25 @@ export default function DashboardLayout({
     }, 1000);
   }, []);
 
+  // Show loading state until mounted
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white dark:bg-neutral-900">
+        <div className="text-center">
+          <LoaderTwo />
+          <p className="text-neutral-600 dark:text-neutral-400 mt-6 text-sm">Memuat aplikasi...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
+      {/* Page Navigation Loader */}
+      <AnimatePresence mode="wait">
+        {isNavigating && <PageNavigationLoader />}
+      </AnimatePresence>
+
       {/* Logout Redirect Loader */}
       <AnimatePresence>
         {showLogoutRedirectLoader && (
@@ -323,25 +355,56 @@ export default function DashboardLayout({
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-white dark:bg-neutral-900 z-[300] flex flex-col items-center justify-center gap-6"
           >
-            <div className="text-center">
-              <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
+            <div className="text-center space-y-3">
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] flex items-center justify-center">
+                  <svg
+                    className="w-8 h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+              </motion.div>
+              <motion.h2
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="text-xl font-semibold text-neutral-800 dark:text-white"
+              >
                 Logout Berhasil!
-              </h2>
-              <p className="text-neutral-600 dark:text-neutral-300">
+              </motion.h2>
+              <motion.p
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="text-neutral-600 dark:text-neutral-300"
+              >
                 Mengalihkan ke halaman login...
-              </p>
+              </motion.p>
             </div>
             <LoaderTwo />
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-4">
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-sm text-neutral-500 dark:text-neutral-400 mt-4"
+            >
               Sesi Anda telah berakhir
-            </p>
+            </motion.p>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* Page Transition Loader */}
-      <AnimatePresence>
-        {isNavigating && <PageTransitionLoader />}
       </AnimatePresence>
       
       <div className="flex h-screen w-full overflow-hidden">
@@ -437,13 +500,13 @@ export default function DashboardLayout({
                     )}
                   </button>
 
-                  <AnimatePresence>
+                  <AnimatePresence initial={false}>
                     {settingsOpen && open && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15 }}
                         className="ml-[16px] mt-1 flex flex-col gap-1 overflow-hidden"
                       >
                         <button
@@ -510,9 +573,13 @@ export default function DashboardLayout({
                   (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
                 )}
               >
-                <img
-                  src="https://assets.aceternity.com/manu.png"
-                  className="h-7 w-7 shrink-0 rounded-full"
+                <motion.img
+                  key={mitraProfile.avatar} // Key untuk trigger re-render saat avatar berubah
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  src={mitraProfile.avatar}
+                  className="h-7 w-7 shrink-0 rounded-full object-cover"
                   width={50}
                   height={50}
                   alt="Avatar"
@@ -520,9 +587,15 @@ export default function DashboardLayout({
                   decoding="async"
                 />
                 {open && (
-                  <span className="text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre inline-block !p-0 !m-0">
-                    Mitra
-                  </span>
+                  <motion.span
+                    key={mitraProfile.name} // Key untuk trigger re-render saat nama berubah
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre inline-block !p-0 !m-0"
+                  >
+                    {mitraProfile.name}
+                  </motion.span>
                 )}
               </button>
             </div>
@@ -530,16 +603,9 @@ export default function DashboardLayout({
         </Sidebar>
         
         <div className="flex-1 overflow-auto relative">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="p-4 md:p-6 rounded-tl-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col gap-4 flex-1 w-full h-full"
-          >
+          <div className="p-4 md:p-6 rounded-tl-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col gap-4 flex-1 w-full h-full">
             {children}
-          </motion.div>
+          </div>
         </div>
       </div>
 
@@ -552,4 +618,3 @@ export default function DashboardLayout({
     </>
   );
 }
-

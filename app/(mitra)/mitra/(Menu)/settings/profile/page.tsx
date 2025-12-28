@@ -79,13 +79,47 @@ const MOCK_PROFILE: ProfileData = {
   specialties: ["AC Split", "AC Cassette", "AC Central", "Pembersihan AC", "Perbaikan AC"],
 };
 
+// Helper function untuk trigger custom event
+const updateMitraProfile = (name: string, avatar: string) => {
+  const event = new CustomEvent('mitraProfileUpdated', {
+    detail: { name, avatar }
+  });
+  window.dispatchEvent(event);
+  
+  // Simpan ke localStorage untuk persistensi
+  localStorage.setItem('mitraProfile', JSON.stringify({ name, avatar }));
+};
+
+// Helper function untuk load profile dari localStorage
+const loadProfileFromStorage = (): Partial<ProfileData> | null => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('mitraProfile');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<ProfileData>(MOCK_PROFILE);
+  const [profile, setProfile] = useState<ProfileData>(() => {
+    // Load dari localStorage saat pertama kali
+    const stored = loadProfileFromStorage();
+    if (stored) {
+      return { ...MOCK_PROFILE, ...stored };
+    }
+    return MOCK_PROFILE;
+  });
+  
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [newServiceArea, setNewServiceArea] = useState("");
-  const [tempProfile, setTempProfile] = useState<ProfileData>(MOCK_PROFILE);
+  const [tempProfile, setTempProfile] = useState<ProfileData>(profile);
 
   // Reset tempProfile when editing starts
   useEffect(() => {
@@ -101,6 +135,10 @@ export default function ProfilePage() {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     setProfile(tempProfile);
+    
+    // Trigger update ke sidebar
+    updateMitraProfile(tempProfile.name, tempProfile.avatar);
+    
     setIsEditing(false);
     setIsLoading(false);
     setShowSuccess(true);

@@ -179,55 +179,55 @@ export default function VendorFormPage() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validasi waktu
     const hour = formData.hour || "00";
     const minute = formData.minute || "00";
-    
+
     if (parseInt(hour) < 0 || parseInt(hour) > 23) {
       toast.error("Jam harus antara 00-23");
       return;
     }
-    
+
     if (parseInt(minute) < 0 || parseInt(minute) > 59) {
       toast.error("Menit harus antara 00-59");
       return;
     }
-    
+
     // Format waktu menjadi HH:MM
     const formattedTime = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
-    
+
     // Hitung harga service
     const servicePrice = calculateServicePrice();
     const orderId = `ORD-${Date.now().toString().slice(-6)}`;
     setInitialOrderId(orderId);
-    
+
     const vendorId = params.vendorId as string;
     const vendor = Vendors.find((v) => v.id === vendorId);
-    
+
     // Buat data pesanan awal
     const initialOrderData = {
       id: orderId,
       orderId: orderId,
       vendorName: vendor?.name || "",
       serviceType: getServiceDescription(),
-      serviceDate: formData.date ? new Date(formData.date).toLocaleDateString('id-ID', { 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
+      serviceDate: formData.date ? new Date(formData.date).toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
       }) : "",
       serviceTime: formattedTime,
       status: "menunggu pembayaran",
       statusColor: "bg-yellow-100 text-yellow-800",
       totalPrice: servicePrice + SERVICE_FEE,
       vendorAvatar: vendor?.avatar ?? "",
-      orderDate: new Date().toLocaleDateString('id-ID', { 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
-      }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      orderDate: new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }) + " - " + new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
       }),
       paymentMethod: null,
       paymentId: null,
@@ -257,16 +257,16 @@ export default function VendorFormPage() {
         total: servicePrice + SERVICE_FEE
       },
       orderHistory: [
-        { 
-          status: "Permintaan Dibuat", 
-          date: new Date().toLocaleDateString('id-ID', { 
-            day: 'numeric', 
-            month: 'long', 
-            year: 'numeric' 
-          }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }) 
+        {
+          status: "Permintaan Dibuat",
+          date: new Date().toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          }) + " - " + new Date().toLocaleTimeString('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
         }
       ],
       vendorNotes: ""
@@ -278,7 +278,7 @@ export default function VendorFormPage() {
 
     // Tampilkan popup sukses
     setShowSuccessModal(true);
-    
+
     // Setelah 2 detik, pindah ke konfirmasi
     setTimeout(() => {
       setShowSuccessModal(false);
@@ -329,7 +329,7 @@ export default function VendorFormPage() {
         if (order.id === initialOrderId) {
           const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
           const total = calculateTotalPrice();
-          
+
           return {
             ...order,
             paymentMethod: selectedPayment,
@@ -344,30 +344,117 @@ export default function VendorFormPage() {
             },
             orderHistory: [
               ...order.orderHistory,
-              { 
-                status: "Pembayaran Diterima", 
-                date: new Date().toLocaleDateString('id-ID', { 
-                  day: 'numeric', 
-                  month: 'long', 
-                  year: 'numeric' 
-                }) + " - " + new Date().toLocaleTimeString('id-ID', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                }) 
+              {
+                status: "Pembayaran Diterima",
+                date: new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
               }
             ]
           };
         }
         return order;
       });
-      
+
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
+      // Simpan ke allOrders untuk dilihat mitra
+      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
+
+      // Build service details untuk mitra
+      const buildServiceDetails = (category: string, formData: any, servicePrice: number) => {
+        switch (category) {
+          case 'ac':
+            return {
+              serviceType: formData.acServices?.[0] || "instalasi",
+              acType: formData.acType || "split",
+              acCount: formData.acCount || 1,
+              acPk: formData.acPk || "1",
+              totalPrice: servicePrice
+            };
+          case 'cleaning':
+            return {
+              cleaningType: formData.cleaningServices?.[0] || "general",
+              propertyType: formData.propertyType || "house",
+              areaSize: formData.areaSize || 0,
+              rooms: formData.rooms || 0,
+              totalPrice: servicePrice
+            };
+          case 'electrical':
+            return {
+              electricalWork: formData.electricalWork || [],
+              buildingType: formData.buildingType || "rumah",
+              powerCapacity: formData.powerCapacity || "2200",
+              totalPrice: servicePrice
+            };
+          case 'plumbing':
+            return {
+              plumbingIssues: formData.plumbingIssues || [],
+              urgency: formData.urgency || "normal",
+              totalPrice: servicePrice
+            };
+          case 'sedot-wc':
+            return {
+              serviceType: formData.sedotWCServices?.[0] || "Penyedotan Septictank",
+              totalPrice: servicePrice
+            };
+          case 'taman':
+            return {
+              gardenServices: formData.gardenServices || [],
+              gardenSize: formData.gardenSize || 0,
+              gardenStyle: formData.gardenStyle || "minimalis",
+              totalPrice: servicePrice
+            };
+          case 'furniture':
+            return {
+              furnitureTypes: formData.furnitureTypes || [],
+              material: formData.material || "kayu-jati",
+              finishing: formData.finishing || "natural",
+              dimensions: formData.dimensions || "",
+              totalPrice: servicePrice
+            };
+          default:
+            return {
+              totalPrice: servicePrice
+            };
+        }
+      };
+
+      const vendorId = params.vendorId as string;
+      const vendor = Vendors.find((v) => v.id === vendorId);
+      const serviceCategory = getServiceCategory(vendor?.tags || []);
+      const serviceDetails = buildServiceDetails(serviceCategory, formData, servicePrice);
+
+      const newOrderForMitra = {
+        id: initialOrderId,
+        customerName: formData.name || "",
+        customerEmail: formData.email || "",
+        customerPhone: formData.phone || "",
+        customerAddress: formData.address || "",
+        gpsLink: formData.gpsLink || "",
+        vendorId: vendorId,
+        serviceCategory: serviceCategory,
+        serviceDetails: serviceDetails,
+        workDate: formData.date || new Date().toISOString().split('T')[0],
+        workTime: `${formData.hour || "00"}:${formData.minute || "00"}`,
+        additionalNotes: formData.notes || "",
+        status: "in-progress", // Status awal untuk mitra
+        orderDate: new Date().toISOString().split('T')[0],
+        paymentStatus: "paid"
+      };
+
+      localStorage.setItem('allOrders', JSON.stringify([...allOrders, newOrderForMitra]));
+
       setIsProcessingPayment(false);
-      
+
       // Tampilkan popup pembayaran berhasil
       setShowPaymentSuccessModal(true);
-      
+
       // Setelah 3 detik, redirect ke riwayat pemesanan
       setTimeout(() => {
         setShowPaymentSuccessModal(false);
@@ -395,13 +482,13 @@ export default function VendorFormPage() {
           }
         });
         return acTotal;
-      
+
       case "electrical":
         const works = formData.electricalWork || [];
         return works.reduce((sum: number, work: string) => {
           return sum + (PRICES.electrical[work as keyof typeof PRICES.electrical] || 0);
         }, 0);
-      
+
       case "cleaning":
         const cleaningServices = formData.cleaningServices || [];
         let cleaningTotal = 0;
@@ -411,13 +498,13 @@ export default function VendorFormPage() {
           }
         });
         return cleaningTotal;
-      
+
       case "plumbing":
         const plumbingIssues = formData.plumbingIssues || [];
         return plumbingIssues.reduce((sum: number, issue: string) => {
           return sum + (PRICES.plumbing[issue as keyof typeof PRICES.plumbing] || 0);
         }, 0);
-      
+
       case "sedot-wc":
         const sedotWCServices = formData.sedotWCServices || [];
         let sedotWCTotal = 0;
@@ -427,19 +514,19 @@ export default function VendorFormPage() {
           }
         });
         return sedotWCTotal;
-      
+
       case "taman":
         const gardenServices = formData.gardenServices || [];
         return gardenServices.reduce((sum: number, service: string) => {
           return sum + (PRICES.garden[service as keyof typeof PRICES.garden] || 0);
         }, 0);
-      
+
       case "furniture":
         const furnitureTypes = formData.furnitureTypes || [];
         return furnitureTypes.reduce((sum: number, type: string) => {
           return sum + (PRICES.furniture[type as keyof typeof PRICES.furniture] || 0);
         }, 0);
-      
+
       default:
         return formData.totalPrice || 0;
     }
@@ -472,46 +559,46 @@ export default function VendorFormPage() {
     const vendorId = params.vendorId as string;
     const vendor = Vendors.find((v) => v.id === vendorId);
     if (!vendor) return "Layanan";
-    
+
     const serviceCategory = getServiceCategory(vendor.tags);
-    
+
     if (serviceCategory === "ac") {
       const acServices = formData.acServices || [];
       if (acServices.length === 0) return "Layanan AC";
-      
+
       const serviceNames = acServices.map((service: string) => {
         const serviceType = PRICES.ac[service as keyof typeof PRICES.ac]?.label || "Layanan AC";
         const acType = formData.acType || "";
         const acPk = formData.acPk || "";
         return `${serviceType} ${acType} ${acPk} PK`;
       }).join(", ");
-      
+
       const acCount = formData.acCount || "1";
       return `${serviceNames} (${acCount} unit)`;
     }
-    
+
     if (serviceCategory === "cleaning") {
       const cleaningServices = formData.cleaningServices || [];
       if (cleaningServices.length === 0) return "Layanan Pembersihan";
-      
+
       const serviceNames = cleaningServices.map((service: string) => {
         return PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.label || service;
       }).join(", ");
-      
+
       return `${serviceNames}`;
     }
 
     if (serviceCategory === "sedot-wc") {
       const sedotWCServices = formData.sedotWCServices || [];
       if (sedotWCServices.length === 0) return "Layanan Sedot WC";
-      
+
       const serviceNames = sedotWCServices.map((service: string) => {
         return PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]?.label || service;
       }).join(", ");
-      
+
       return `${serviceNames}`;
     }
-    
+
     return vendor.tags[0] || "Layanan";
   };
 
@@ -654,7 +741,7 @@ export default function VendorFormPage() {
                 Berhasil Mengajukan Pemesanan!
               </h3>
               <p className="text-gray-600 mb-6">
-                Pesanan Anda telah berhasil diajukan dan tersimpan di riwayat pemesanan. 
+                Pesanan Anda telah berhasil diajukan dan tersimpan di riwayat pemesanan.
                 Silakan lanjutkan ke pembayaran.
               </p>
               <div className="flex justify-center">
@@ -728,7 +815,7 @@ function OrderForm({
   handleUseProfileLocation,
   gettingLocation
 }: any) {
-  
+
   const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
     // Batasi input hanya angka dan maksimal 2 digit
@@ -737,12 +824,12 @@ function OrderForm({
       setFormData({ ...formData, hour: '' });
       return;
     }
-    
+
     let hour = parseInt(value, 10);
     if (hour > 23) {
       hour = 23;
     }
-    
+
     setFormData({ ...formData, hour: hour.toString() });
   };
 
@@ -754,12 +841,12 @@ function OrderForm({
       setFormData({ ...formData, minute: '' });
       return;
     }
-    
+
     let minute = parseInt(value, 10);
     if (minute > 59) {
       minute = 59;
     }
-    
+
     // Simpan tanpa padding - biarkan fleksibel
     setFormData({ ...formData, minute: minute.toString() });
   };
@@ -1030,40 +1117,40 @@ function ConfirmationStep({
     if (serviceCategory === "ac") {
       const acServices = formData.acServices || [];
       if (acServices.length === 0) return "Layanan AC";
-      
+
       const serviceNames = acServices.map((service: string) => {
         const serviceType = PRICES.ac[service as keyof typeof PRICES.ac]?.label || "Layanan AC";
         const acType = formData.acType || "";
         const acPk = formData.acPk || "";
         return `${serviceType} ${acType} ${acPk} PK`;
       }).join(", ");
-      
+
       const acCount = formData.acCount || "1";
       return `${serviceNames} (${acCount} unit)`;
     }
-    
+
     if (serviceCategory === "cleaning") {
       const cleaningServices = formData.cleaningServices || [];
       if (cleaningServices.length === 0) return "Layanan Pembersihan";
-      
+
       const serviceNames = cleaningServices.map((service: string) => {
         return PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.label || service;
       }).join(", ");
-      
+
       return `${serviceNames}`;
     }
 
     if (serviceCategory === "sedot-wc") {
       const sedotWCServices = formData.sedotWCServices || [];
       if (sedotWCServices.length === 0) return "Layanan Sedot WC";
-      
+
       const serviceNames = sedotWCServices.map((service: string) => {
         return PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]?.label || service;
       }).join(", ");
-      
+
       return `${serviceNames}`;
     }
-    
+
     return vendor.tags[0];
   };
 
