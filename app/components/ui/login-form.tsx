@@ -125,29 +125,51 @@ export function LoginForm({
         }
       }
       
-      // Tampilkan loader redirect
-      setShowRedirectLoader(true)
-      
-      // Tunggu sebentar untuk menampilkan loader redirect
-      setTimeout(() => {
-        // Redirect berdasarkan user type
-        if (userType === "mitra") {
-          router.push("/mitra/dashboard")
-        } else if (userType === "user") {
-          router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
-        } else if (userType === "admin") {
-          router.push("/admin/dashboard")
-        }
-        router.refresh()
-      }, 1000)
+      // Hanya tampilkan loader redirect untuk admin dan mitra
+      if (userType === "admin" || userType === "mitra") {
+        setShowRedirectLoader(true)
+        
+        // Tunggu sebentar untuk menampilkan loader redirect
+        setTimeout(() => {
+          if (userType === "mitra") {
+            router.push("/mitra/dashboard")
+          } else if (userType === "admin") {
+            router.push("/admin/dashboard")
+          }
+          router.refresh()
+        }, 1000)
+      } else {
+        // Untuk user biasa, langsung redirect ke OTP tanpa loading overlay
+        router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
+      }
       
     } catch (error) {
       console.error("Login error:", error)
       setError("Terjadi kesalahan saat login. Silakan coba lagi.")
-    } finally {
       setIsLoading(false)
     }
   }
+
+  // Fungsi untuk mendapatkan text loader berdasarkan user type
+  const getRedirectLoaderText = () => {
+    if (userType === "admin") {
+      return {
+        title: "Login Berhasil!",
+        message: "Mengarahkan ke dashboard admin..."
+      }
+    } else if (userType === "mitra") {
+      return {
+        title: "Login Berhasil!",
+        message: "Mengarahkan ke dashboard mitra..."
+      }
+    }
+    return {
+      title: "Login Berhasil!",
+      message: "Mengarahkan..."
+    }
+  }
+
+  const loaderText = getRedirectLoaderText()
 
   return (
     <>
@@ -155,10 +177,10 @@ export function LoginForm({
         <div className="fixed inset-0 bg-white/90 dark:bg-neutral-900/90 z-50 flex flex-col items-center justify-center gap-6">
           <div className="text-center">
             <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
-              Login Berhasil!
+              {loaderText.title}
             </h2>
             <p className="text-neutral-600 dark:text-neutral-300">
-              Mengarahkan ke dashboard admin...
+              {loaderText.message}
             </p>
           </div>
           <LoaderTwo />
@@ -238,7 +260,7 @@ export function LoginForm({
                     {isLoading ? (
                       <>
                         <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Memproses...
+                        {userType === "user" ? "Mengirim kode OTP..." : "Memproses..."}
                       </>
                     ) : showRedirectLoader ? "Mengalihkan..." : "Login"}
                   </Button>
