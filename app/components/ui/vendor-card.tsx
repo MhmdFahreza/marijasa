@@ -52,7 +52,13 @@ const saveFavorites = (ids: string[]) => {
   }
 };
 
-export default function VendorCard({ vendor }: { vendor: Vendor }) {
+interface VendorCardProps {
+  vendor: Vendor;
+  isLoggedIn: boolean;
+  onLoginRequired: () => void;
+}
+
+export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: VendorCardProps) {
   const { id, name, verified, rating, reviewCount, tags, summary, gallery, avatar } = vendor;
   const router = useRouter();
   const prefersReduced = useReducedMotion();
@@ -69,6 +75,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
   const handleToggleFavorite = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     
+    // Cek login terlebih dahulu
+    if (!isLoggedIn) {
+      onLoginRequired();
+      return;
+    }
+
     const favorites = getFavorites();
     const newIsFavorite = !isFavorite;
     
@@ -84,21 +96,30 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
     }
 
     setTimeout(() => setIsAnimating(false), 400);
-  }, [id, isFavorite]);
+  }, [id, isFavorite, isLoggedIn, onLoginRequired]);
 
   const handleViewProfile = useCallback(() => {
+    // Lihat profil tidak perlu login
     setIsNavigating(true);
     setTimeout(() => {
       router.push(`/jasa/detailjasa/${id}`);
     }, prefersReduced ? 50 : 250);
   }, [router, id, prefersReduced]);
 
-  const handleOrderNow = useCallback(() => {
+  const handleOrderNow = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    // Cek login terlebih dahulu
+    if (!isLoggedIn) {
+      onLoginRequired();
+      return;
+    }
+
     setIsNavigating(true);
     setTimeout(() => {
       router.push(`/jasa/detailjasa/${id}/form`);
     }, prefersReduced ? 50 : 250);
-  }, [router, id, prefersReduced]);
+  }, [router, id, prefersReduced, isLoggedIn, onLoginRequired]);
 
   return (
     <>
@@ -159,7 +180,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
+                        {!isLoggedIn 
+                          ? "Login untuk menyimpan favorit"
+                          : isFavorite 
+                            ? "Hapus dari favorit" 
+                            : "Tambah ke favorit"
+                        }
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -256,7 +282,12 @@ export default function VendorCard({ vendor }: { vendor: Vendor }) {
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
+                    {!isLoggedIn 
+                      ? "Login untuk menyimpan favorit"
+                      : isFavorite 
+                        ? "Hapus dari favorit" 
+                        : "Tambah ke favorit"
+                    }
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

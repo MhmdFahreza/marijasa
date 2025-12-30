@@ -25,11 +25,13 @@ type UserType = "user" | "mitra" | "admin"
 
 interface LoginFormProps extends React.ComponentProps<"div"> {
   userType?: UserType
+  onSuccess?: () => void
 }
 
 export function LoginForm({
   className,
   userType = "user",
+  onSuccess,
   ...props
 }: LoginFormProps) {
   const [email, setEmail] = useState("")
@@ -122,7 +124,22 @@ export function LoginForm({
         } else if (userType === "mitra") {
           localStorage.setItem('mitraToken', 'dummy-token')
           localStorage.setItem('mitraUser', JSON.stringify({ email }))
+        } else {
+          // Untuk user biasa
+          localStorage.setItem('userToken', 'dummy-token')
+          localStorage.setItem('user', JSON.stringify({ 
+            email,
+            name: "Pengguna",
+            role: "user"
+          }))
         }
+      }
+      
+      // Jika ada callback onSuccess (untuk modal), panggil
+      if (onSuccess) {
+        onSuccess()
+        setIsLoading(false)
+        return
       }
       
       // Hanya tampilkan loader redirect untuk admin dan mitra

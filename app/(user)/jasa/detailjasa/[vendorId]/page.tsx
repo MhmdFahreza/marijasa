@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
@@ -16,11 +16,19 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar"
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
 import { Send } from "lucide-react";
 import { Vendors } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
-import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle } from "lucide-react";
+import { LoginForm } from "@/app/components/ui/login-form";
+import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle } from "lucide-react";
 
 type GalleryImage = {
   src: string;
@@ -33,9 +41,34 @@ export default function VendorDetailPage() {
   const prefersReduced = useReducedMotion();
   const [leaving, setLeaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("layanan");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
 
   const vendorId = params.vendorId as string;
   const vendor = Vendors.find((v) => v.id === vendorId);
+
+  // Cek status login saat komponen dimount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('userToken');
+      const userData = localStorage.getItem('user');
+      setIsLoggedIn(!!token);
+
+      // Load favorites from localStorage
+      const savedFavorites = localStorage.getItem('favorites');
+      if (savedFavorites) {
+        setFavorites(JSON.parse(savedFavorites));
+      }
+    }
+  }, []);
+
+  // Simpan favorites ke localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('favorites', JSON.stringify(favorites));
+    }
+  }, [favorites]);
 
   const handleNavigation = async (path: string) => {
     setLeaving(true);
@@ -55,6 +88,46 @@ export default function VendorDetailPage() {
       });
     }
   };
+
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+    setShowLoginModal(false);
+  };
+
+  const handleFavoriteClick = () => {
+    if (!isLoggedIn) {
+      setShowLoginModal(true);
+      return;
+    }
+
+    if (vendorId) {
+      if (favorites.includes(vendorId)) {
+        // Remove from favorites
+        setFavorites(prev => prev.filter(id => id !== vendorId));
+      } else {
+        // Add to favorites
+        setFavorites(prev => [...prev, vendorId]);
+      }
+    }
+  };
+
+  const handlePesanSekarang = () => {
+    if (!isLoggedIn) {
+      setShowLoginModal(true);
+      return;
+    }
+    handleNavigation(`/jasa/detailjasa/${vendorId}/form`);
+  };
+
+  const handleChatClick = () => {
+    if (!isLoggedIn) {
+      setShowLoginModal(true);
+      return;
+    }
+    handleNavigation(`/chat/${vendorId}`);
+  };
+
+  const isFavorite = vendorId ? favorites.includes(vendorId) : false;
 
   const tabs = [
     { id: "layanan", label: "Layanan" },
@@ -151,8 +224,14 @@ export default function VendorDetailPage() {
                     <p className="text-muted-foreground leading-relaxed text-sm md:text-base">{vendor.summary}</p>
                   </div>
 
-                  <Button variant="ghost" size="icon" aria-label="Simpan" className="flex-shrink-0">
-                    <Heart className="h-5 w-5" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={isFavorite ? "Hapus dari favorit" : "Simpan ke favorit"}
+                    className={`flex-shrink-0 ${isFavorite ? 'text-red-500' : ''}`}
+                    onClick={handleFavoriteClick}
+                  >
+                    <Heart className={`h-5 w-5 ${isFavorite ? 'fill-red-500' : ''}`} />
                   </Button>
                 </div>
               </div>
@@ -347,7 +426,7 @@ export default function VendorDetailPage() {
                 <Button
                   size="lg"
                   className="w-full bg-[#7CE0A8] text-white hover:bg-[#5CA68A] shadow-lg rounded-lg transition duration-300"
-                  onClick={() => handleNavigation(`/jasa/detailjasa/${vendorId}/form`)}
+                  onClick={handlePesanSekarang}
                 >
                   <Send className="mr-2 h-4 w-4" />
                   Pesan Sekarang
@@ -368,7 +447,7 @@ export default function VendorDetailPage() {
                   size="lg"
                   variant="outline"
                   className="w-full border-2 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition duration-300"
-                  onClick={() => handleNavigation(`/chat/${vendorId}`)}
+                  onClick={handleChatClick}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
                   Chat dengan Vendor
@@ -388,14 +467,14 @@ export default function VendorDetailPage() {
             <Button
               variant="outline"
               className="flex-1 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg transition duration-300"
-              onClick={() => handleNavigation(`/chat/${vendorId}`)}
+              onClick={handleChatClick}
             >
               <MessageCircle className="mr-2 h-4 w-4" />
               Chat
             </Button>
             <Button
               className="flex-1 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] shadow-lg rounded-lg transition duration-300"
-              onClick={() => handleNavigation(`/jasa/detailjasa/${vendorId}/form`)}
+              onClick={handlePesanSekarang}
             >
               <Send className="mr-2 h-4 w-4" />
               Pesan Sekarang
@@ -403,6 +482,35 @@ export default function VendorDetailPage() {
           </div>
         </div>
       </motion.main>
+
+      {/* Login Modal */}
+      <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Login Diperlukan
+            </DialogTitle>
+            <DialogDescription>
+              Anda perlu login untuk mengakses fitur ini. Silakan masuk ke akun Anda terlebih dahulu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <LoginForm userType="user" onSuccess={handleLoginSuccess} />
+            <div className="mt-4 text-center text-sm text-muted-foreground">
+              <Button
+                variant="link"
+                className="p-0 h-auto text-[#7CE0A8] hover:text-[#6bcb96]"
+                onClick={() => {
+                  setShowLoginModal(false);
+                  router.push('/register');
+                }}
+              >
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AnimatePresence>
         {leaving && (

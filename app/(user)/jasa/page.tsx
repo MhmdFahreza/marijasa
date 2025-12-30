@@ -21,7 +21,16 @@ import {
   PaginationNext,
   PaginationEllipsis,
 } from "@/app/components/ui/pagination";
-import { Search, Filter, MapPin, Star } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
+import { LoginForm } from "@/app/components/ui/login-form";
+import { Button } from "@/app/components/ui/button";
+import { Search, Filter, MapPin, Star, AlertCircle } from "lucide-react";
 
 const FilterBar = dynamic(() => import("@/app/components/ui/FilterBar"), { ssr: false });
 
@@ -231,18 +240,26 @@ export default function JasaPage() {
   const [leaving, setLeaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // State untuk filter - inisialisasi dari query params
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
 
-  // Effect untuk membaca query parameter saat pertama kali dimuat
+  // Effect untuk membaca query parameter dan check login status
   useEffect(() => {
     const kategori = searchParams?.get('kategori');
     
     if (kategori) {
       setSelectedCategory(kategori);
+    }
+
+    // Cek status login
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('userToken');
+      setIsLoggedIn(!!token);
     }
     
     // Simulasi loading data
@@ -318,6 +335,11 @@ export default function JasaPage() {
     setSelectedCity("");
     setSelectedRating("");
     setCurrentPage(1);
+  };
+
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+    setShowLoginModal(false);
   };
 
   const renderPaginationItems = () => {
@@ -533,7 +555,11 @@ export default function JasaPage() {
                       }}
                       transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
                     >
-                      <VendorCard vendor={v} />
+                      <VendorCard 
+                        vendor={v} 
+                        isLoggedIn={isLoggedIn}
+                        onLoginRequired={() => setShowLoginModal(true)}
+                      />
                     </motion.div>
                   ))}
                 </motion.section>
@@ -569,6 +595,35 @@ export default function JasaPage() {
           </>
         )}
       </motion.main>
+
+      {/* Login Modal */}
+      <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Login Diperlukan
+            </DialogTitle>
+            <DialogDescription>
+              Anda perlu login untuk mengakses fitur ini. Silakan masuk ke akun Anda terlebih dahulu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <LoginForm userType="user" onSuccess={handleLoginSuccess} />
+            <div className="mt-4 text-center text-sm text-muted-foreground">
+              <Button 
+                variant="link" 
+                className="p-0 h-auto text-[#7CE0A8] hover:text-[#6bcb96]"
+                onClick={() => {
+                  setShowLoginModal(false);
+                  router.push('/register');
+                }}
+              >
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AnimatePresence>
         {leaving && (
