@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useCallback, memo, useEffect, useRef } from "react";
 import { SlidersHorizontal, X, RotateCcw, Search } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -17,22 +18,22 @@ import { PlaceholdersAndVanishInput } from "@/app/components/ui/placeholders-and
 
 // Optimasi: Pindahkan konstanta keluar komponen
 const CATEGORY_LABELS: Record<string, string> = {
-  listrik: "Tukang Listrik",
-  ac: "Tukang AC",
-  pembersihanrumah: "Tukang Pembersihan Rumah",
-  ledeng: "Tukang Ledeng",
-  sedotwc: "Tukang Sedot WC",
-  kebun: "Tukang Kebun",
-  furnitur: "Tukang Mebel",
+    listrik: "Tukang Listrik",
+    ac: "Tukang AC",
+    pembersihanrumah: "Tukang Pembersihan Rumah",
+    ledeng: "Tukang Ledeng",
+    sedotwc: "Tukang Sedot WC",
+    kebun: "Tukang Kebun",
+    furnitur: "Tukang Mebel",
 };
 
 const RATING_LABELS: Record<string, string> = {
-  "5": "⭐ 5",
-  "4+": "⭐ 4.0+",
-  "3+": "⭐ 3.0+", 
-  "2+": "⭐ 2.0+",
-  "1+": "⭐ 1.0+",
-  "semuarating": "Semua Rating",
+    "5": "⭐ 5",
+    "4+": "⭐ 4.0+",
+    "3+": "⭐ 3.0+",
+    "2+": "⭐ 2.0+",
+    "1+": "⭐ 1.0+",
+    "semuarating": "Semua Rating",
 };
 
 interface FilterBarProps {
@@ -46,12 +47,12 @@ interface FilterBarProps {
 }
 
 // Optimasi: Komponen Chip yang terpisah dengan memo
-const Chip = memo(({ 
-    label, 
-    onRemove 
-}: { 
-    label: string; 
-    onRemove: () => void 
+const Chip = memo(({
+    label,
+    onRemove
+}: {
+    label: string;
+    onRemove: () => void
 }) => (
     <span className="inline-flex items-center gap-2 rounded-full bg-[#7CE0A8]/10 px-3 py-1.5
         text-[#7CE0A8] text-sm font-medium ring-1 ring-[#7CE0A8]/20 hover:bg-[#7CE0A8]/15 transition-colors">
@@ -87,6 +88,8 @@ export default function FilterBar({
     onRatingChange,
     onResetFilters,
 }: FilterBarProps) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [urutkan, setUrutkan] = useState<string>("");
     const [isSmallMobile, setIsSmallMobile] = useState(false);
     const [isTallMobile, setIsTallMobile] = useState(false);
@@ -98,24 +101,62 @@ export default function FilterBar({
         const checkMobile = () => {
             const width = window.innerWidth;
             const height = window.innerHeight;
-            
+
             // Small devices (iPhone 5, SE) - width kecil DAN height kecil
             setIsSmallMobile(width <= 375 && height <= 667);
-            
+
             // Tall devices (iPhone X+) - width kecil tapi height besar
             setIsTallMobile(width <= 414 && height > 667);
         };
-        
+
         checkMobile();
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
+    // Fungsi untuk update URL dengan query params
+    const updateURL = useCallback((category: string, city: string, rating: string) => {
+        const params = new URLSearchParams();
+
+        if (category) {
+            params.set('kategori', category);
+        }
+        if (city) {
+            params.set('kota', city);
+        }
+        if (rating && rating !== 'semuarating') {
+            params.set('rating', rating);
+        }
+
+        const queryString = params.toString();
+        const newURL = queryString ? `/jasa?${queryString}` : '/jasa';
+
+        router.push(newURL, { scroll: false });
+    }, [router]);
+
+    // Handler untuk perubahan kategori dengan update URL
+    const handleCategoryChange = useCallback((value: string) => {
+        onCategoryChange(value);
+        updateURL(value, selectedCity, selectedRating);
+    }, [onCategoryChange, selectedCity, selectedRating, updateURL]);
+
+    // Handler untuk perubahan kota dengan update URL
+    const handleCityChange = useCallback((value: string) => {
+        onCityChange(value);
+        updateURL(selectedCategory, value, selectedRating);
+    }, [onCityChange, selectedCategory, selectedRating, updateURL]);
+
+    // Handler untuk perubahan rating dengan update URL
+    const handleRatingChange = useCallback((value: string) => {
+        onRatingChange(value);
+        updateURL(selectedCategory, selectedCity, value);
+    }, [onRatingChange, selectedCategory, selectedCity, updateURL]);
+
     // Optimasi: Gunakan useCallback untuk handler
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         console.log("query:", e.target.value);
     }, []);
-    
+
     const handleSearchSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         console.log("submitted search");
@@ -128,7 +169,8 @@ export default function FilterBar({
         setUrutkan("");
         onResetFilters();
         setSheetOpen(false);
-    }, [onCategoryChange, onCityChange, onRatingChange, onResetFilters]);
+        router.push('/jasa', { scroll: false });
+    }, [onCategoryChange, onCityChange, onRatingChange, onResetFilters, router]);
 
     const handleSaveFilters = useCallback(() => {
         setSheetOpen(false);
@@ -137,35 +179,35 @@ export default function FilterBar({
     // Optimasi: useMemo untuk active chips
     const activeChips = useMemo(() => {
         const chips: { key: "kategori" | "kota" | "rating" | "urutkan"; label: string }[] = [];
-        
+
         if (selectedCategory) {
-            chips.push({ 
-                key: "kategori", 
-                label: CATEGORY_LABELS[selectedCategory] || selectedCategory 
+            chips.push({
+                key: "kategori",
+                label: CATEGORY_LABELS[selectedCategory] || selectedCategory
             });
         }
-        
+
         if (selectedCity) {
-            chips.push({ 
-                key: "kota", 
-                label: selectedCity 
+            chips.push({
+                key: "kota",
+                label: selectedCity
             });
         }
-        
+
         if (selectedRating && selectedRating !== "semuarating") {
-            chips.push({ 
-                key: "rating", 
-                label: RATING_LABELS[selectedRating] || `Rating: ${selectedRating}` 
+            chips.push({
+                key: "rating",
+                label: RATING_LABELS[selectedRating] || `Rating: ${selectedRating}`
             });
         }
-        
+
         if (urutkan) {
-            chips.push({ 
-                key: "urutkan", 
-                label: `Urutkan: ${urutkan}` 
+            chips.push({
+                key: "urutkan",
+                label: `Urutkan: ${urutkan}`
             });
         }
-        
+
         return chips;
     }, [selectedCategory, selectedCity, selectedRating, urutkan]);
 
@@ -173,24 +215,24 @@ export default function FilterBar({
     const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "urutkan") => {
         switch (key) {
             case "kategori":
-                onCategoryChange("");
+                handleCategoryChange("");
                 break;
             case "kota":
-                onCityChange("");
+                handleCityChange("");
                 break;
             case "rating":
-                onRatingChange("");
+                handleRatingChange("");
                 break;
             case "urutkan":
                 setUrutkan("");
                 break;
         }
-    }, [onCategoryChange, onCityChange, onRatingChange]);
+    }, [handleCategoryChange, handleCityChange, handleRatingChange]);
 
     // Optimasi: Komponen Chips yang terpisah
     const Chips = useMemo(() => {
         if (activeChips.length === 0) return null;
-        
+
         return (
             <div className="mt-3 flex flex-wrap items-center gap-2">
                 {activeChips.map(chip => (
@@ -220,7 +262,7 @@ export default function FilterBar({
                 <div className="lg:col-span-2">
                     <Select
                         value={selectedCategory}
-                        onValueChange={onCategoryChange}
+                        onValueChange={handleCategoryChange}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
                             <SelectValue placeholder="Pilih kategori" />
@@ -241,7 +283,7 @@ export default function FilterBar({
                 <div className="lg:col-span-2">
                     <CitySelect
                         value={selectedCity}
-                        onValueChange={onCityChange}
+                        onValueChange={handleCityChange}
                         cities={CITIES_ID}
                         placeholder="Pilih kota"
                         triggerClassName="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
@@ -253,7 +295,7 @@ export default function FilterBar({
                 <div className="lg:col-span-2">
                     <Select
                         value={selectedRating}
-                        onValueChange={onRatingChange}
+                        onValueChange={handleRatingChange}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
                             <SelectValue placeholder="Pilih rating" />
@@ -305,7 +347,7 @@ export default function FilterBar({
                 <div className="col-span-2">
                     <Select
                         value={selectedCategory}
-                        onValueChange={onCategoryChange}
+                        onValueChange={handleCategoryChange}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
                             <SelectValue placeholder="Kategori" />
@@ -326,7 +368,7 @@ export default function FilterBar({
                 <div className="col-span-2">
                     <CitySelect
                         value={selectedCity}
-                        onValueChange={onCityChange}
+                        onValueChange={handleCityChange}
                         cities={CITIES_ID}
                         placeholder="Kota"
                         triggerClassName="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
@@ -338,7 +380,7 @@ export default function FilterBar({
                 <div className="col-span-2">
                     <Select
                         value={selectedRating}
-                        onValueChange={onRatingChange}
+                        onValueChange={handleRatingChange}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
                             <SelectValue placeholder="Rating" />
@@ -415,8 +457,8 @@ export default function FilterBar({
                         </Button>
                     </SheetTrigger>
 
-                    <SheetContent 
-                        side="bottom" 
+                    <SheetContent
+                        side="bottom"
                         className="rounded-t-2xl p-4 flex flex-col"
                         style={{
                             height: isSmallMobile ? '85vh' : 'auto',
@@ -435,9 +477,9 @@ export default function FilterBar({
                                 <div className="text-sm font-medium text-gray-700">Kategori</div>
                                 <Select
                                     value={selectedCategory}
-                                    onValueChange={onCategoryChange}
+                                    onValueChange={handleCategoryChange}
                                 >
-                                    <SelectTrigger 
+                                    <SelectTrigger
                                         className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                                         onClick={(e) => {
                                             // Prevent keyboard on mobile for select
@@ -448,12 +490,12 @@ export default function FilterBar({
                                     >
                                         <SelectValue placeholder="Pilih kategori" />
                                     </SelectTrigger>
-                                    <SelectContent 
-                                        className="z-[9999]" 
-                                        position="popper" 
+                                    <SelectContent
+                                        className="z-[9999]"
+                                        position="popper"
                                         side="bottom"
                                         avoidCollisions={false}
-                                        style={{ 
+                                        style={{
                                             width: 'var(--radix-select-trigger-width)',
                                             maxHeight: '200px'
                                         }}
@@ -474,7 +516,7 @@ export default function FilterBar({
                                 <div className="text-sm font-medium text-gray-700">Lokasi</div>
                                 <CitySelect
                                     value={selectedCity}
-                                    onValueChange={onCityChange}
+                                    onValueChange={handleCityChange}
                                     cities={CITIES_ID}
                                     placeholder="Pilih kota"
                                     triggerClassName="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
@@ -494,9 +536,9 @@ export default function FilterBar({
                                 <div className="text-sm font-medium text-gray-700">Rating</div>
                                 <Select
                                     value={selectedRating}
-                                    onValueChange={onRatingChange}
+                                    onValueChange={handleRatingChange}
                                 >
-                                    <SelectTrigger 
+                                    <SelectTrigger
                                         className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                                         onClick={(e) => {
                                             // Prevent keyboard on mobile for select
@@ -507,12 +549,12 @@ export default function FilterBar({
                                     >
                                         <SelectValue placeholder="Pilih rating" />
                                     </SelectTrigger>
-                                    <SelectContent 
-                                        className="z-[9999]" 
-                                        position="popper" 
+                                    <SelectContent
+                                        className="z-[9999]"
+                                        position="popper"
                                         side="bottom"
                                         avoidCollisions={false}
-                                        style={{ 
+                                        style={{
                                             width: 'var(--radix-select-trigger-width)',
                                             maxHeight: '200px'
                                         }}
@@ -534,7 +576,7 @@ export default function FilterBar({
                                     value={urutkan}
                                     onValueChange={setUrutkan}
                                 >
-                                    <SelectTrigger 
+                                    <SelectTrigger
                                         className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                                         onClick={(e) => {
                                             // Prevent keyboard on mobile for select
@@ -545,12 +587,12 @@ export default function FilterBar({
                                     >
                                         <SelectValue placeholder="Urutkan" />
                                     </SelectTrigger>
-                                    <SelectContent 
-                                        className="z-[9999]" 
-                                        position="popper" 
+                                    <SelectContent
+                                        className="z-[9999]"
+                                        position="popper"
                                         side="bottom"
                                         avoidCollisions={false}
-                                        style={{ 
+                                        style={{
                                             width: 'var(--radix-select-trigger-width)',
                                             maxHeight: '200px',
                                             zIndex: 9999
@@ -577,8 +619,8 @@ export default function FilterBar({
                                     Reset
                                 </Button>
                                 <SheetClose asChild>
-                                    <Button 
-                                        type="button" 
+                                    <Button
+                                        type="button"
                                         className="h-12 rounded-xl flex-1 bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] text-white hover:from-[#6BCF97] hover:to-[#4A8D74] transition-all duration-200"
                                         onClick={handleSaveFilters}
                                     >

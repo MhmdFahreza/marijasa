@@ -174,6 +174,17 @@ export default function VendorFormPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validasi tanggal: tidak boleh memilih tanggal hari ini atau yang sudah lewat
+    const selectedDate = new Date(formData.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    if (selectedDate <= today) {
+      toast.error("Tanggal harus mulai dari besok. Tidak bisa memilih tanggal hari ini atau yang sudah lewat.");
+      return;
+    }
+
     const hour = formData.hour || "00";
     const minute = formData.minute || "00";
 
@@ -804,6 +815,19 @@ function OrderForm({
   handleUseProfileLocation,
   gettingLocation
 }: any) {
+  // Fungsi untuk mendapatkan tanggal besok dalam format YYYY-MM-DD
+  const getTomorrowDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  };
+
+  const [minDate, setMinDate] = useState("");
+
+  useEffect(() => {
+    // Set minDate saat komponen mount
+    setMinDate(getTomorrowDate());
+  }, []);
 
   const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -972,7 +996,11 @@ function OrderForm({
                     required
                     value={formData.date || ""}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    min={minDate} // Disable tanggal hari ini dan sebelumnya
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Hanya bisa memilih tanggal mulai besok dan seterusnya
+                  </p>
                 </div>
 
                 <div className="space-y-2">

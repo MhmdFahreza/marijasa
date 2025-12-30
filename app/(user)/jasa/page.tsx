@@ -29,38 +29,13 @@ const ITEMS_PER_PAGE = 10;
 
 // Mapping kategori dari value filter ke kata kunci pencarian yang lebih fleksibel
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  ac: [
-    "tukang ac", "ac", "instalasi ac", "cuci ac", "bongkar pasang ac",
-    "isi freon", "service ac", "servis ac", "perbaikan ac", "maintenance ac",
-    "pemasangan ac", "split", "cassette", "central", "ac split", "ac cassette"
-  ],
-  listrik: [
-    "tukang listrik", "listrik", "panel listrik", "instalasi listrik",
-    "perbaikan mcb", "ganti saklar", "stop kontak", "instalasi rumah",
-    "troubleshooting listrik", "upgrade daya", "pemasangan lampu", "led", "elektrik"
-  ],
-  pembersihanrumah: [
-    "tukang pembersihan rumah", "pembersihan", "cleaning", "deep cleaning",
-    "general cleaning", "sanitasi", "cuci sofa", "cuci karpet", "springbed",
-    "kebersihan rumah", "bersih-bersih", "home cleaning", "disinfeksi", "clean"
-  ],
-  ledeng: [
-    "tukang ledeng", "ledeng", "pipa", "perbaikan kebocoran", "bongkar pasang wastafel",
-    "instalasi water heater", "shower", "bathtub", "kloset", "toren", "pompa air",
-    "keran", "saluran air", "plumbing", "air"
-  ],
-  sedotwc: [
-    "tukang sedot wc", "sedot wc", "saluran mampet", "septitank", "wc mampet",
-    "sedot septitank", "saluran pembuangan", "toilet", "wc", "sedot"
-  ],
-  kebun: [
-    "tukang kebun", "kebun", "perawatan taman", "desain landscape", "pemangkasan pohon",
-    "vertical garden", "taman", "landscape", "irigasi", "rumput", "tanaman", "halaman", "garden"
-  ],
-  furnitur: [
-    "tukang mebel", "mebel", "custom lemari", "kitchen set", "furniture jati",
-    "lemari", "meja", "kursi", "rak tv", "buffet", "furnitur", "kayu", "furniture"
-  ]
+  ac: ["tukang ac"],
+  listrik: ["tukang listrik"],
+  pembersihanrumah: ["tukang pembersihan rumah"],
+  ledeng: ["tukang ledeng"],
+  sedotwc: ["tukang sedot wc"],
+  kebun: ["tukang kebun"],
+  furnitur: ["tukang mebel"]
 };
 
 // Fungsi helper untuk mengecek apakah vendor termasuk dalam kategori
