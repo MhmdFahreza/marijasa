@@ -189,43 +189,96 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  // State untuk profile data
-  const [mitraProfile, setMitraProfile] = useState({
+  // State untuk profile data dari localStorage
+  const [mitraProfile, setMitraProfile] = useState<{
+    name: string;
+    avatar: string;
+    verified?: boolean;
+    role?: string;
+  }>({
     name: "Nama Mitra",
     avatar: "https://assets.aceternity.com/manu.png"
   });
 
-  // Handle hydration
+  // Handle hydration dan load data dari localStorage
   useEffect(() => {
     setMounted(true);
     
     // Load profile dari localStorage saat mount
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('mitraProfile');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setMitraProfile(parsed);
-        } catch (e) {
-          console.error('Error parsing stored profile:', e);
+    const loadMitraProfile = () => {
+      if (typeof window !== 'undefined') {
+        const storedMitraUser = localStorage.getItem('mitraUser');
+        if (storedMitraUser) {
+          try {
+            const parsed = JSON.parse(storedMitraUser);
+            setMitraProfile({
+              name: parsed.name || "Nama Mitra",
+              avatar: parsed.avatar || "https://assets.aceternity.com/manu.png",
+              verified: parsed.verified,
+              role: parsed.role
+            });
+          } catch (e) {
+            console.error('Error parsing stored mitra user:', e);
+          }
         }
       }
-    }
+    };
+
+    loadMitraProfile();
   }, []);
 
-  // Listen untuk update profile
+  // Listen untuk update profile dari halaman lain
   useEffect(() => {
     const handleProfileUpdate = (event: CustomEvent) => {
-      const { name, avatar } = event.detail;
-      setMitraProfile({ name, avatar });
+      const { name, avatar, verified } = event.detail;
+      setMitraProfile(prev => ({ 
+        ...prev, 
+        name: name || prev.name, 
+        avatar: avatar || prev.avatar,
+        verified: verified !== undefined ? verified : prev.verified
+      }));
     };
 
     window.addEventListener('mitraProfileUpdated' as any, handleProfileUpdate);
 
+    // Listen untuk storage changes (jika ada tab lain yang update)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'mitraUser') {
+        if (e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            setMitraProfile({
+              name: parsed.name || "Nama Mitra",
+              avatar: parsed.avatar || "https://assets.aceternity.com/manu.png",
+              verified: parsed.verified,
+              role: parsed.role
+            });
+          } catch (error) {
+            console.error('Error parsing updated mitra user:', error);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
     return () => {
       window.removeEventListener('mitraProfileUpdated' as any, handleProfileUpdate);
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
+
+  // Check authentication on mount
+  useEffect(() => {
+    if (mounted) {
+      const mitraToken = localStorage.getItem('mitraToken');
+      const mitraUser = localStorage.getItem('mitraUser');
+      
+      if (!mitraToken || !mitraUser) {
+        router.push('/mitra/login');
+      }
+    }
+  }, [mounted, router]);
 
   // Reset navigation state when pathname changes
   useEffect(() => {
@@ -312,7 +365,6 @@ export default function DashboardLayout({
         if (typeof window !== 'undefined') {
           localStorage.removeItem('mitraToken');
           localStorage.removeItem('mitraUser');
-          localStorage.removeItem('mitraProfile'); // Hapus profile data juga
           sessionStorage.clear();
           
           document.cookie.split(";").forEach((c) => {
@@ -574,7 +626,7 @@ export default function DashboardLayout({
                 )}
               >
                 <motion.img
-                  key={mitraProfile.avatar} // Key untuk trigger re-render saat avatar berubah
+                  key={mitraProfile.avatar}
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.3 }}
@@ -587,15 +639,22 @@ export default function DashboardLayout({
                   decoding="async"
                 />
                 {open && (
-                  <motion.span
-                    key={mitraProfile.name} // Key untuk trigger re-render saat nama berubah
+                  <motion.div
+                    key={mitraProfile.name}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre inline-block !p-0 !m-0"
+                    className="flex flex-col items-start"
                   >
-                    {mitraProfile.name}
-                  </motion.span>
+                    <span className="text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre inline-block !p-0 !m-0">
+                      {mitraProfile.name}
+                    </span>
+                    {mitraProfile.verified && (
+                      <span className="text-xs text-[#7CE0A8] font-medium">
+                        Verified
+                      </span>
+                    )}
+                  </motion.div>
                 )}
               </button>
             </div>

@@ -42,7 +42,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AspectRatio } from "@/app/components/ui/aspect-ratio";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
-import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 
 type ServiceItem = {
   id: string;
@@ -115,70 +114,6 @@ const SERVICE_CATEGORIES: Record<string, ServiceCategory> = {
   }
 };
 
-// Mock data initial state
-const MOCK_SERVICES: ServiceItem[] = [
-  {
-    id: "1",
-    name: "Instalasi AC Baru",
-    price: 500000,
-    priceType: "fixed",
-    description: "Pemasangan AC split baru termasuk instalasi standar",
-    active: true,
-    estimatedTime: "3-4 jam"
-  },
-  {
-    id: "2",
-    name: "Perbaikan AC",
-    price: 150000,
-    priceType: "hourly",
-    description: "Troubleshooting dan perbaikan AC tidak dingin",
-    active: true,
-    estimatedTime: "2-3 jam"
-  },
-  {
-    id: "3",
-    name: "Cuci AC",
-    price: 100000,
-    priceType: "unit",
-    description: "Pembersihan dan perawatan AC rutin",
-    active: true,
-    estimatedTime: "1-2 jam"
-  },
-  {
-    id: "4",
-    name: "Bongkar Pasang AC",
-    price: 300000,
-    priceType: "fixed",
-    description: "Relokasi AC dari satu lokasi ke lokasi lain",
-    active: false,
-    estimatedTime: "3-4 jam"
-  }
-];
-
-const MOCK_WORK_IMAGES: WorkImage[] = [
-  {
-    id: "1",
-    preview: "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&h=300&fit=crop",
-    displayName: "instalasi-ac-1.jpg",
-    uploadedAt: new Date("2024-01-15"),
-    description: "Instalasi AC di ruang tamu"
-  },
-  {
-    id: "2",
-    preview: "https://images.unsplash.com/photo-1584302179602-e9e5f10d7c1f?w-400&h=300&fit=crop",
-    displayName: "perbaikan-ac-1.jpg",
-    uploadedAt: new Date("2024-01-20"),
-    description: "Perbaikan AC outdoor unit"
-  },
-  {
-    id: "3",
-    preview: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
-    displayName: "cuci-ac-1.jpg",
-    uploadedAt: new Date("2024-02-05"),
-    description: "Hasil cuci AC bersih"
-  }
-];
-
 const MAX_WORK_IMAGES = 10;
 const MAX_IMAGE_SIZE_MB = 5;
 
@@ -210,18 +145,67 @@ export default function ServicesPage() {
 
   // Category state
   const [selectedCategory, setSelectedCategory] = useState<string>("ac");
+  const [vendorData, setVendorData] = useState<any>(null);
 
   // Price input state
   const [priceInput, setPriceInput] = useState<string>("");
 
-  // Load initial data
+  // Load initial data from localStorage
   useEffect(() => {
-    // Simulate API call
     const loadData = async () => {
       setIsLoading(true);
+      
+      // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      setServices(MOCK_SERVICES);
+      // Load vendor data from localStorage
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('mitraUser');
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            setVendorData(parsed);
+            
+            // Set services from vendor data if available
+            if (parsed.services && Array.isArray(parsed.services)) {
+              setServices(parsed.services);
+            }
+            
+            // Set category from vendor data
+            if (parsed.category) {
+              setSelectedCategory(parsed.category);
+            }
+          } catch (e) {
+            console.error('Error parsing vendor data:', e);
+          }
+        }
+      }
+      
+      // Load mock work images
+      const MOCK_WORK_IMAGES: WorkImage[] = [
+        {
+          id: "1",
+          preview: "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&h=300&fit=crop",
+          displayName: "instalasi-ac-1.jpg",
+          uploadedAt: new Date("2024-01-15"),
+          description: "Instalasi AC di ruang tamu"
+        },
+        {
+          id: "2",
+          preview: "https://images.unsplash.com/photo-1584302179602-e9e5f10d7c1f?w=400&h=300&fit=crop",
+          displayName: "perbaikan-ac-1.jpg",
+          uploadedAt: new Date("2024-01-20"),
+          description: "Perbaikan AC outdoor unit"
+        },
+        {
+          id: "3",
+          preview: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
+          displayName: "cuci-ac-1.jpg",
+          uploadedAt: new Date("2024-02-05"),
+          description: "Hasil cuci AC bersih"
+        }
+      ];
+      
       setWorkImages(MOCK_WORK_IMAGES);
       setIsLoading(false);
     };
@@ -239,6 +223,23 @@ export default function ServicesPage() {
       }
     }
   }, [isServiceDialogOpen, isEditingService, currentService]);
+
+  // Save services to localStorage
+  const saveServicesToLocalStorage = useCallback((updatedServices: ServiceItem[]) => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('mitraUser');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          parsed.services = updatedServices;
+          localStorage.setItem('mitraUser', JSON.stringify(parsed));
+          setVendorData(parsed);
+        } catch (e) {
+          console.error('Error updating services in localStorage:', e);
+        }
+      }
+    }
+  }, []);
 
   // Service CRUD operations
   const handleAddService = () => {
@@ -272,7 +273,9 @@ export default function ServicesPage() {
   };
 
   const handleDeleteService = (id: string) => {
-    setServices(prev => prev.filter(service => service.id !== id));
+    const updatedServices = services.filter(service => service.id !== id);
+    setServices(updatedServices);
+    saveServicesToLocalStorage(updatedServices);
     setSuccessMessage("Layanan berhasil dihapus");
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
@@ -282,13 +285,15 @@ export default function ServicesPage() {
     // Convert price input to number
     const priceValue = priceInput === "" ? 0 : parseInt(priceInput.replace(/\D/g, '')) || 0;
 
+    let updatedServices: ServiceItem[];
+
     if (isEditingService && currentService) {
       // Update existing service
-      setServices(prev => prev.map(service =>
+      updatedServices = services.map(service =>
         service.id === currentService.id
           ? { ...newService, price: priceValue, id: currentService.id }
           : service
-      ));
+      );
       setSuccessMessage("Layanan berhasil diperbarui");
     } else {
       // Add new service
@@ -297,21 +302,25 @@ export default function ServicesPage() {
         price: priceValue,
         id: Date.now().toString()
       };
-      setServices(prev => [...prev, newServiceWithId]);
+      updatedServices = [...services, newServiceWithId];
       setSuccessMessage("Layanan baru berhasil ditambahkan");
     }
 
+    setServices(updatedServices);
+    saveServicesToLocalStorage(updatedServices);
     setIsServiceDialogOpen(false);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
   };
 
   const toggleServiceActive = (id: string) => {
-    setServices(prev => prev.map(service =>
+    const updatedServices = services.map(service =>
       service.id === id
         ? { ...service, active: !service.active }
         : service
-    ));
+    );
+    setServices(updatedServices);
+    saveServicesToLocalStorage(updatedServices);
   };
 
   // Work Images CRUD operations
@@ -479,6 +488,15 @@ export default function ServicesPage() {
                     </p>
                   </div>
                 </div>
+
+                {vendorData && vendorData.verified && (
+                  <div className="mt-4 flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                    <Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-sm text-emerald-700 dark:text-emerald-300">
+                      Verified Mitra
+                    </span>
+                  </div>
+                )}
 
                 <Separator className="my-6" />
 
@@ -1032,83 +1050,3 @@ export default function ServicesPage() {
     </div>
   );
 }
-
-// Select components for dialog - Updated with correct types
-interface SelectProps {
-  value: string;
-  onValueChange: (value: string) => void;
-  children: React.ReactNode;
-  className?: string;
-  [key: string]: any;
-}
-
-const Select = ({
-  value,
-  onValueChange,
-  children,
-  className = "",
-  ...props
-}: SelectProps) => {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onValueChange(e.target.value)}
-        className={`flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-        {...props}
-      >
-        {children}
-      </select>
-    </div>
-  );
-};
-
-interface SelectTriggerProps {
-  children: React.ReactNode;
-  className?: string;
-  [key: string]: any;
-}
-
-const SelectTrigger = ({ children, className = "", ...props }: SelectTriggerProps) => {
-  return (
-    <div className={`flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`} {...props}>
-      {children}
-    </div>
-  );
-};
-
-interface SelectValueProps {
-  placeholder: string;
-}
-
-const SelectValue = ({ placeholder }: SelectValueProps) => {
-  return <span className="text-muted-foreground">{placeholder}</span>;
-};
-
-interface SelectContentProps {
-  children: React.ReactNode;
-}
-
-const SelectContent = ({ children }: SelectContentProps) => {
-  return (
-    <div className="absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
-      {children}
-    </div>
-  );
-};
-
-interface SelectItemProps {
-  value: string;
-  children: React.ReactNode;
-}
-
-const SelectItem = ({ value, children }: SelectItemProps) => {
-  return (
-    <option
-      value={value}
-      className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-    >
-      {children}
-    </option>
-  );
-};

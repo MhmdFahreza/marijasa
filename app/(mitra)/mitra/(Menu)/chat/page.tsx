@@ -36,7 +36,6 @@ import {
   UserPlus,
   MessageSquare,
   Users,
-  Bell,
   MoreVertical,
   MapPin,
   Calendar,
@@ -77,109 +76,8 @@ interface ChatSession {
   timestamp: Date;
   unreadCount: number;
   isOnline: boolean;
+  customerPhone?: string;
 }
-
-interface Customer {
-  id: string;
-  name: string;
-  avatar: string;
-  phone?: string;
-  isOnline: boolean;
-  lastSeen?: Date;
-}
-
-// Mock data customers
-const customers: Customer[] = [
-  {
-    id: "1",
-    name: "Budi Santoso",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Budi",
-    phone: "+628123456789",
-    isOnline: true,
-    lastSeen: new Date()
-  },
-  {
-    id: "2",
-    name: "Sari Dewi",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sari",
-    phone: "+628987654321",
-    isOnline: false,
-    lastSeen: new Date(Date.now() - 3600000)
-  },
-  {
-    id: "3",
-    name: "Ahmad Wijaya",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ahmad",
-    isOnline: true,
-    lastSeen: new Date()
-  },
-  {
-    id: "4",
-    name: "Maya Indah",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Maya",
-    isOnline: true,
-    lastSeen: new Date()
-  },
-  {
-    id: "5",
-    name: "Rudi Hartono",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Rudi",
-    isOnline: false,
-    lastSeen: new Date(Date.now() - 7200000)
-  },
-];
-
-// Mock initial messages
-const initialMessages: Record<string, Message[]> = {
-  "1": [
-    {
-      id: 1,
-      sender: "customer",
-      text: "Halo, saya ingin survey lokasi untuk pemasangan AC",
-      timestamp: new Date(Date.now() - 3600000),
-      read: true,
-    },
-    {
-      id: 2,
-      sender: "mitra",
-      text: "Halo Pak Budi, baik. Kapan Bapak ada waktu untuk survey?",
-      timestamp: new Date(Date.now() - 3500000),
-      read: true,
-    },
-    {
-      id: 3,
-      sender: "customer",
-      text: "Besok jam 10 pagi bisa?",
-      timestamp: new Date(Date.now() - 3400000),
-      read: true,
-    },
-  ],
-  "2": [
-    {
-      id: 1,
-      sender: "customer",
-      text: "Untuk jasa cleaning apartemen 2BR, berapa estimasi biayanya?",
-      timestamp: new Date(Date.now() - 86400000),
-      read: true,
-    },
-    {
-      id: 2,
-      sender: "mitra",
-      text: "Untuk apartemen 2BR kira-kira Rp 350.000 - 450.000 tergantung kondisi",
-      timestamp: new Date(Date.now() - 86300000),
-      read: true,
-    },
-  ],
-  "3": [
-    {
-      id: 1,
-      sender: "customer",
-      text: "Ada garansi untuk service AC yang dikerjakan?",
-      timestamp: new Date(Date.now() - 172800000),
-      read: true,
-    },
-  ],
-};
 
 // Storage key untuk menyimpan chat sessions
 const CHAT_SESSIONS_KEY = "mitra_chat_sessions";
@@ -188,27 +86,14 @@ const CHAT_SESSIONS_KEY = "mitra_chat_sessions";
 const getChatSessions = (): ChatSession[] => {
   if (typeof window === "undefined") return [];
   const stored = localStorage.getItem(CHAT_SESSIONS_KEY);
-  if (!stored) {
-    // Initialize with mock data
-    const initialSessions: ChatSession[] = customers.map(customer => ({
-      customerId: customer.id,
-      customerName: customer.name,
-      customerAvatar: customer.avatar,
-      messages: initialMessages[customer.id] || [],
-      lastMessage: initialMessages[customer.id]?.[initialMessages[customer.id].length - 1]?.text || "Mulai percakapan",
-      timestamp: new Date(),
-      unreadCount: customer.id === "1" ? 2 : 0,
-      isOnline: customer.isOnline,
-    }));
-    saveChatSessions(initialSessions);
-    return initialSessions;
-  }
+  if (!stored) return [];
+  
   const sessions = JSON.parse(stored);
   // Convert timestamp strings back to Date objects
   return sessions.map((session: any) => ({
     ...session,
     timestamp: new Date(session.timestamp),
-    messages: session.messages.map((msg: any) => ({
+    messages: (session.messages || []).map((msg: any) => ({
       ...msg,
       timestamp: new Date(msg.timestamp)
     }))
@@ -755,7 +640,7 @@ const CallModal = ({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  customer: Customer;
+  customer: { name: string; avatar: string; phone?: string };
   callType: 'audio' | 'video';
 }) => {
   const [duration, setDuration] = useState(0);
@@ -873,7 +758,7 @@ const IncomingCallModal = ({
   isOpen: boolean;
   onClose: () => void;
   onAccept: () => void;
-  customer: Customer;
+  customer: { name: string; avatar: string; phone?: string };
   callType: 'audio' | 'video';
 }) => {
   if (!isOpen) return null;
@@ -926,7 +811,7 @@ const IncomingCallModal = ({
 export default function MitraChatPage() {
   const router = useRouter();
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>("1");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -946,15 +831,19 @@ export default function MitraChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Get selected customer
-  const selectedCustomer = selectedCustomerId
-    ? customers.find(c => c.id === selectedCustomerId)
-    : null;
-
   // Get selected chat session
   const selectedSession = selectedCustomerId
     ? chatSessions.find(s => s.customerId === selectedCustomerId)
     : null;
+
+  // Get selected customer data from session
+  const selectedCustomer = selectedSession ? {
+    id: selectedSession.customerId,
+    name: selectedSession.customerName,
+    avatar: selectedSession.customerAvatar,
+    phone: selectedSession.customerPhone,
+    isOnline: selectedSession.isOnline
+  } : null;
 
   useEffect(() => {
     const sessions = getChatSessions();
@@ -963,7 +852,7 @@ export default function MitraChatPage() {
     if (selectedCustomerId) {
       const session = sessions.find(s => s.customerId === selectedCustomerId);
       if (session) {
-        setMessages(session.messages);
+        setMessages(session.messages || []);
       }
     }
   }, [selectedCustomerId]);
@@ -978,7 +867,7 @@ export default function MitraChatPage() {
         updatedSessions[sessionIndex] = {
           ...updatedSessions[sessionIndex],
           messages,
-          lastMessage: messages.length > 0 ? messages[messages.length - 1].text : "",
+          lastMessage: messages.length > 0 ? messages[messages.length - 1].text : "Belum ada pesan",
           timestamp: new Date(),
         };
         setChatSessions(updatedSessions);
@@ -1331,13 +1220,6 @@ export default function MitraChatPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full hover:bg-gray-100"
-              >
-                <Bell className="h-5 w-5" />
-              </Button>
               <Avatar className="h-8 w-8">
                 <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=Mitra" />
                 <AvatarFallback>MT</AvatarFallback>
@@ -1399,6 +1281,7 @@ export default function MitraChatPage() {
                 <div className="p-4 text-center">
                   <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500 text-sm">Belum ada percakapan</p>
+                  <p className="text-gray-400 text-xs mt-1">Mulai chat dengan pelanggan baru</p>
                 </div>
               ) : (
                 filteredChatSessions.map((session) => (

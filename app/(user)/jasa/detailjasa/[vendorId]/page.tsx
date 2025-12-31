@@ -350,61 +350,18 @@ export default function VendorDetailPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-6">
-                    {/* Sample Review 1 */}
-                    <div className="pb-6 border-b last:border-b-0">
-                      <div className="flex items-start gap-3">
-                        <Avatar className="h-12 w-12 bg-gray-200">
-                          <AvatarFallback className="text-gray-600">A</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="mb-3">
-                            <h4 className="font-semibold text-base mb-2">Anonymous</h4>
-                            <div className="flex items-center gap-2 mb-3">
-                              <RatingStars value={5} size="sm" />
-                              <span className="text-xs text-muted-foreground">24 Jul 2025</span>
-                            </div>
-                          </div>
-                          <p className="text-sm leading-relaxed">Sangat baik 👍</p>
-                        </div>
+                  <div className="text-center py-12">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                        <Star className="h-8 w-8 text-gray-400" />
                       </div>
-                    </div>
-
-                    {/* Sample Review 2 */}
-                    <div className="pb-6 border-b last:border-b-0">
-                      <div className="flex items-start gap-3">
-                        <Avatar className="h-12 w-12 bg-gray-200">
-                          <AvatarFallback className="text-gray-600">A</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="mb-3">
-                            <h4 className="font-semibold text-base mb-2">Anonymous</h4>
-                            <div className="flex items-center gap-2 mb-3">
-                              <RatingStars value={5} size="sm" />
-                              <span className="text-xs text-muted-foreground">15 Jun 2024</span>
-                            </div>
-                          </div>
-                          <p className="text-sm leading-relaxed">Pekerjaan bersih</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Sample Review 3 */}
-                    <div className="pb-6 border-b last:border-b-0">
-                      <div className="flex items-start gap-3">
-                        <Avatar className="h-12 w-12 bg-gray-200">
-                          <AvatarFallback className="text-gray-600">I</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="mb-3">
-                            <h4 className="font-semibold text-base mb-2">Isabella</h4>
-                            <div className="flex items-center gap-2 mb-3">
-                              <RatingStars value={5} size="sm" />
-                              <span className="text-xs text-muted-foreground">05 Jun 2024</span>
-                            </div>
-                          </div>
-                          <p className="text-sm leading-relaxed">Puas</p>
-                        </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                          Belum Ada Ulasan
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                          Jadilah yang pertama memberikan ulasan untuk vendor ini setelah menggunakan layanan mereka.
+                        </p>
                       </div>
                     </div>
                   </div>

@@ -20,8 +20,8 @@ import {
   Award,
   Star,
   Shield,
-  Upload,
-  ImagePlus
+  Info,
+  Tag
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -56,48 +56,52 @@ type ProfileData = {
   joinDate: string;
   verified: boolean;
   specialties: string[];
-};
-
-const MOCK_PROFILE: ProfileData = {
-  id: "mitra-001",
-  name: "Edi Taulany",
-  email: "edi.taulany@example.com",
-  phone: "+6281234567890",
-  description: "Spesialis instalasi, perbaikan, dan perawatan AC rumah serta kantor. Menangani AC split, cassette, dan central dengan standar kerja rapi, cepat, dan bergaransi 30 hari. Pengalaman lebih dari 10 tahun dalam bidang AC.",
-  avatar: "https://assets.aceternity.com/manu.png",
-  serviceAreas: [
-    { id: "1", city: "Jakarta Barat" },
-    { id: "2", city: "Jakarta Utara" },
-    { id: "3", city: "Tangerang" },
-    { id: "4", city: "Cirebon" },
-    { id: "5", city: "Subang" },
-  ],
-  rating: 4.3,
-  totalReviews: 74,
-  joinDate: "2023-01-15",
-  verified: true,
-  specialties: ["AC Split", "AC Cassette", "AC Central", "Pembersihan AC", "Perbaikan AC"],
+  tags: string[];
+  category?: string;
 };
 
 // Helper function untuk trigger custom event
-const updateMitraProfile = (name: string, avatar: string) => {
+const updateMitraProfile = (name: string, avatar: string, verified?: boolean) => {
   const event = new CustomEvent('mitraProfileUpdated', {
-    detail: { name, avatar }
+    detail: { name, avatar, verified }
   });
   window.dispatchEvent(event);
-  
-  // Simpan ke localStorage untuk persistensi
-  localStorage.setItem('mitraProfile', JSON.stringify({ name, avatar }));
 };
 
 // Helper function untuk load profile dari localStorage
-const loadProfileFromStorage = (): Partial<ProfileData> | null => {
+const loadProfileFromStorage = (): ProfileData | null => {
   if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('mitraProfile');
+    const stored = localStorage.getItem('mitraUser');
     if (stored) {
       try {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        
+        // Transform serviceAreas dari array string ke array object
+        const serviceAreas = Array.isArray(parsed.serviceAreas) 
+          ? parsed.serviceAreas.map((area: string, index: number) => ({
+              id: (index + 1).toString(),
+              city: area
+            }))
+          : [];
+        
+        return {
+          id: parsed.id || "mitra-001",
+          name: parsed.name || "Nama Mitra",
+          email: parsed.email || "",
+          phone: parsed.phone || "",
+          description: parsed.description || "",
+          avatar: parsed.avatar || "https://assets.aceternity.com/manu.png",
+          serviceAreas: serviceAreas,
+          rating: parsed.rating || 0,
+          totalReviews: parsed.reviewCount || 0,
+          joinDate: parsed.joinDate || "2023-01-15",
+          verified: parsed.verified || false,
+          specialties: parsed.specialties || [],
+          tags: parsed.tags || [],
+          category: parsed.category
+        };
       } catch (e) {
+        console.error('Error parsing stored profile:', e);
         return null;
       }
     }
@@ -106,29 +110,32 @@ const loadProfileFromStorage = (): Partial<ProfileData> | null => {
 };
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<ProfileData>(() => {
-    // Load dari localStorage saat pertama kali
-    const stored = loadProfileFromStorage();
-    if (stored) {
-      return { ...MOCK_PROFILE, ...stored };
-    }
-    return MOCK_PROFILE;
-  });
-  
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [newServiceArea, setNewServiceArea] = useState("");
-  const [tempProfile, setTempProfile] = useState<ProfileData>(profile);
+  const [tempProfile, setTempProfile] = useState<ProfileData | null>(null);
+
+  // Load profile data dari localStorage saat mount
+  useEffect(() => {
+    const loadedProfile = loadProfileFromStorage();
+    if (loadedProfile) {
+      setProfile(loadedProfile);
+      setTempProfile(loadedProfile);
+    }
+  }, []);
 
   // Reset tempProfile when editing starts
   useEffect(() => {
-    if (isEditing) {
+    if (isEditing && profile) {
       setTempProfile(profile);
     }
   }, [isEditing, profile]);
 
   const handleSave = async () => {
+    if (!tempProfile) return;
+    
     setIsLoading(true);
     
     // Simulate API call
@@ -136,8 +143,27 @@ export default function ProfilePage() {
     
     setProfile(tempProfile);
     
-    // Trigger update ke sidebar
-    updateMitraProfile(tempProfile.name, tempProfile.avatar);
+    // Update localStorage mitraUser
+    if (typeof window !== 'undefined') {
+      const storedUser = localStorage.getItem('mitraUser');
+      if (storedUser) {
+        try {
+          const updatedUser = JSON.parse(storedUser);
+          updatedUser.name = tempProfile.name;
+          updatedUser.avatar = tempProfile.avatar;
+          updatedUser.description = tempProfile.description;
+          updatedUser.serviceAreas = tempProfile.serviceAreas.map(area => area.city);
+          updatedUser.specialties = tempProfile.specialties;
+          
+          localStorage.setItem('mitraUser', JSON.stringify(updatedUser));
+          
+          // Trigger update ke sidebar
+          updateMitraProfile(tempProfile.name, tempProfile.avatar, tempProfile.verified);
+        } catch (e) {
+          console.error('Error updating localStorage:', e);
+        }
+      }
+    }
     
     setIsEditing(false);
     setIsLoading(false);
@@ -153,7 +179,9 @@ export default function ProfilePage() {
   };
 
   const handleAddServiceArea = () => {
-    if (newServiceArea && !tempProfile.serviceAreas.some(area => area.city === newServiceArea)) {
+    if (!tempProfile || !newServiceArea) return;
+    
+    if (!tempProfile.serviceAreas.some(area => area.city === newServiceArea)) {
       setTempProfile({
         ...tempProfile,
         serviceAreas: [
@@ -166,6 +194,8 @@ export default function ProfilePage() {
   };
 
   const handleRemoveServiceArea = (id: string) => {
+    if (!tempProfile) return;
+    
     setTempProfile({
       ...tempProfile,
       serviceAreas: tempProfile.serviceAreas.filter(area => area.id !== id)
@@ -173,6 +203,8 @@ export default function ProfilePage() {
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!tempProfile) return;
+    
     const file = e.target.files?.[0];
     if (file) {
       // Simulate upload and get URL
@@ -187,7 +219,28 @@ export default function ProfilePage() {
     }
   };
 
-  if (!profile) {
+  const handleAddSpecialty = () => {
+    if (!tempProfile) return;
+    
+    const newSpecialty = prompt("Masukkan keahlian baru:");
+    if (newSpecialty && !tempProfile.specialties.includes(newSpecialty)) {
+      setTempProfile({
+        ...tempProfile,
+        specialties: [...tempProfile.specialties, newSpecialty]
+      });
+    }
+  };
+
+  const handleRemoveSpecialty = (index: number) => {
+    if (!tempProfile) return;
+    
+    setTempProfile({
+      ...tempProfile,
+      specialties: tempProfile.specialties.filter((_, i) => i !== index)
+    });
+  };
+
+  if (!profile || !tempProfile) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Skeleton className="h-8 w-48 mb-6" />
@@ -366,6 +419,25 @@ export default function ProfilePage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Tags */}
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                    <Tag className="h-4 w-4" />
+                    Tags Layanan
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.tags.map((tag, index) => (
+                      <Badge
+                        key={index}
+                        variant="outline"
+                        className="text-xs px-2 py-1"
+                      >
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -379,14 +451,42 @@ export default function ProfilePage() {
               </CardHeader>
               <CardContent className="p-4">
                 <div className="flex flex-wrap gap-2">
-                  {profile.specialties.map((specialty, index) => (
-                    <Badge
-                      key={index}
-                      className="px-3 py-1.5 bg-[#7CE0A8]/20 text-[#5AB88A] border-[#7CE0A8]/30"
-                    >
-                      {specialty}
-                    </Badge>
-                  ))}
+                  {isEditing ? (
+                    <>
+                      {tempProfile.specialties.map((specialty, index) => (
+                        <Badge
+                          key={index}
+                          className="px-3 py-1.5 bg-[#7CE0A8]/20 text-[#5AB88A] border-[#7CE0A8]/30 flex items-center gap-1"
+                        >
+                          {specialty}
+                          <button
+                            onClick={() => handleRemoveSpecialty(index)}
+                            className="ml-1 text-[#5AB88A] hover:text-[#4a9c7a]"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                      <Button
+                        onClick={handleAddSpecialty}
+                        variant="outline"
+                        size="sm"
+                        className="border-dashed border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Tambah
+                      </Button>
+                    </>
+                  ) : (
+                    profile.specialties.map((specialty, index) => (
+                      <Badge
+                        key={index}
+                        className="px-3 py-1.5 bg-[#7CE0A8]/20 text-[#5AB88A] border-[#7CE0A8]/30"
+                      >
+                        {specialty}
+                      </Badge>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -742,23 +842,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-// Tambahkan komponen Info yang belum di-import
-const Info = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="16" x2="12" y2="12" />
-    <line x1="12" y1="8" x2="12.01" y2="8" />
-  </svg>
-);

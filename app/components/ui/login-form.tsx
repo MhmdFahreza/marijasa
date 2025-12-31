@@ -20,6 +20,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { LoaderTwo } from "@/app/components/transition/loader"
+import { validateVendorLogin, getCategoryFromTags } from "@/app/data/dataVendor"
 
 type UserType = "user" | "mitra" | "admin"
 
@@ -51,7 +52,7 @@ export function LoginForm({
     },
     mitra: {
       title: "Login ke Akun Mitra",
-      description: "Masukkan email Anda untuk login sebagai mitra",
+      description: "Masukkan email dan password Anda untuk login sebagai mitra",
       registerLink: null,
       registerText: null,
     },
@@ -75,19 +76,19 @@ export function LoginForm({
     e.preventDefault()
     setError(null)
     
+    // Validasi email format
+    if (!validateEmail(email)) {
+      setError("Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)")
+      return
+    }
+    
+    if (password.length < 8) {
+      setError("Password minimal 8 karakter")
+      return
+    }
+    
     // Validasi khusus untuk admin
     if (userType === "admin") {
-      if (!validateEmail(email)) {
-        setError("Format email tidak valid. Gunakan format email yang benar (contoh: admin@gmail.com)")
-        return
-      }
-      
-      if (password.length < 8) {
-        setError("Password minimal 8 karakter")
-        return
-      }
-      
-      // Validasi dummy - bisa diganti dengan API call
       const dummyAdminCredentials = [
         { email: "Marijasa@gmail.com", password: "admin1234" },
       ]
@@ -97,11 +98,83 @@ export function LoginForm({
       )
       
       if (!isValid) {
-        setError("Email atau password salah.")
+        setError("Email atau password admin salah.")
         return
       }
     }
     
+    // Validasi khusus untuk mitra - cek dari dataVendor
+    if (userType === "mitra") {
+      const vendor = validateVendorLogin(email, password)
+      
+      if (!vendor) {
+        setError("Email atau password mitra salah. Pastikan Anda menggunakan kredensial yang benar.")
+        return
+      }
+      
+      // Login berhasil untuk mitra
+      setIsLoading(true)
+      
+      try {
+        // Simulasi API call
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ success: true, token: "dummy-token" })
+          }, 1000)
+        })
+        
+        // Determine category from tags
+        const category = getCategoryFromTags(vendor.tags);
+        
+        // Simpan data mitra ke localStorage dengan semua data dari dataVendor
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mitraToken', 'dummy-token')
+          localStorage.setItem('mitraUser', JSON.stringify({
+            id: vendor.id,
+            email: vendor.email,
+            name: vendor.name,
+            phone: vendor.phone,
+            avatar: vendor.avatar,
+            description: vendor.description,
+            serviceAreas: vendor.serviceAreas,
+            rating: vendor.rating,
+            reviewCount: vendor.reviewCount,
+            verified: vendor.verified,
+            joinDate: vendor.joinDate,
+            specialties: vendor.specialties || [],
+            tags: vendor.tags,
+            category: category,
+            services: vendor.services || [],
+            role: "mitra"
+          }))
+        }
+        
+        // Jika ada callback onSuccess (untuk modal), panggil
+        if (onSuccess) {
+          onSuccess()
+          setIsLoading(false)
+          return
+        }
+        
+        // Tampilkan loader redirect untuk mitra
+        setShowRedirectLoader(true)
+        
+        // Tunggu sebentar untuk menampilkan loader redirect
+        setTimeout(() => {
+          router.push("/mitra/dashboard")
+          router.refresh()
+        }, 1000)
+        
+      } catch (error) {
+        console.error("Login error:", error)
+        setError("Terjadi kesalahan saat login. Silakan coba lagi.")
+        setIsLoading(false)
+      }
+      
+      return
+    }
+    
+    // Untuk user dan admin
     setIsLoading(true)
     
     try {
@@ -121,9 +194,6 @@ export function LoginForm({
             name: "Administrator",
             role: "admin"
           }))
-        } else if (userType === "mitra") {
-          localStorage.setItem('mitraToken', 'dummy-token')
-          localStorage.setItem('mitraUser', JSON.stringify({ email }))
         } else {
           // Untuk user biasa
           localStorage.setItem('userToken', 'dummy-token')
@@ -142,17 +212,13 @@ export function LoginForm({
         return
       }
       
-      // Hanya tampilkan loader redirect untuk admin dan mitra
-      if (userType === "admin" || userType === "mitra") {
+      // Hanya tampilkan loader redirect untuk admin
+      if (userType === "admin") {
         setShowRedirectLoader(true)
         
         // Tunggu sebentar untuk menampilkan loader redirect
         setTimeout(() => {
-          if (userType === "mitra") {
-            router.push("/mitra/dashboard")
-          } else if (userType === "admin") {
-            router.push("/admin/dashboard")
-          }
+          router.push("/admin/dashboard")
           router.refresh()
         }, 1000)
       } else {
@@ -231,15 +297,26 @@ export function LoginForm({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={userType === "admin" ? "admin@gmail.com" : "masukkan email"}
+                    placeholder={
+                      userType === "admin" 
+                        ? "admin@gmail.com" 
+                        : userType === "mitra"
+                        ? "mitra@marijasa.com"
+                        : "masukkan email"
+                    }
                     autoComplete="email"
                     disabled={isLoading || showRedirectLoader}
                   />
+                  {userType === "mitra" && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Gunakan email yang terdaftar sebagai mitra
+                    </p>
+                  )}
                 </Field>
                 <Field>
                   <div className="flex items-center">
                     <FieldLabel htmlFor="password">Password</FieldLabel>
-                    {userType !== "admin" && (
+                    {userType !== "admin" && userType !== "mitra" && (
                       <a
                         href="#"
                         className="ml-auto inline-block text-sm text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline"
@@ -254,15 +331,13 @@ export function LoginForm({
                     required 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={userType === "admin" ? "minimal 8 karakter" : "masukkan password"}
+                    placeholder="minimal 8 karakter"
                     autoComplete="current-password"
                     disabled={isLoading || showRedirectLoader}
                   />
-                  {userType === "admin" && (
-                    <p className="text-xs text-neutral-500 mt-1">
-                      Password harus minimal 8 karakter
-                    </p>
-                  )}
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Password harus minimal 8 karakter
+                  </p>
                 </Field>
                 <Field>
                   <Button 
@@ -282,7 +357,7 @@ export function LoginForm({
                     ) : showRedirectLoader ? "Mengalihkan..." : "Login"}
                   </Button>
                   
-                  {userType !== "admin" && !showRedirectLoader && (
+                  {userType !== "admin" && userType !== "mitra" && !showRedirectLoader && (
                     <Button 
                       variant="outline" 
                       type="button"
