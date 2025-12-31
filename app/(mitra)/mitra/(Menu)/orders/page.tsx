@@ -31,6 +31,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Separator } from "@/app/components/ui/separator";
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 // Fungsi untuk mendapatkan label service berdasarkan kategori
 const getServiceLabel = (category: string, details: any) => {
@@ -69,6 +70,10 @@ const getServiceLabel = (category: string, details: any) => {
       return `${details.serviceType || 'Layanan Sedot WC'} - ${details.totalPrice ? `Rp ${details.totalPrice.toLocaleString('id-ID')}` : ''}`;
 
     default:
+      // Untuk layanan baru yang menggunakan selectedServices
+      if (details.selectedServices && Array.isArray(details.selectedServices)) {
+        return details.selectedServices.join(', ') || 'Layanan Umum';
+      }
       return 'Layanan Umum';
   }
 };
@@ -92,18 +97,46 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const itemsPerPage = 10;
+
+  // Load vendor ID dari localStorage
+  useEffect(() => {
+    const mitraUser = localStorage.getItem('mitraUser');
+    if (mitraUser) {
+      try {
+        const parsedMitra = JSON.parse(mitraUser);
+        setCurrentVendorId(parsedMitra.id);
+      } catch (error) {
+        console.error('Error parsing mitraUser:', error);
+        toast.error('Gagal memuat data vendor. Silakan login kembali.');
+        router.push('/mitra/login');
+      }
+    } else {
+      toast.error('Anda belum login. Silakan login terlebih dahulu.');
+      router.push('/mitra/login');
+    }
+  }, [router]);
 
   // Load orders dari localStorage saat komponen mount
   useEffect(() => {
+    if (!currentVendorId) return;
+
     const loadOrders = () => {
       try {
+        setIsLoading(true);
         const savedOrders = localStorage.getItem('allOrders');
         if (savedOrders) {
           const parsedOrders = JSON.parse(savedOrders);
 
+          // Filter hanya pesanan untuk vendor yang sedang login
+          const vendorOrders = parsedOrders.filter((order: any) => {
+            return order.vendorId === currentVendorId;
+          });
+
           // Map status dari user ke status yang digunakan di mitra
-          const mappedOrders = parsedOrders.map((order: any) => {
+          const mappedOrders = vendorOrders.map((order: any) => {
             let status = 'pending';
 
             if (order.status === 'pending') {
@@ -124,10 +157,15 @@ export default function OrdersPage() {
           });
 
           setOrders(mappedOrders);
+        } else {
+          setOrders([]);
         }
       } catch (error) {
         console.error('Error loading orders:', error);
         setOrders([]);
+        toast.error('Gagal memuat data pesanan.');
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -147,7 +185,7 @@ export default function OrdersPage() {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, []);
+  }, [currentVendorId]);
 
   // Reset ke halaman 1 saat tab berubah
   useEffect(() => {
@@ -217,6 +255,18 @@ export default function OrdersPage() {
       default: return status;
     }
   };
+
+  // Loading state
+  if (!currentVendorId || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-neutral-600 dark:text-neutral-400">Memuat pesanan...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -533,7 +583,7 @@ export default function OrdersPage() {
                                     <p className="text-sm text-neutral-700 dark:text-neutral-300">
                                       {order.cancellationReason}
                                     </p>
-                                    {order.cancelledBy === 'user' && (
+                                    {order.cancelledBy === 'user' && order.cancelledAt && (
                                       <div className="mt-2 flex items-center gap-2">
                                         <User className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                                         <p className="text-xs text-red-600 dark:text-red-400">

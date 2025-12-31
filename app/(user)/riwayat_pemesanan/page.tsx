@@ -541,6 +541,22 @@ export default function OrderHistoryPage() {
 
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
+      // ⭐ KODE BARU - Update status di mitra (allOrders)
+      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
+      const updatedAllOrders = allOrders.map((mitraOrder: any) => {
+        if (mitraOrder.id === order.id) {
+          return {
+            ...mitraOrder,
+            status: "in-progress", // Status untuk mitra (in-progress)
+            paymentStatus: "paid" // Update payment status jadi paid
+          };
+        }
+        return mitraOrder;
+      });
+
+      localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
+      // ⭐ AKHIR KODE BARU
+
       // Update state orders
       setOrders(prevOrders => prevOrders.map(o => {
         if (o.id === order.id) {
