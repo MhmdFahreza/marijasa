@@ -1,3 +1,4 @@
+// app/jasa/detailjasa/{vendorId}/form/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -20,58 +21,10 @@ import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
-import { Vendors } from "@/app/data/dataVendor";
+import { getVendorById, getCategoryFromTags } from "@/app/data/dataVendor";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
-
-const PRICES = {
-  ac: {
-    instalasi: { base: 500000, label: "Instalasi AC Baru" },
-    service: { base: 150000, label: "Perbaikan AC" },
-    cuci: { base: 100000, label: "Cuci AC" },
-    bongkar: { base: 300000, label: "Bongkar Pasang" }
-  },
-  electrical: {
-    "Instalasi Baru": 750000,
-    "Perbaikan": 200000,
-    "Penambahan Titik Listrik": 150000,
-    "Pemasangan Panel": 500000,
-    "Ganti MCB": 100000
-  },
-  cleaning: {
-    general: { base: 300000, label: "Pembersihan Rutin" },
-    deep: { base: 500000, label: "Pembersihan Mendalam" },
-    "renovasi": { base: 800000, label: "Pembersihan Renovasi" },
-    "pindahan": { base: 800000, label: "Pindahan" },
-  },
-  plumbing: {
-    "Instalasi Pipa": 250000,
-    "Perbaikan Kebocoran": 200000,
-    "Pelancaran Saluran Mampet": 600000,
-    "Pemasangan Sanitary Fixture": 400000,
-    "Instalasi water heater": 350000
-  },
-  sedotWC: {
-    "Penyedotan Septictank": { base: 250000, label: "Penyedotan Septictank" },
-    "Inspeksi": { base: 200000, label: "Inspeksi" },
-    "Pelancaran Saluran WC": { base: 200000, label: "Pelancaran Saluran WC" },
-  },
-  garden: {
-    "Pembuatan Taman Baru": 2000000,
-    "Perawatan Rutin": 300000,
-    "Pemangkasan": 150000,
-    "Perawatan Rumput": 1500000,
-    "Pengendalian Hama Tanaman": 3000000
-  },
-  furniture: {
-    "Pembuatan Furnitur": 3000000,
-    "Restorasi Furnitur Lama": 5000000,
-    "Bongkar Pasang": 1500000,
-    "Produksi Furnitur Dekoratif": 2000000,
-    "Pemeliharaan Furnitur": 4000000,
-  }
-};
 
 const PAYMENT_FEES = {
   "dana": 1440,
@@ -88,20 +41,6 @@ const PAYMENT_FEES = {
 };
 
 const SERVICE_FEE = 10000;
-
-function getServiceCategory(tags: string[]): string {
-  const firstTag = tags[0]?.toLowerCase() || "";
-
-  if (firstTag.includes("ac")) return "ac";
-  if (firstTag.includes("listrik") || firstTag.includes("electrical")) return "electrical";
-  if (firstTag.includes("pembersihan") || firstTag.includes("cleaning")) return "cleaning";
-  if (firstTag.includes("ledeng") || firstTag.includes("pipa") || firstTag.includes("plumbing")) return "plumbing";
-  if (firstTag.includes("sedot")) return "sedot-wc";
-  if (firstTag.includes("kebun") || firstTag.includes("taman") || firstTag.includes("garden")) return "taman";
-  if (firstTag.includes("mebel") || firstTag.includes("furnitur") || firstTag.includes("furniture")) return "furniture";
-
-  return "general";
-}
 
 export default function VendorFormPage() {
   const params = useParams();
@@ -122,6 +61,7 @@ export default function VendorFormPage() {
   const [initialOrderId, setInitialOrderId] = useState<string | null>(null);
   const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [vendor, setVendor] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -137,7 +77,12 @@ export default function VendorFormPage() {
         gpsLink: profile.gpsLink || ""
       });
     }
-  }, []);
+
+    // Load vendor data dengan sync dari localStorage/sessionStorage
+    const vendorId = params.vendorId as string;
+    const vendorData = getVendorById(vendorId);
+    setVendor(vendorData);
+  }, [params.vendorId]);
 
   const handleNavigation = async (url: string) => {
     setLeaving(true);
@@ -205,7 +150,6 @@ export default function VendorFormPage() {
     setInitialOrderId(orderId);
 
     const vendorId = params.vendorId as string;
-    const vendor = Vendors.find((v) => v.id === vendorId);
 
     // Buat data pesanan untuk user
     const initialOrderData = {
@@ -279,65 +223,16 @@ export default function VendorFormPage() {
     localStorage.setItem('userOrders', JSON.stringify([...existingOrders, initialOrderData]));
 
     // LANGSUNG SIMPAN KE MITRA (sebelum pembayaran)
+    const serviceCategory = getCategoryFromTags(vendor?.tags || []);
     const buildServiceDetails = (category: string, formData: any, servicePrice: number) => {
-      switch (category) {
-        case 'ac':
-          return {
-            serviceType: formData.acServices?.[0] || "instalasi",
-            acType: formData.acType || "split",
-            acCount: formData.acCount || 1,
-            acPk: formData.acPk || "1",
-            totalPrice: servicePrice
-          };
-        case 'cleaning':
-          return {
-            cleaningType: formData.cleaningServices?.[0] || "general",
-            propertyType: formData.propertyType || "house",
-            areaSize: formData.areaSize || 0,
-            rooms: formData.rooms || 0,
-            totalPrice: servicePrice
-          };
-        case 'electrical':
-          return {
-            electricalWork: formData.electricalWork || [],
-            buildingType: formData.buildingType || "rumah",
-            powerCapacity: formData.powerCapacity || "2200",
-            totalPrice: servicePrice
-          };
-        case 'plumbing':
-          return {
-            plumbingIssues: formData.plumbingIssues || [],
-            urgency: formData.urgency || "normal",
-            totalPrice: servicePrice
-          };
-        case 'sedot-wc':
-          return {
-            serviceType: formData.sedotWCServices?.[0] || "Penyedotan Septictank",
-            totalPrice: servicePrice
-          };
-        case 'taman':
-          return {
-            gardenServices: formData.gardenServices || [],
-            gardenSize: formData.gardenSize || 0,
-            gardenStyle: formData.gardenStyle || "minimalis",
-            totalPrice: servicePrice
-          };
-        case 'furniture':
-          return {
-            furnitureTypes: formData.furnitureTypes || [],
-            material: formData.material || "kayu-jati",
-            finishing: formData.finishing || "natural",
-            dimensions: formData.dimensions || "",
-            totalPrice: servicePrice
-          };
-        default:
-          return {
-            totalPrice: servicePrice
-          };
-      }
+      const selectedServices = formData.selectedServices || [];
+      return {
+        selectedServices: selectedServices,
+        additionalInfo: formData.additionalInfo || {},
+        totalPrice: servicePrice
+      };
     };
 
-    const serviceCategory = getServiceCategory(vendor?.tags || []);
     const serviceDetails = buildServiceDetails(serviceCategory, formData, servicePrice);
 
     const newOrderForMitra = {
@@ -353,9 +248,9 @@ export default function VendorFormPage() {
       workDate: formData.date || new Date().toISOString().split('T')[0],
       workTime: formattedTime,
       additionalNotes: formData.notes || "",
-      status: "pending", // Status pending (belum dibayar)
+      status: "pending",
       orderDate: new Date().toISOString().split('T')[0],
-      paymentStatus: "unpaid" // Belum dibayar
+      paymentStatus: "unpaid"
     };
 
     const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
@@ -467,72 +362,20 @@ export default function VendorFormPage() {
   };
 
   const calculateServicePrice = () => {
-    const vendorId = params.vendorId as string;
-    const vendor = Vendors.find((v) => v.id === vendorId);
-    if (!vendor) return 0;
+    if (!vendor || !vendor.services) return 0;
 
-    const serviceCategory = getServiceCategory(vendor.tags);
+    const selectedServices = formData.selectedServices || [];
+    let total = 0;
 
-    switch (serviceCategory) {
-      case "ac":
-        const acServices = formData.acServices || [];
-        let acTotal = 0;
-        acServices.forEach((service: string) => {
-          if (service && PRICES.ac[service as keyof typeof PRICES.ac]) {
-            const servicePrice = PRICES.ac[service as keyof typeof PRICES.ac].base;
-            const count = parseInt(formData.acCount) || 1;
-            acTotal += servicePrice * count;
-          }
-        });
-        return acTotal;
+    selectedServices.forEach((serviceId: string) => {
+      const service = vendor.services.find((s: any) => s.id === serviceId);
+      if (service && service.active) {
+        const quantity = formData.quantities?.[serviceId] || 1;
+        total += service.price * quantity;
+      }
+    });
 
-      case "electrical":
-        const works = formData.electricalWork || [];
-        return works.reduce((sum: number, work: string) => {
-          return sum + (PRICES.electrical[work as keyof typeof PRICES.electrical] || 0);
-        }, 0);
-
-      case "cleaning":
-        const cleaningServices = formData.cleaningServices || [];
-        let cleaningTotal = 0;
-        cleaningServices.forEach((service: string) => {
-          if (service && PRICES.cleaning[service as keyof typeof PRICES.cleaning]) {
-            cleaningTotal += PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.base || 0;
-          }
-        });
-        return cleaningTotal;
-
-      case "plumbing":
-        const plumbingIssues = formData.plumbingIssues || [];
-        return plumbingIssues.reduce((sum: number, issue: string) => {
-          return sum + (PRICES.plumbing[issue as keyof typeof PRICES.plumbing] || 0);
-        }, 0);
-
-      case "sedot-wc":
-        const sedotWCServices = formData.sedotWCServices || [];
-        let sedotWCTotal = 0;
-        sedotWCServices.forEach((service: string) => {
-          if (service && PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]) {
-            sedotWCTotal += PRICES.sedotWC[service as keyof typeof PRICES.sedotWC].base;
-          }
-        });
-        return sedotWCTotal;
-
-      case "taman":
-        const gardenServices = formData.gardenServices || [];
-        return gardenServices.reduce((sum: number, service: string) => {
-          return sum + (PRICES.garden[service as keyof typeof PRICES.garden] || 0);
-        }, 0);
-
-      case "furniture":
-        const furnitureTypes = formData.furnitureTypes || [];
-        return furnitureTypes.reduce((sum: number, type: string) => {
-          return sum + (PRICES.furniture[type as keyof typeof PRICES.furniture] || 0);
-        }, 0);
-
-      default:
-        return formData.totalPrice || 0;
-    }
+    return total;
   };
 
   const calculateTotalPrice = () => {
@@ -556,58 +399,26 @@ export default function VendorFormPage() {
   };
 
   const getServiceDescription = () => {
-    const vendorId = params.vendorId as string;
-    const vendor = Vendors.find((v) => v.id === vendorId);
-    if (!vendor) return "Layanan";
+    if (!vendor || !vendor.services) return "Layanan";
 
-    const serviceCategory = getServiceCategory(vendor.tags);
+    const selectedServices = formData.selectedServices || [];
+    if (selectedServices.length === 0) return "Layanan";
 
-    if (serviceCategory === "ac") {
-      const acServices = formData.acServices || [];
-      if (acServices.length === 0) return "Layanan AC";
+    const serviceNames = selectedServices.map((serviceId: string) => {
+      const service = vendor.services.find((s: any) => s.id === serviceId);
+      if (service) {
+        const quantity = formData.quantities?.[serviceId] || 1;
+        return `${service.name}${quantity > 1 ? ` (${quantity}x)` : ''}`;
+      }
+      return "";
+    }).filter(Boolean).join(", ");
 
-      const serviceNames = acServices.map((service: string) => {
-        const serviceType = PRICES.ac[service as keyof typeof PRICES.ac]?.label || "Layanan AC";
-        const acType = formData.acType || "";
-        const acPk = formData.acPk || "";
-        return `${serviceType} ${acType} ${acPk} PK`;
-      }).join(", ");
-
-      const acCount = formData.acCount || "1";
-      return `${serviceNames} (${acCount} unit)`;
-    }
-
-    if (serviceCategory === "cleaning") {
-      const cleaningServices = formData.cleaningServices || [];
-      if (cleaningServices.length === 0) return "Layanan Pembersihan";
-
-      const serviceNames = cleaningServices.map((service: string) => {
-        return PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.label || service;
-      }).join(", ");
-
-      return `${serviceNames}`;
-    }
-
-    if (serviceCategory === "sedot-wc") {
-      const sedotWCServices = formData.sedotWCServices || [];
-      if (sedotWCServices.length === 0) return "Layanan Sedot WC";
-
-      const serviceNames = sedotWCServices.map((service: string) => {
-        return PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]?.label || service;
-      }).join(", ");
-
-      return `${serviceNames}`;
-    }
-
-    return vendor.tags[0] || "Layanan";
+    return serviceNames || "Layanan";
   };
 
   if (!mounted) {
     return null;
   }
-
-  const vendorId = params.vendorId as string;
-  const vendor = Vendors.find((v) => v.id === vendorId);
 
   if (!vendor) {
     return (
@@ -622,7 +433,6 @@ export default function VendorFormPage() {
     );
   }
 
-  const serviceCategory = getServiceCategory(vendor.tags);
   const servicePrice = calculateServicePrice();
   const totalPrice = calculateTotalPrice();
 
@@ -691,7 +501,6 @@ export default function VendorFormPage() {
         {currentStep === 'form' ? (
           <OrderForm
             vendor={vendor}
-            serviceCategory={serviceCategory}
             formData={formData}
             setFormData={setFormData}
             handleFormSubmit={handleFormSubmit}
@@ -703,7 +512,6 @@ export default function VendorFormPage() {
           <ConfirmationStep
             vendor={vendor}
             formData={formData}
-            serviceCategory={serviceCategory}
             servicePrice={servicePrice}
             selectedPayment={selectedPayment}
             setSelectedPayment={setSelectedPayment}
@@ -715,6 +523,7 @@ export default function VendorFormPage() {
             onBack={() => setCurrentStep('form')}
             onConfirm={handleFinalSubmit}
             isProcessingPayment={isProcessingPayment}
+            getServiceDescription={getServiceDescription}
           />
         )}
       </motion.main>
@@ -807,7 +616,6 @@ export default function VendorFormPage() {
 
 function OrderForm({
   vendor,
-  serviceCategory,
   formData,
   setFormData,
   handleFormSubmit,
@@ -815,7 +623,6 @@ function OrderForm({
   handleUseProfileLocation,
   gettingLocation
 }: any) {
-  // Fungsi untuk mendapatkan tanggal besok dalam format YYYY-MM-DD
   const getTomorrowDate = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -825,13 +632,11 @@ function OrderForm({
   const [minDate, setMinDate] = useState("");
 
   useEffect(() => {
-    // Set minDate saat komponen mount
     setMinDate(getTomorrowDate());
   }, []);
 
   const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    // Batasi input hanya angka dan maksimal 2 digit
     value = value.replace(/\D/g, '');
     if (value === '') {
       setFormData({ ...formData, hour: '' });
@@ -848,7 +653,6 @@ function OrderForm({
 
   const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    // Batasi input hanya angka dan maksimal 2 digit
     value = value.replace(/\D/g, '');
     if (value === '') {
       setFormData({ ...formData, minute: '' });
@@ -860,9 +664,10 @@ function OrderForm({
       minute = 59;
     }
 
-    // Simpan tanpa padding - biarkan fleksibel
     setFormData({ ...formData, minute: minute.toString() });
   };
+
+  const activeServices = vendor.services?.filter((s: any) => s.active) || [];
 
   return (
     <>
@@ -975,11 +780,123 @@ function OrderForm({
               </div>
             </div>
 
-            <ServiceSpecificFormWithPrice
-              category={serviceCategory}
-              formData={formData}
-              setFormData={setFormData}
-            />
+            {/* Pilihan Layanan dari Vendor */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Receipt className="h-5 w-5" />
+                Pilih Layanan
+              </h3>
+
+              {activeServices.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <p className="text-muted-foreground">
+                    Vendor belum menambahkan layanan aktif.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeServices.map((service: any) => (
+                    <div key={service.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3 flex-1">
+                          <Checkbox
+                            id={service.id}
+                            checked={(formData.selectedServices || []).includes(service.id)}
+                            onCheckedChange={(checked) => {
+                              const current = formData.selectedServices || [];
+                              if (checked) {
+                                setFormData({ 
+                                  ...formData, 
+                                  selectedServices: [...current, service.id],
+                                  quantities: { ...(formData.quantities || {}), [service.id]: 1 }
+                                });
+                              } else {
+                                const newQuantities = { ...(formData.quantities || {}) };
+                                delete newQuantities[service.id];
+                                setFormData({ 
+                                  ...formData, 
+                                  selectedServices: current.filter((i: string) => i !== service.id),
+                                  quantities: newQuantities
+                                });
+                              }
+                            }}
+                          />
+                          <div className="flex-1">
+                            <Label htmlFor={service.id} className="font-medium cursor-pointer">
+                              {service.name}
+                            </Label>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {service.description}
+                            </p>
+                            {service.estimatedTime && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                ⏱️ Estimasi: {service.estimatedTime}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="text-right">
+                          <div className="font-semibold text-primary">
+                            Rp {service.price.toLocaleString('id-ID')}
+                            {service.priceType === 'hourly' && '/jam'}
+                            {service.priceType === 'unit' && '/unit'}
+                          </div>
+                          
+                          {(formData.selectedServices || []).includes(service.id) && (
+                            <div className="mt-2">
+                              <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>
+                              <Input
+                                id={`qty-${service.id}`}
+                                type="number"
+                                min="1"
+                                defaultValue="1"
+                                className="w-20 mt-1"
+                                onChange={(e) => {
+                                  const qty = parseInt(e.target.value) || 1;
+                                  setFormData({
+                                    ...formData,
+                                    quantities: {
+                                      ...(formData.quantities || {}),
+                                      [service.id]: qty
+                                    }
+                                  });
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeServices.length > 0 && (
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Total Estimasi Layanan:</span>
+                    <span className="text-xl font-bold text-primary">
+                      Rp {(() => {
+                        const selectedServices = formData.selectedServices || [];
+                        let total = 0;
+                        selectedServices.forEach((serviceId: string) => {
+                          const service = activeServices.find((s: any) => s.id === serviceId);
+                          if (service) {
+                            const quantity = formData.quantities?.[serviceId] || 1;
+                            total += service.price * quantity;
+                          }
+                        });
+                        return total.toLocaleString('id-ID');
+                      })()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    * Harga belum termasuk biaya layanan dan biaya transaksi
+                  </p>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -996,7 +913,7 @@ function OrderForm({
                     required
                     value={formData.date || ""}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    min={minDate} // Disable tanggal hari ini dan sebelumnya
+                    min={minDate}
                   />
                   <p className="text-xs text-muted-foreground">
                     Hanya bisa memilih tanggal mulai besok dan seterusnya
@@ -1062,6 +979,7 @@ function OrderForm({
                 style={{ backgroundColor: '#7CE0A8' }}
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
+                disabled={!formData.selectedServices || formData.selectedServices.length === 0}
               >
                 Ajukan Pemesanan
               </Button>
@@ -1076,7 +994,6 @@ function OrderForm({
 function ConfirmationStep({
   vendor,
   formData,
-  serviceCategory,
   servicePrice,
   selectedPayment,
   setSelectedPayment,
@@ -1087,7 +1004,8 @@ function ConfirmationStep({
   totalPrice,
   onBack,
   onConfirm,
-  isProcessingPayment
+  isProcessingPayment,
+  getServiceDescription
 }: any) {
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -1130,48 +1048,6 @@ function ConfirmationStep({
     return "";
   };
 
-  const getServiceDescription = () => {
-    if (serviceCategory === "ac") {
-      const acServices = formData.acServices || [];
-      if (acServices.length === 0) return "Layanan AC";
-
-      const serviceNames = acServices.map((service: string) => {
-        const serviceType = PRICES.ac[service as keyof typeof PRICES.ac]?.label || "Layanan AC";
-        const acType = formData.acType || "";
-        const acPk = formData.acPk || "";
-        return `${serviceType} ${acType} ${acPk} PK`;
-      }).join(", ");
-
-      const acCount = formData.acCount || "1";
-      return `${serviceNames} (${acCount} unit)`;
-    }
-
-    if (serviceCategory === "cleaning") {
-      const cleaningServices = formData.cleaningServices || [];
-      if (cleaningServices.length === 0) return "Layanan Pembersihan";
-
-      const serviceNames = cleaningServices.map((service: string) => {
-        return PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.label || service;
-      }).join(", ");
-
-      return `${serviceNames}`;
-    }
-
-    if (serviceCategory === "sedot-wc") {
-      const sedotWCServices = formData.sedotWCServices || [];
-      if (sedotWCServices.length === 0) return "Layanan Sedot WC";
-
-      const serviceNames = sedotWCServices.map((service: string) => {
-        return PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]?.label || service;
-      }).join(", ");
-
-      return `${serviceNames}`;
-    }
-
-    return vendor.tags[0];
-  };
-
-  // Format waktu untuk display - dengan padding nol
   const formatTimeForDisplay = () => {
     const hour = formData.hour || "0";
     const minute = formData.minute || "0";
@@ -1820,626 +1696,6 @@ function ConfirmationStep({
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-// Komponen-komponen ServiceSpecificFormWithPrice dan lainnya...
-function ServiceSpecificFormWithPrice({ category, formData, setFormData }: { category: string; formData: any; setFormData: (data: any) => void }) {
-  switch (category) {
-    case "ac":
-      return <ACServiceForm formData={formData} setFormData={setFormData} />;
-    case "electrical":
-      return <ElectricalServiceForm formData={formData} setFormData={setFormData} />;
-    case "cleaning":
-      return <CleaningServiceForm formData={formData} setFormData={setFormData} />;
-    case "plumbing":
-      return <PlumbingServiceForm formData={formData} setFormData={setFormData} />;
-    case "sedot-wc":
-      return <SedotWCServiceForm formData={formData} setFormData={setFormData} />;
-    case "taman":
-      return <GardenServiceForm formData={formData} setFormData={setFormData} />;
-    case "furniture":
-      return <FurnitureServiceForm formData={formData} setFormData={setFormData} />;
-    default:
-      return <GeneralServiceForm formData={formData} setFormData={setFormData} />;
-  }
-}
-
-function PriceSummary({ totalPrice }: { totalPrice: number }) {
-  return (
-    <Card className="bg-muted/50">
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Receipt className="h-5 w-5" />
-          Ringkasan Harga
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <div className="flex justify-between items-center text-2xl font-bold">
-            <span>Total Estimasi:</span>
-            <span className="text-primary">
-              Rp {totalPrice.toLocaleString('id-ID')}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            * Harga dapat berubah setelah survey lokasi
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ACServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const acServices = formData.acServices || [];
-    let total = 0;
-    acServices.forEach((service: string) => {
-      if (service && PRICES.ac[service as keyof typeof PRICES.ac]) {
-        const servicePrice = PRICES.ac[service as keyof typeof PRICES.ac].base;
-        const count = parseInt(formData.acCount) || 1;
-        total += servicePrice * count;
-      }
-    });
-    return total;
-  }, [formData.acServices, formData.acCount]);
-
-  const handleServiceChange = (serviceId: string, checked: boolean) => {
-    const current = formData.acServices || [];
-    if (checked) {
-      setFormData({ ...formData, acServices: [...current, serviceId] });
-    } else {
-      setFormData({ ...formData, acServices: current.filter((i: string) => i !== serviceId) });
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Layanan AC</h3>
-        <div className="space-y-2">
-          <Label>Jenis Layanan *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.ac).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={key}
-                    checked={(formData.acServices || []).includes(key)}
-                    onCheckedChange={(checked) => handleServiceChange(key, checked as boolean)}
-                  />
-                  <Label htmlFor={key} className="font-normal cursor-pointer">
-                    {value.label}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {value.base.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="acType">Tipe AC *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, acType: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih tipe AC" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="split">Split</SelectItem>
-              <SelectItem value="cassette">Cassette</SelectItem>
-              <SelectItem value="standing">Standing/Floor</SelectItem>
-              <SelectItem value="central">Central</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="acCount">Jumlah Unit *</Label>
-          <Input
-            id="acCount"
-            type="number"
-            min="1"
-            defaultValue="1"
-            placeholder="Jumlah unit AC"
-            onChange={(e) => setFormData({ ...formData, acCount: e.target.value })}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="acPk">Kapasitas (PK) *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, acPk: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih kapasitas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0.5">0.5 PK</SelectItem>
-              <SelectItem value="0.75">0.75 PK</SelectItem>
-              <SelectItem value="1">1 PK</SelectItem>
-              <SelectItem value="1.5">1.5 PK</SelectItem>
-              <SelectItem value="2">2 PK</SelectItem>
-              <SelectItem value="2.5">2.5 PK</SelectItem>
-              <SelectItem value="3">3 PK</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function ElectricalServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const works = formData.electricalWork || [];
-    return works.reduce((sum: number, work: string) => {
-      return sum + (PRICES.electrical[work as keyof typeof PRICES.electrical] || 0);
-    }, 0);
-  }, [formData.electricalWork]);
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Layanan Listrik</h3>
-        <div className="space-y-2">
-          <Label>Jenis Pekerjaan *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.electrical).map(([item, price]) => (
-              <div key={item} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={item.toLowerCase().replace(/\s/g, "-")}
-                    checked={(formData.electricalWork || []).includes(item)}
-                    onCheckedChange={(checked) => {
-                      const current = formData.electricalWork || [];
-                      if (checked) {
-                        setFormData({ ...formData, electricalWork: [...current, item] });
-                      } else {
-                        setFormData({ ...formData, electricalWork: current.filter((i: string) => i !== item) });
-                      }
-                    }}
-                  />
-                  <Label htmlFor={item.toLowerCase().replace(/\s/g, "-")} className="font-normal cursor-pointer">
-                    {item}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {price.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="buildingType">Tipe Bangunan *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, buildingType: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih tipe bangunan" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rumah">Rumah Tinggal</SelectItem>
-              <SelectItem value="ruko">Ruko</SelectItem>
-              <SelectItem value="kantor">Kantor</SelectItem>
-              <SelectItem value="gudang">Gudang</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="powerCapacity">Daya Listrik Rumah *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, powerCapacity: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih daya" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="900">900 VA</SelectItem>
-              <SelectItem value="1300">1300 VA</SelectItem>
-              <SelectItem value="2200">2200 VA</SelectItem>
-              <SelectItem value="3500">3500 VA</SelectItem>
-              <SelectItem value="5500">5500 VA</SelectItem>
-              <SelectItem value="7700">7700 VA</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function CleaningServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const cleaningServices = formData.cleaningServices || [];
-    let total = 0;
-    cleaningServices.forEach((service: string) => {
-      if (service && PRICES.cleaning[service as keyof typeof PRICES.cleaning]) {
-        total += PRICES.cleaning[service as keyof typeof PRICES.cleaning]?.base || 0;
-      }
-    });
-    return total;
-  }, [formData.cleaningServices]);
-
-  const handleServiceChange = (serviceId: string, checked: boolean) => {
-    const current = formData.cleaningServices || [];
-    if (checked) {
-      setFormData({ ...formData, cleaningServices: [...current, serviceId] });
-    } else {
-      setFormData({ ...formData, cleaningServices: current.filter((i: string) => i !== serviceId) });
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Layanan Pembersihan</h3>
-        <div className="space-y-2">
-          <Label>Jenis Layanan *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.cleaning).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`cleaning-${key}`}
-                    checked={(formData.cleaningServices || []).includes(key)}
-                    onCheckedChange={(checked) => handleServiceChange(key, checked as boolean)}
-                  />
-                  <Label htmlFor={`cleaning-${key}`} className="font-normal cursor-pointer">
-                    {value.label}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {value.base.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="propertyType">Tipe Properti *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, propertyType: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih tipe properti" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="apartment">Apartemen</SelectItem>
-              <SelectItem value="house">Rumah</SelectItem>
-              <SelectItem value="office">Kantor</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="areaSize">Luas Area (m²) *</Label>
-          <Input
-            id="areaSize"
-            type="number"
-            min="1"
-            placeholder="Contoh: 50"
-            onChange={(e) => setFormData({ ...formData, areaSize: e.target.value })}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="rooms">Jumlah Ruangan *</Label>
-          <Input
-            id="rooms"
-            type="number"
-            placeholder="Jumlah ruangan"
-            onChange={(e) => setFormData({ ...formData, rooms: e.target.value })}
-          />
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function PlumbingServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const issues = formData.plumbingIssues || [];
-    return issues.reduce((sum: number, issue: string) => {
-      return sum + (PRICES.plumbing[issue as keyof typeof PRICES.plumbing] || 0);
-    }, 0);
-  }, [formData.plumbingIssues]);
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Layanan Ledeng/Pipa</h3>
-        <div className="space-y-2">
-          <Label>Jenis Masalah *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.plumbing).map(([item, price]) => (
-              <div key={item} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={item.toLowerCase().replace(/\s/g, "-")}
-                    checked={(formData.plumbingIssues || []).includes(item)}
-                    onCheckedChange={(checked) => {
-                      const current = formData.plumbingIssues || [];
-                      if (checked) {
-                        setFormData({ ...formData, plumbingIssues: [...current, item] });
-                      } else {
-                        setFormData({ ...formData, plumbingIssues: current.filter((i: string) => i !== item) });
-                      }
-                    }}
-                  />
-                  <Label htmlFor={item.toLowerCase().replace(/\s/g, "-")} className="font-normal cursor-pointer">
-                    {item}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {price.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="urgency">Tingkat Urgensi *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, urgency: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih urgensi" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="emergency">Darurat (dalam 24 jam)</SelectItem>
-              <SelectItem value="urgent">Mendesak (1-2 hari)</SelectItem>
-              <SelectItem value="normal">Normal (3-5 hari)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function SedotWCServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const services = formData.sedotWCServices || [];
-    let total = 0;
-    services.forEach((service: string) => {
-      if (service && PRICES.sedotWC[service as keyof typeof PRICES.sedotWC]) {
-        total += PRICES.sedotWC[service as keyof typeof PRICES.sedotWC].base;
-      }
-    });
-    return total;
-  }, [formData.sedotWCServices]);
-
-  const handleServiceChange = (serviceId: string, checked: boolean) => {
-    const current = formData.sedotWCServices || [];
-    if (checked) {
-      setFormData({ ...formData, sedotWCServices: [...current, serviceId] });
-    } else {
-      setFormData({ ...formData, sedotWCServices: current.filter((i: string) => i !== serviceId) });
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Layanan Sedot WC</h3>
-        <div className="space-y-2">
-          <Label>Jenis Layanan *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.sedotWC).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`sedot-wc-${key}`}
-                    checked={(formData.sedotWCServices || []).includes(key)}
-                    onCheckedChange={(checked) => handleServiceChange(key, checked as boolean)}
-                  />
-                  <Label htmlFor={`sedot-wc-${key}`} className="font-normal cursor-pointer">
-                    {value.label}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {value.base.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function GardenServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const services = formData.gardenServices || [];
-    return services.reduce((sum: number, service: string) => {
-      return sum + (PRICES.garden[service as keyof typeof PRICES.garden] || 0);
-    }, 0);
-  }, [formData.gardenServices]);
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Layanan Taman</h3>
-        <div className="space-y-2">
-          <Label>Jenis Layanan *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.garden).map(([item, price]) => (
-              <div key={item} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={item.toLowerCase().replace(/\s/g, "-")}
-                    checked={(formData.gardenServices || []).includes(item)}
-                    onCheckedChange={(checked) => {
-                      const current = formData.gardenServices || [];
-                      if (checked) {
-                        setFormData({ ...formData, gardenServices: [...current, item] });
-                      } else {
-                        setFormData({ ...formData, gardenServices: current.filter((i: string) => i !== item) });
-                      }
-                    }}
-                  />
-                  <Label htmlFor={item.toLowerCase().replace(/\s/g, "-")} className="font-normal cursor-pointer">
-                    {item}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {price.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="gardenSize">Luas Taman (m²) *</Label>
-          <Input
-            id="gardenSize"
-            type="number"
-            placeholder="Luas area taman"
-            onChange={(e) => setFormData({ ...formData, gardenSize: e.target.value })}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="gardenStyle">Gaya Taman *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, gardenStyle: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih gaya taman" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="minimalis">Minimalis</SelectItem>
-              <SelectItem value="tropis">Tropis</SelectItem>
-              <SelectItem value="modern">Modern</SelectItem>
-              <SelectItem value="natural">Natural</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function FurnitureServiceForm({ formData, setFormData }: any) {
-  const totalPrice = useMemo(() => {
-    const types = formData.furnitureTypes || [];
-    return types.reduce((sum: number, type: string) => {
-      return sum + (PRICES.furniture[type as keyof typeof PRICES.furniture] || 0);
-    }, 0);
-  }, [formData.furnitureTypes]);
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Detail Pesanan Furniture</h3>
-        <div className="space-y-2">
-          <Label>Jenis Furniture *</Label>
-          <div className="space-y-2">
-            {Object.entries(PRICES.furniture).map(([item, price]) => (
-              <div key={item} className="flex items-center justify-between space-x-2 p-3 border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={item.toLowerCase().replace(/\s/g, "-")}
-                    checked={(formData.furnitureTypes || []).includes(item)}
-                    onCheckedChange={(checked) => {
-                      const current = formData.furnitureTypes || [];
-                      if (checked) {
-                        setFormData({ ...formData, furnitureTypes: [...current, item] });
-                      } else {
-                        setFormData({ ...formData, furnitureTypes: current.filter((i: string) => i !== item) });
-                      }
-                    }}
-                  />
-                  <Label htmlFor={item.toLowerCase().replace(/\s/g, "-")} className="font-normal cursor-pointer">
-                    {item}
-                  </Label>
-                </div>
-                <span className="text-sm font-semibold text-primary">
-                  Rp {price.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="material">Material Utama *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, material: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih material" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="kayu-jati">Kayu Jati</SelectItem>
-              <SelectItem value="kayu-mahoni">Kayu Mahoni</SelectItem>
-              <SelectItem value="mdf">MDF</SelectItem>
-              <SelectItem value="multiplek">Multiplek</SelectItem>
-              <SelectItem value="hpl">HPL</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="finishing">Finishing *</Label>
-          <Select onValueChange={(value) => setFormData({ ...formData, finishing: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih finishing" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="duco">Duco</SelectItem>
-              <SelectItem value="natural">Natural/Politur</SelectItem>
-              <SelectItem value="hpl">HPL</SelectItem>
-              <SelectItem value="melamine">Melamine</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="dimensions">Ukuran/Dimensi</Label>
-          <Textarea
-            id="dimensions"
-            placeholder="Contoh: Lemari 200cm x 60cm x 180cm"
-            rows={2}
-            onChange={(e) => setFormData({ ...formData, dimensions: e.target.value })}
-          />
-        </div>
-      </div>
-
-      {totalPrice > 0 && <PriceSummary totalPrice={totalPrice} />}
-    </div>
-  );
-}
-
-function GeneralServiceForm({ formData, setFormData }: any) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Detail Layanan</h3>
-      <div className="space-y-2">
-        <Label htmlFor="serviceDescription">Deskripsi Pekerjaan *</Label>
-        <Textarea
-          id="serviceDescription"
-          placeholder="Jelaskan detail pekerjaan yang dibutuhkan..."
-          rows={5}
-          required
-          onChange={(e) => setFormData({ ...formData, serviceDescription: e.target.value })}
-        />
-      </div>
-
-      <div className="p-4 bg-muted/50 rounded-lg">
-        <p className="text-sm text-muted-foreground">
-          Untuk estimasi harga yang akurat, kami akan menghubungi Anda setelah form dikirim.
-        </p>
-      </div>
     </div>
   );
 }
