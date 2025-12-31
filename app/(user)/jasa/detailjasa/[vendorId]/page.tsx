@@ -1,3 +1,4 @@
+// app/jasa/detailjasa/[vendorId]/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -24,11 +25,11 @@ import {
   DialogTitle,
 } from "@/app/components/ui/dialog";
 import { Send } from "lucide-react";
-import { Vendors } from "@/app/data/dataVendor";
+import { getVendorById } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { LoginForm } from "@/app/components/ui/login-form";
-import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle } from "lucide-react";
+import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle, ImageIcon } from "lucide-react";
 
 type GalleryImage = {
   src: string;
@@ -44,18 +45,38 @@ export default function VendorDetailPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [vendor, setVendor] = useState<any>(null);
 
   const vendorId = params.vendorId as string;
-  const vendor = Vendors.find((v) => v.id === vendorId);
 
-  // Cek status login saat komponen dimount
+  // Load vendor data dengan sync
+  useEffect(() => {
+    const loadVendor = () => {
+      const vendorData = getVendorById(vendorId);
+      setVendor(vendorData);
+    };
+
+    loadVendor();
+
+    // Listen untuk vendor data updates
+    const handleVendorUpdate = (event: any) => {
+      if (event.detail.vendorId === vendorId) {
+        loadVendor();
+      }
+    };
+
+    window.addEventListener('vendorDataUpdated', handleVendorUpdate);
+
+    return () => {
+      window.removeEventListener('vendorDataUpdated', handleVendorUpdate);
+    };
+  }, [vendorId]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('userToken');
-      const userData = localStorage.getItem('user');
       setIsLoggedIn(!!token);
 
-      // Load favorites from localStorage
       const savedFavorites = localStorage.getItem('favorites');
       if (savedFavorites) {
         setFavorites(JSON.parse(savedFavorites));
@@ -63,7 +84,6 @@ export default function VendorDetailPage() {
     }
   }, []);
 
-  // Simpan favorites ke localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('favorites', JSON.stringify(favorites));
@@ -102,10 +122,8 @@ export default function VendorDetailPage() {
 
     if (vendorId) {
       if (favorites.includes(vendorId)) {
-        // Remove from favorites
         setFavorites(prev => prev.filter(id => id !== vendorId));
       } else {
-        // Add to favorites
         setFavorites(prev => [...prev, vendorId]);
       }
     }
@@ -135,6 +153,9 @@ export default function VendorDetailPage() {
     { id: "ulasan", label: "Ulasan" },
   ];
 
+  // Cek apakah ada gallery
+  const hasGallery = vendor && vendor.gallery && vendor.gallery.length > 0;
+
   if (!vendor) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -155,7 +176,6 @@ export default function VendorDetailPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
       >
-        {/* Breadcrumb */}
         <div className="mb-6">
           <Breadcrumb>
             <BreadcrumbList>
@@ -186,7 +206,6 @@ export default function VendorDetailPage() {
           </Breadcrumb>
         </div>
 
-        {/* Header Section */}
         <Card className="mb-6">
           <CardHeader className="p-4 md:p-6">
             <div className="flex gap-3 md:gap-6">
@@ -195,7 +214,7 @@ export default function VendorDetailPage() {
                 <AvatarFallback className="text-lg md:text-3xl">
                   {vendor.name
                     .split(" ")
-                    .map((w) => w[0])
+                    .map((w: string) => w[0])
                     .join("")
                     .slice(0, 2)
                     .toUpperCase()}
@@ -239,11 +258,8 @@ export default function VendorDetailPage() {
           </CardHeader>
         </Card>
 
-        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Left Column - Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Tab Navigation */}
             <div className="border-b border-gray-200 sticky top-0 bg-white z-10">
               <nav className="flex space-x-8" aria-label="Tabs">
                 {tabs.map((tab) => (
@@ -264,7 +280,6 @@ export default function VendorDetailPage() {
               </nav>
             </div>
 
-            {/* Layanan */}
             <div id="layanan">
               <Card>
                 <CardHeader>
@@ -282,7 +297,6 @@ export default function VendorDetailPage() {
               </Card>
             </div>
 
-            {/* Jangkauan Layanan */}
             <Card>
               <CardHeader>
                 <CardTitle>Jangkauan layanan</CardTitle>
@@ -298,9 +312,8 @@ export default function VendorDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Hasil Pekerjaan */}
             <div id="hasil-pekerjaan">
-              {vendor.gallery && vendor.gallery.length > 0 ? (
+              {hasGallery ? (
                 <Card>
                   <CardHeader>
                     <CardTitle>Hasil Pekerjaan</CardTitle>
@@ -329,14 +342,27 @@ export default function VendorDetailPage() {
                   <CardHeader>
                     <CardTitle>Hasil Pekerjaan</CardTitle>
                   </CardHeader>
-                  <CardContent className="py-8 text-center">
-                    <p className="text-muted-foreground">Belum ada hasil pekerjaan yang ditampilkan</p>
+                  <CardContent className="py-12">
+                    <div className="text-center">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                          <ImageIcon className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                            Belum Ada Hasil Pekerjaan
+                          </h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                            Vendor ini belum mengunggah foto hasil pekerjaan. Anda dapat menghubungi vendor untuk informasi lebih lanjut.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               )}
             </div>
 
-            {/* Ulasan */}
             <div id="ulasan">
               <Card>
                 <CardHeader>
@@ -370,7 +396,6 @@ export default function VendorDetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Action Sidebar (Desktop) */}
           <div className="hidden lg:block lg:col-span-1">
             <Card className="sticky top-6">
               <CardHeader>
@@ -418,7 +443,6 @@ export default function VendorDetailPage() {
           <SiteFooter />
         </div>
 
-        {/* Floating Action Buttons (Mobile & Tablet) */}
         <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-50">
           <div className="max-w-7xl mx-auto flex gap-3">
             <Button
@@ -440,7 +464,6 @@ export default function VendorDetailPage() {
         </div>
       </motion.main>
 
-      {/* Login Modal */}
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

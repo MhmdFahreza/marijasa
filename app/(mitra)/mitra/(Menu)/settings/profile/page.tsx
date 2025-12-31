@@ -36,6 +36,7 @@ import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import CitySelect from "@/app/components/ui/city-select";
 import { CITIES_ID } from "@/app/data/cities-id";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { updateVendorData } from "@/app/data/dataVendor";
 
 type ServiceArea = {
   id: string;
@@ -58,6 +59,7 @@ type ProfileData = {
   specialties: string[];
   tags: string[];
   category?: string;
+  summary?: string;
 };
 
 // Helper function untuk trigger custom event
@@ -98,7 +100,8 @@ const loadProfileFromStorage = (): ProfileData | null => {
           verified: parsed.verified || false,
           specialties: parsed.specialties || [],
           tags: parsed.tags || [],
-          category: parsed.category
+          category: parsed.category,
+          summary: parsed.summary || ""
         };
       } catch (e) {
         console.error('Error parsing stored profile:', e);
@@ -154,10 +157,22 @@ export default function ProfilePage() {
           updatedUser.description = tempProfile.description;
           updatedUser.serviceAreas = tempProfile.serviceAreas.map(area => area.city);
           updatedUser.specialties = tempProfile.specialties;
+          updatedUser.summary = tempProfile.description; // Update summary dengan description
           
           localStorage.setItem('mitraUser', JSON.stringify(updatedUser));
           
-          // Trigger update ke sidebar
+          // Update vendor data in global storage
+          updateVendorData(tempProfile.id, {
+            name: tempProfile.name,
+            avatar: tempProfile.avatar,
+            summary: tempProfile.description,
+            description: tempProfile.description,
+            serviceAreas: tempProfile.serviceAreas.map(area => area.city),
+            specialties: tempProfile.specialties,
+            verified: tempProfile.verified
+          });
+          
+          // Trigger update ke sidebar dan vendor cards
           updateMitraProfile(tempProfile.name, tempProfile.avatar, tempProfile.verified);
         } catch (e) {
           console.error('Error updating localStorage:', e);
@@ -320,7 +335,7 @@ export default function ProfilePage() {
             <Alert className="border-[#7CE0A8] bg-[#7CE0A8]/10">
               <Check className="h-4 w-4 text-[#7CE0A8]" />
               <AlertDescription className="text-[#5AB88A]">
-                Profile berhasil diperbarui!
+                Profile berhasil diperbarui dan akan terlihat di daftar jasa!
               </AlertDescription>
             </Alert>
           </motion.div>

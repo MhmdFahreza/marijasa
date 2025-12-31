@@ -1,3 +1,4 @@
+// app/data/dataVendor.ts
 import { Vendor } from "../components/ui/vendor-card";
 
 export const Vendors: Vendor[] = [
@@ -10,16 +11,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang AC", "Instalasi AC", "Cuci AC"],
         summary:
             "Spesialis instalasi, perbaikan, dan perawatan AC rumah serta kantor. Menangani AC split, cassette, dan central dengan standar kerja rapi, cepat, dan bergaransi 30 hari.",
-        gallery: [
-            { src: "https://picsum.photos/seed/a1/200/200", alt: "Instalasi AC di ruang tamu" },
-            { src: "https://picsum.photos/seed/a2/200/200", alt: "Servis AC kantor" },
-            { src: "https://picsum.photos/seed/a3/200/200", alt: "Pembersihan unit outdoor" },
-            { src: "https://picsum.photos/seed/a4/200/200", alt: "Pengecekan tekanan freon" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=12",
         serviceAreas: ["Jakarta Barat", "Jakarta Utara", "Tangerang", "Cirebon", "Subang"],
         phone: "+6281234567890",
-        // Login credentials
         email: "edi.taulany@gmail.com",
         password: "edi12345",
         description: "Spesialis instalasi, perbaikan, dan perawatan AC rumah serta kantor. Menangani AC split, cassette, dan central dengan standar kerja rapi, cepat, dan bergaransi 30 hari. Pengalaman lebih dari 10 tahun dalam bidang AC.",
@@ -64,15 +59,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang Listrik", "Panel Listrik", "Instalasi Rumah"],
         summary:
             "Layanan instalasi dan perapihan kabel, pemasangan MCB, penambahan titik listrik, hingga panel distribusi untuk rumah dan ruko. Fokus pada keamanan, kerapian, dan kepatuhan standar nasional.",
-        gallery: [
-            { src: "https://picsum.photos/seed/b1/200/200", alt: "Pemasangan panel listrik" },
-            { src: "https://picsum.photos/seed/b2/200/200", alt: "Penataan kabel di dinding" },
-            { src: "https://picsum.photos/seed/b3/200/200", alt: "Pengecekan instalasi listrik" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=32",
         serviceAreas: ["Jakarta Selatan", "Depok", "Bogor", "Sukabumi", "Cianjur"],
         phone: "+6282345678901",
-        // Login credentials
         email: "berkah.listrik@gmail.com",
         password: "berkah12345",
         description: "Layanan instalasi dan perapihan kabel, pemasangan MCB, penambahan titik listrik, hingga panel distribusi untuk rumah dan ruko. Fokus pada keamanan, kerapian, dan kepatuhan standar nasional. Berpengalaman lebih dari 8 tahun.",
@@ -108,15 +98,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang Pembersihan Rumah", "Deep Cleaning"],
         summary:
             "Jasa kebersihan profesional untuk apartemen, rumah, dan kantor. Termasuk general cleaning, deep cleaning pasca renovasi, sanitasi kamar mandi, dan pembersihan sofa serta karpet.",
-        gallery: [
-            { src: "https://picsum.photos/seed/c1/200/200", alt: "Pembersihan ruang keluarga" },
-            { src: "https://picsum.photos/seed/c2/200/200", alt: "Tim membersihkan dapur" },
-            { src: "https://picsum.photos/seed/c3/200/200", alt: "Vacuum karpet profesional" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=5",
         serviceAreas: ["Jakarta Pusat", "Bandung", "Cimahi", "Tasikmalaya", "Garut"],
         phone: "+6283456789012",
-        // Login credentials
         email: "info@cleanandco.com",
         password: "clean12345",
         description: "Jasa kebersihan profesional untuk apartemen, rumah, dan kantor. Termasuk general cleaning, deep cleaning pasca renovasi, sanitasi kamar mandi, dan pembersihan sofa serta karpet. Tim profesional dan berpengalaman.",
@@ -152,15 +137,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang Ledeng", "Bongkar Pasang Wastafel", "Perbaikan Kebocoran"],
         summary:
             "Menangani bocor pipa, mampet, instalasi pompa air, wastafel, kloset, hingga toren. Respon cepat dengan diagnosa jelas sebelum pengerjaan dan hasil rapi tanpa banyak bongkar.",
-        gallery: [
-            { src: "https://picsum.photos/seed/d1/200/200", alt: "Perbaikan pipa bocor" },
-            { src: "https://picsum.photos/seed/d2/200/200", alt: "Instalasi wastafel baru" },
-            { src: "https://picsum.photos/seed/d3/200/200", alt: "Pemasangan pompa air" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=47",
         serviceAreas: ["Bekasi", "Karawang", "Cilegon", "Serang", "Pandeglang"],
         phone: "+6284567890123",
-        // Login credentials
         email: "jaya.plumbing@gmail.com",
         password: "jaya12345",
         description: "Menangani bocor pipa, mampet, instalasi pompa air, wastafel, kloset, hingga toren. Respon cepat dengan diagnosa jelas sebelum pengerjaan dan hasil rapi tanpa banyak bongkar. Pengalaman 12 tahun.",
@@ -196,15 +176,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang Sedot WC", "Saluran Mampet"],
         summary:
             "Layanan sedot WC dan saluran mampet dengan armada siap panggil. Menjaga area kerja tetap bersih, proses cepat, dan transparan dalam estimasi biaya.",
-        gallery: [
-            { src: "https://picsum.photos/seed/e1/200/200", alt: "Armada sedot WC" },
-            { src: "https://picsum.photos/seed/e2/200/200", alt: "Penanganan saluran mampet" },
-            { src: "https://picsum.photos/seed/e3/200/200", alt: "Peralatan sedot profesional" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=21",
         serviceAreas: ["Semarang", "Solo", "Magelang", "Salatiga", "Purwokerto"],
         phone: "+6285678901234",
-        // Login credentials
         email: "sedot.barokah@gmail.com",
         password: "barokah12345",
         description: "Layanan sedot WC dan saluran mampet dengan armada siap panggil. Menjaga area kerja tetap bersih, proses cepat, dan transparan dalam estimasi biaya. Siap 24 jam.",
@@ -231,15 +206,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang Kebun", "Perawatan Taman", "Desain Landscape"],
         summary:
             "Layanan penataan taman minimalis, vertical garden, pemangkasan pohon, hingga perawatan rumput rutin. Menghadirkan ruang hijau estetik dan fungsional untuk rumah dan kantor.",
-        gallery: [
-            { src: "https://picsum.photos/seed/f1/200/200", alt: "Taman rumah minimalis" },
-            { src: "https://picsum.photos/seed/f2/200/200", alt: "Pemangkasan tanaman hias" },
-            { src: "https://picsum.photos/seed/f3/200/200", alt: "Penataan landscape halaman" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=8",
         serviceAreas: ["Yogyakarta", "Bantul", "Sleman", "Magelang", "Klaten"],
         phone: "+6286789012345",
-        // Login credentials
         email: "greenyard@gmail.com",
         password: "green12345",
         description: "Layanan penataan taman minimalis, vertical garden, pemangkasan pohon, hingga perawatan rumput rutin. Menghadirkan ruang hijau estetik dan fungsional untuk rumah dan kantor. Ahli landscape sejak 2020.",
@@ -266,15 +236,10 @@ export const Vendors: Vendor[] = [
         tags: ["Tukang Mebel", "Custom Lemari", "Kitchen Set"],
         summary:
             "Workshop furnitur custom untuk lemari, kitchen set, rak TV, dan meja kerja. Menggunakan material pilihan dengan finishing rapi dan desain menyesuaikan kebutuhan ruangan.",
-        gallery: [
-            { src: "https://picsum.photos/seed/g1/200/200", alt: "Lemari custom built-in" },
-            { src: "https://picsum.photos/seed/g2/200/200", alt: "Kitchen set minimalis" },
-            { src: "https://picsum.photos/seed/g3/200/200", alt: "Meja kerja custom" },
-        ],
+        gallery: [],
         avatar: "https://i.pravatar.cc/120?img=57",
         serviceAreas: ["Surabaya", "Sidoarjo", "Gresik", "Mojokerto", "Pasuruan"],
         phone: "+6287890123456",
-        // Login credentials
         email: "karya.furnitur@gmail.com",
         password: "karya12345",
         description: "Workshop furnitur custom untuk lemari, kitchen set, rak TV, dan meja kerja. Menggunakan material pilihan dengan finishing rapi dan desain menyesuaikan kebutuhan ruangan. Workshop sejak 2018.",
@@ -308,9 +273,127 @@ export const validateVendorLogin = (email: string, password: string) => {
     return null;
 };
 
-// Helper function to get all vendor data
+// Helper function to get vendor by ID with memory sync
 export const getVendorById = (id: string) => {
+    // PRIORITAS 1: Cek localStorage mitraUser (untuk vendor yang sedang login)
+    if (typeof window !== 'undefined') {
+        try {
+            const mitraUser = localStorage.getItem('mitraUser');
+            if (mitraUser) {
+                const parsedMitra = JSON.parse(mitraUser);
+                if (parsedMitra.id === id) {
+                    return parsedMitra;
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing mitraUser:', e);
+        }
+    }
+
+    // PRIORITAS 2: Cek sessionStorage updatedVendorsData
+    if (typeof window !== 'undefined') {
+        try {
+            const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+            if (updatedVendorsData) {
+                const updatedVendors = JSON.parse(updatedVendorsData);
+                const updatedVendor = updatedVendors[id];
+                if (updatedVendor) {
+                    return updatedVendor;
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing updated vendors data:', e);
+        }
+    }
+    
+    // PRIORITAS 3: Fallback ke data original
     return Vendors.find(vendor => vendor.id === id);
+};
+
+// Helper function to get all vendors with memory sync
+export const getAllVendors = () => {
+    if (typeof window !== 'undefined') {
+        try {
+            // Ambil mitraUser dari localStorage
+            const mitraUser = localStorage.getItem('mitraUser');
+            let mitraData: any = null;
+            if (mitraUser) {
+                mitraData = JSON.parse(mitraUser);
+            }
+
+            // Ambil updated vendors dari sessionStorage
+            const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+            let updatedVendors: Record<string, any> = {};
+            if (updatedVendorsData) {
+                updatedVendors = JSON.parse(updatedVendorsData);
+            }
+
+            // Merge data: prioritaskan mitraUser untuk vendor yang sedang login
+            return Vendors.map(vendor => {
+                // Jika ini vendor yang sedang login, gunakan data dari localStorage
+                if (mitraData && mitraData.id === vendor.id) {
+                    return { ...vendor, ...mitraData };
+                }
+                
+                // Jika ada update di sessionStorage, gunakan itu
+                const updated = updatedVendors[vendor.id];
+                if (updated) {
+                    return { ...vendor, ...updated };
+                }
+                
+                // Fallback ke data original
+                return vendor;
+            });
+        } catch (e) {
+            console.error('Error in getAllVendors:', e);
+        }
+    }
+    return Vendors;
+};
+
+// Helper function to update vendor data
+export const updateVendorData = (vendorId: string, updates: Partial<Vendor>) => {
+    if (typeof window !== 'undefined') {
+        try {
+            // Update sessionStorage
+            const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+            const updatedVendors: Record<string, any> = updatedVendorsData ? JSON.parse(updatedVendorsData) : {};
+            
+            const currentVendor = getVendorById(vendorId);
+            
+            updatedVendors[vendorId] = {
+                ...currentVendor,
+                ...updates
+            };
+            
+            sessionStorage.setItem('updatedVendorsData', JSON.stringify(updatedVendors));
+            
+            // Update localStorage jika ini vendor yang sedang login
+            const mitraUser = localStorage.getItem('mitraUser');
+            if (mitraUser) {
+                const parsedMitra = JSON.parse(mitraUser);
+                if (parsedMitra.id === vendorId) {
+                    const updatedMitra = {
+                        ...parsedMitra,
+                        ...updates
+                    };
+                    localStorage.setItem('mitraUser', JSON.stringify(updatedMitra));
+                }
+            }
+            
+            // Trigger custom event
+            const event = new CustomEvent('vendorDataUpdated', {
+                detail: { vendorId, updates }
+            });
+            window.dispatchEvent(event);
+            
+            return true;
+        } catch (e) {
+            console.error('Error updating vendor data:', e);
+            return false;
+        }
+    }
+    return false;
 };
 
 // Helper function to get category from tags
@@ -343,5 +426,5 @@ export const getCategoryFromTags = (tags: string[]): string => {
         }
     }
 
-    return "ac"; // default category
+    return "ac"; 
 };

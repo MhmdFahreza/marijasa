@@ -42,6 +42,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AspectRatio } from "@/app/components/ui/aspect-ratio";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
+import { updateVendorData } from "@/app/data/dataVendor";
 
 type ServiceItem = {
   id: string;
@@ -50,7 +51,7 @@ type ServiceItem = {
   priceType: "fixed" | "hourly" | "unit" | "custom";
   description: string;
   active: boolean;
-  estimatedTime?: string; // e.g., "2-3 jam", "1 hari"
+  estimatedTime?: string;
 };
 
 type WorkImage = {
@@ -114,16 +115,14 @@ const SERVICE_CATEGORIES: Record<string, ServiceCategory> = {
   }
 };
 
-const MAX_WORK_IMAGES = 10;
+const MAX_WORK_IMAGES = 6;
 const MAX_IMAGE_SIZE_MB = 5;
 
 export default function ServicesPage() {
-  // State management
   const [isLoading, setIsLoading] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Service state
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [isEditingService, setIsEditingService] = useState(false);
   const [currentService, setCurrentService] = useState<ServiceItem | null>(null);
@@ -137,28 +136,21 @@ export default function ServicesPage() {
     estimatedTime: ""
   });
 
-  // Work images state
   const [workImages, setWorkImages] = useState<WorkImage[]>([]);
   const [isEditingImage, setIsEditingImage] = useState(false);
   const [currentImage, setCurrentImage] = useState<WorkImage | null>(null);
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
 
-  // Category state
   const [selectedCategory, setSelectedCategory] = useState<string>("ac");
   const [vendorData, setVendorData] = useState<any>(null);
 
-  // Price input state
   const [priceInput, setPriceInput] = useState<string>("");
 
-  // Load initial data from localStorage
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      
-      // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Load vendor data from localStorage
       if (typeof window !== 'undefined') {
         const stored = localStorage.getItem('mitraUser');
         if (stored) {
@@ -166,14 +158,24 @@ export default function ServicesPage() {
             const parsed = JSON.parse(stored);
             setVendorData(parsed);
             
-            // Set services from vendor data if available
             if (parsed.services && Array.isArray(parsed.services)) {
               setServices(parsed.services);
             }
             
-            // Set category from vendor data
             if (parsed.category) {
               setSelectedCategory(parsed.category);
+            }
+
+            // Load work images
+            if (parsed.gallery && Array.isArray(parsed.gallery)) {
+              const images: WorkImage[] = parsed.gallery.map((img: any, index: number) => ({
+                id: `img-${index + 1}-${Date.now()}`,
+                preview: img.src,
+                displayName: img.alt || `image-${index + 1}.jpg`,
+                uploadedAt: new Date(),
+                description: img.alt
+              }));
+              setWorkImages(images);
             }
           } catch (e) {
             console.error('Error parsing vendor data:', e);
@@ -181,39 +183,12 @@ export default function ServicesPage() {
         }
       }
       
-      // Load mock work images
-      const MOCK_WORK_IMAGES: WorkImage[] = [
-        {
-          id: "1",
-          preview: "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&h=300&fit=crop",
-          displayName: "instalasi-ac-1.jpg",
-          uploadedAt: new Date("2024-01-15"),
-          description: "Instalasi AC di ruang tamu"
-        },
-        {
-          id: "2",
-          preview: "https://images.unsplash.com/photo-1584302179602-e9e5f10d7c1f?w=400&h=300&fit=crop",
-          displayName: "perbaikan-ac-1.jpg",
-          uploadedAt: new Date("2024-01-20"),
-          description: "Perbaikan AC outdoor unit"
-        },
-        {
-          id: "3",
-          preview: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
-          displayName: "cuci-ac-1.jpg",
-          uploadedAt: new Date("2024-02-05"),
-          description: "Hasil cuci AC bersih"
-        }
-      ];
-      
-      setWorkImages(MOCK_WORK_IMAGES);
       setIsLoading(false);
     };
 
     loadData();
   }, []);
 
-  // Reset price input when dialog opens
   useEffect(() => {
     if (isServiceDialogOpen) {
       if (isEditingService && currentService) {
@@ -224,8 +199,7 @@ export default function ServicesPage() {
     }
   }, [isServiceDialogOpen, isEditingService, currentService]);
 
-  // Save services to localStorage
-  const saveServicesToLocalStorage = useCallback((updatedServices: ServiceItem[]) => {
+  const saveServicesToStorage = useCallback((updatedServices: ServiceItem[]) => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('mitraUser');
       if (stored) {
@@ -234,14 +208,48 @@ export default function ServicesPage() {
           parsed.services = updatedServices;
           localStorage.setItem('mitraUser', JSON.stringify(parsed));
           setVendorData(parsed);
+
+          // Update vendor data in global storage
+          updateVendorData(parsed.id, {
+            services: updatedServices
+          });
         } catch (e) {
-          console.error('Error updating services in localStorage:', e);
+          console.error('Error updating services:', e);
         }
       }
     }
   }, []);
 
-  // Service CRUD operations
+  const saveImagesToStorage = useCallback((images: WorkImage[]) => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('mitraUser');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const gallery = images.map(img => ({
+            src: img.preview,
+            alt: img.description || img.displayName
+          }));
+          
+          // Update localStorage
+          parsed.gallery = gallery;
+          localStorage.setItem('mitraUser', JSON.stringify(parsed));
+          setVendorData(parsed);
+
+          // PENTING: Update vendor data in global storage dengan sessionStorage
+          updateVendorData(parsed.id, {
+            gallery: gallery
+          });
+
+          console.log('Gallery updated successfully:', gallery);
+          console.log('Vendor ID:', parsed.id);
+        } catch (e) {
+          console.error('Error updating images:', e);
+        }
+      }
+    }
+  }, []);
+
   const handleAddService = () => {
     setCurrentService(null);
     setNewService({
@@ -275,20 +283,18 @@ export default function ServicesPage() {
   const handleDeleteService = (id: string) => {
     const updatedServices = services.filter(service => service.id !== id);
     setServices(updatedServices);
-    saveServicesToLocalStorage(updatedServices);
+    saveServicesToStorage(updatedServices);
     setSuccessMessage("Layanan berhasil dihapus");
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
   };
 
   const handleSaveService = () => {
-    // Convert price input to number
     const priceValue = priceInput === "" ? 0 : parseInt(priceInput.replace(/\D/g, '')) || 0;
 
     let updatedServices: ServiceItem[];
 
     if (isEditingService && currentService) {
-      // Update existing service
       updatedServices = services.map(service =>
         service.id === currentService.id
           ? { ...newService, price: priceValue, id: currentService.id }
@@ -296,7 +302,6 @@ export default function ServicesPage() {
       );
       setSuccessMessage("Layanan berhasil diperbarui");
     } else {
-      // Add new service
       const newServiceWithId = {
         ...newService,
         price: priceValue,
@@ -307,7 +312,7 @@ export default function ServicesPage() {
     }
 
     setServices(updatedServices);
-    saveServicesToLocalStorage(updatedServices);
+    saveServicesToStorage(updatedServices);
     setIsServiceDialogOpen(false);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
@@ -320,10 +325,9 @@ export default function ServicesPage() {
         : service
     );
     setServices(updatedServices);
-    saveServicesToLocalStorage(updatedServices);
+    saveServicesToStorage(updatedServices);
   };
 
-  // Work Images CRUD operations
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
 
@@ -340,21 +344,40 @@ export default function ServicesPage() {
       return true;
     });
 
-    const newImages: WorkImage[] = validFiles.map(file => {
-      const preview = URL.createObjectURL(file);
-      return {
-        id: Date.now() + Math.random().toString(),
-        file,
-        preview,
-        displayName: file.name,
-        uploadedAt: new Date()
-      };
+    const newImagesPromises = validFiles.map(file => {
+      return new Promise<WorkImage>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const base64 = event.target?.result as string;
+          const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          resolve({
+            id: imageId,
+            file,
+            preview: base64,
+            displayName: file.name,
+            uploadedAt: new Date(),
+            description: ""
+          });
+        };
+        reader.readAsDataURL(file);
+      });
     });
 
-    setWorkImages(prev => [...prev, ...newImages]);
-    setSuccessMessage("Foto berhasil diupload");
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
+    Promise.all(newImagesPromises).then(newImages => {
+      const updatedImages = [...workImages, ...newImages];
+      setWorkImages(updatedImages);
+      
+      // PENTING: Panggil saveImagesToStorage untuk sync ke localStorage dan sessionStorage
+      saveImagesToStorage(updatedImages);
+      
+      setSuccessMessage(`${newImages.length} foto berhasil diupload`);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    });
+
+    // Reset input
+    e.target.value = '';
   };
 
   const handleEditImage = (image: WorkImage) => {
@@ -364,13 +387,13 @@ export default function ServicesPage() {
   };
 
   const handleDeleteImage = (id: string) => {
-    setWorkImages(prev => {
-      const imageToDelete = prev.find(img => img.id === id);
-      if (imageToDelete?.preview && !imageToDelete.preview.startsWith('https://')) {
-        URL.revokeObjectURL(imageToDelete.preview);
-      }
-      return prev.filter(img => img.id !== id);
-    });
+    const updatedImages = workImages.filter(img => img.id !== id);
+    
+    setWorkImages(updatedImages);
+    
+    // PENTING: Panggil saveImagesToStorage untuk sync
+    saveImagesToStorage(updatedImages);
+    
     setSuccessMessage("Foto berhasil dihapus");
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
@@ -379,11 +402,16 @@ export default function ServicesPage() {
   const handleSaveImageDescription = () => {
     if (!currentImage) return;
 
-    setWorkImages(prev => prev.map(img =>
+    const updatedImages = workImages.map(img =>
       img.id === currentImage.id
         ? { ...img, description: currentImage.description }
         : img
-    ));
+    );
+
+    setWorkImages(updatedImages);
+    
+    // PENTING: Panggil saveImagesToStorage untuk sync
+    saveImagesToStorage(updatedImages);
 
     setIsImageDialogOpen(false);
     setSuccessMessage("Deskripsi foto berhasil diperbarui");
@@ -412,9 +440,7 @@ export default function ServicesPage() {
     });
   };
 
-  // Handle price input change
   const handlePriceChange = (value: string) => {
-    // Remove all non-digit characters
     const cleanValue = value.replace(/\D/g, '');
     setPriceInput(cleanValue);
   };
@@ -434,7 +460,6 @@ export default function ServicesPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-neutral-900 dark:to-neutral-950">
       <div className="container mx-auto px-4 py-6 sm:py-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-white">
@@ -446,7 +471,6 @@ export default function ServicesPage() {
           </div>
         </div>
 
-        {/* Success Alert */}
         {showSuccess && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -463,9 +487,7 @@ export default function ServicesPage() {
           </motion.div>
         )}
 
-        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Category & Stats */}
           <div className="lg:col-span-1">
             <Card className="border-[#7CE0A8]/20 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 py-6">
@@ -530,7 +552,6 @@ export default function ServicesPage() {
               </CardContent>
             </Card>
 
-            {/* Tips Card */}
             <Card className="mt-6 border-blue-200 dark:border-blue-800 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 py-4">
                 <CardTitle className="text-lg text-blue-700 dark:text-blue-300 flex items-center gap-2">
@@ -561,7 +582,6 @@ export default function ServicesPage() {
             </Card>
           </div>
 
-          {/* Right Column - Services & Portfolio */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="services" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6">
@@ -577,7 +597,6 @@ export default function ServicesPage() {
                 </TabsTrigger>
               </TabsList>
 
-              {/* Services Tab */}
               <TabsContent value="services">
                 <Card className="border-[#7CE0A8]/20 shadow-lg">
                   <CardHeader className="bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 py-6">
@@ -695,7 +714,6 @@ export default function ServicesPage() {
                       </div>
                     )}
 
-                    {/* Stats Summary */}
                     <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="p-4 bg-gray-50 dark:bg-neutral-800 rounded-lg">
                         <div className="text-2xl font-bold text-neutral-900 dark:text-white">
@@ -726,7 +744,6 @@ export default function ServicesPage() {
                 </Card>
               </TabsContent>
 
-              {/* Portfolio Tab */}
               <TabsContent value="portfolio">
                 <Card className="border-[#7CE0A8]/20 shadow-lg">
                   <CardHeader className="bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 py-6">
@@ -750,10 +767,13 @@ export default function ServicesPage() {
                           <Button
                             variant="outline"
                             className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10 cursor-pointer"
+                            asChild
                           >
-                            <ImagePlus className="h-4 w-4 mr-2" />
-                            <span className="hidden sm:inline">Upload Foto</span>
-                            <span className="sm:hidden">Upload</span>
+                            <span>
+                              <ImagePlus className="h-4 w-4 mr-2" />
+                              <span className="hidden sm:inline">Upload Foto</span>
+                              <span className="sm:hidden">Upload</span>
+                            </span>
                           </Button>
                         </label>
                       </div>
@@ -778,9 +798,11 @@ export default function ServicesPage() {
                           className="hidden"
                         />
                         <label htmlFor="portfolio-upload-empty">
-                          <Button className="bg-[#7CE0A8] hover:bg-[#6BC999] text-white cursor-pointer">
-                            <Upload className="h-4 w-4 mr-2" />
-                            Upload Foto Pertama
+                          <Button className="bg-[#7CE0A8] hover:bg-[#6BC999] text-white cursor-pointer" asChild>
+                            <span>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Upload Foto Pertama
+                            </span>
                           </Button>
                         </label>
                       </div>
@@ -832,7 +854,6 @@ export default function ServicesPage() {
                           </motion.div>
                         ))}
 
-                        {/* Upload More Button */}
                         {workImages.length < MAX_WORK_IMAGES && (
                           <label htmlFor="portfolio-upload">
                             <div className="aspect-[4/3] border-2 border-dashed border-[#7CE0A8]/50 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors">
@@ -849,7 +870,6 @@ export default function ServicesPage() {
                       </div>
                     )}
 
-                    {/* Image Guidelines */}
                     <Alert className="mt-6 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
                       <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                       <AlertDescription className="text-amber-700 dark:text-amber-300 text-sm">
@@ -870,7 +890,6 @@ export default function ServicesPage() {
         </div>
       </div>
 
-      {/* Service Dialog */}
       <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
         <DialogContent className="max-w-md sm:max-w-lg">
           <DialogHeader>
@@ -904,7 +923,7 @@ export default function ServicesPage() {
                     value={priceInput}
                     onChange={(e) => handlePriceChange(e.target.value)}
                     placeholder="0"
-                    className="focus-visible:ring-[#7CE0A8] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="focus-visible:ring-[#7CE0A8]"
                   />
                 </div>
                 <select
@@ -912,7 +931,7 @@ export default function ServicesPage() {
                   onChange={(e) =>
                     setNewService({ ...newService, priceType: e.target.value as ServiceItem['priceType'] })
                   }
-                  className="w-[140px] flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-[140px] flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] focus:ring-offset-2"
                 >
                   <option value="fixed">Harga Tetap</option>
                   <option value="hourly">Per Jam</option>
@@ -982,7 +1001,6 @@ export default function ServicesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Image Description Dialog */}
       <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

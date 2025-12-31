@@ -1,3 +1,4 @@
+// app/jasa/page.tsx
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -7,7 +8,7 @@ import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/app/components/ui/breadcrumb";
 import VendorCard from "@/app/components/ui/vendor-card";
-import { Vendors } from "@/app/data/dataVendor";
+import { getAllVendors } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -36,7 +37,6 @@ const FilterBar = dynamic(() => import("@/app/components/ui/FilterBar"), { ssr: 
 
 const ITEMS_PER_PAGE = 10;
 
-// Mapping kategori dari value filter ke kata kunci pencarian yang lebih fleksibel
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   ac: ["tukang ac"],
   listrik: ["tukang listrik"],
@@ -47,20 +47,15 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   furnitur: ["tukang mebel"]
 };
 
-// Fungsi helper untuk mengecek apakah vendor termasuk dalam kategori
 const isVendorInCategory = (vendor: any, category: string): boolean => {
   if (!category) return true;
 
   const keywords = CATEGORY_KEYWORDS[category] || [];
   if (keywords.length === 0) return true;
 
-  // Cek di tags (case insensitive)
   const vendorTags = vendor.tags.map((tag: string) => tag.toLowerCase());
-
-  // Cek di summary (case insensitive)
   const vendorSummary = vendor.summary.toLowerCase();
 
-  // Cek apakah ada keyword yang match di tags atau summary
   return keywords.some(keyword => {
     const lowerKeyword = keyword.toLowerCase();
     const matchesInTags = vendorTags.some((tag: string) =>
@@ -72,7 +67,6 @@ const isVendorInCategory = (vendor: any, category: string): boolean => {
   });
 };
 
-// Fungsi untuk mengecek apakah vendor melayani kota tertentu
 const isVendorInCity = (vendor: any, city: string): boolean => {
   if (!city) return true;
 
@@ -82,7 +76,6 @@ const isVendorInCity = (vendor: any, city: string): boolean => {
   ) || false;
 };
 
-// Fungsi untuk mengecek rating vendor
 const isVendorWithRating = (vendor: any, ratingFilter: string): boolean => {
   if (!ratingFilter || ratingFilter === "semuarating") return true;
 
@@ -90,21 +83,20 @@ const isVendorWithRating = (vendor: any, ratingFilter: string): boolean => {
 
   switch (ratingFilter) {
     case "5":
-      return vendorRating >= 4.8; // Rating 5 (4.8-5.0)
+      return vendorRating >= 4.8;
     case "4+":
-      return vendorRating >= 4.0 && vendorRating < 4.8; // Rating 4.0-4.7
+      return vendorRating >= 4.0 && vendorRating < 4.8;
     case "3+":
-      return vendorRating >= 3.0 && vendorRating < 4.0; // Rating 3.0-3.9
+      return vendorRating >= 3.0 && vendorRating < 4.0;
     case "2+":
-      return vendorRating >= 2.0 && vendorRating < 3.0; // Rating 2.0-2.9
+      return vendorRating >= 2.0 && vendorRating < 3.0;
     case "1+":
-      return vendorRating >= 1.0 && vendorRating < 2.0; // Rating 1.0-1.9
+      return vendorRating >= 1.0 && vendorRating < 2.0;
     default:
       return true;
   }
 };
 
-// Komponen Empty State yang lebih menarik
 const EmptyState = ({
   onResetFilters,
   selectedCategory,
@@ -136,7 +128,6 @@ const EmptyState = ({
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="flex flex-col items-center justify-center py-16 px-4 text-center"
     >
-      {/* Ilustrasi/Icon */}
       <div className="relative mb-8">
         <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#7CE0A8]/10 to-[#7CE0A8]/5 flex items-center justify-center">
           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10 flex items-center justify-center">
@@ -144,7 +135,6 @@ const EmptyState = ({
           </div>
         </div>
 
-        {/* Ikon kecil di sudut */}
         <div className="absolute -top-2 -right-2 w-12 h-12 rounded-full bg-white dark:bg-neutral-800 border-2 border-[#7CE0A8]/20 flex items-center justify-center shadow-lg">
           <Filter className="w-5 h-5 text-[#7CE0A8]" />
         </div>
@@ -153,17 +143,14 @@ const EmptyState = ({
         </div>
       </div>
 
-      {/* Judul */}
       <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-3">
         Tidak Ada Jasa Ditemukan
       </h2>
 
-      {/* Deskripsi */}
       <p className="text-muted-foreground text-lg mb-6 max-w-md">
         Maaf, kami tidak menemukan jasa yang sesuai dengan kriteria pencarian Anda.
       </p>
 
-      {/* Detail Filter Aktif */}
       {(selectedCategory || selectedCity || (selectedRating && selectedRating !== "semuarating")) && (
         <div className="mb-8 p-4 bg-gradient-to-r from-[#7CE0A8]/5 to-transparent rounded-xl border border-[#7CE0A8]/10">
           <p className="text-sm text-foreground/70 mb-2">Filter yang aktif:</p>
@@ -194,7 +181,6 @@ const EmptyState = ({
         </div>
       )}
 
-      {/* Saran */}
       <div className="mb-8 max-w-md">
         <h3 className="text-lg font-semibold text-foreground mb-3">Coba salah satu dari ini:</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
@@ -213,7 +199,6 @@ const EmptyState = ({
         </div>
       </div>
 
-      {/* Tombol Aksi - HANYA DUA TOMBOL */}
       <div className="flex flex-col sm:flex-row gap-4">
         <button
           onClick={onResetFilters}
@@ -242,13 +227,33 @@ export default function JasaPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [vendors, setVendors] = useState<any[]>([]);
 
-  // State untuk filter - inisialisasi dari query params
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
 
-  // Effect untuk membaca query parameter dan check login status
+  // Load vendors dengan sync dari localStorage
+  useEffect(() => {
+    const loadVendors = () => {
+      const allVendors = getAllVendors();
+      setVendors(allVendors);
+    };
+
+    loadVendors();
+
+    // Listen untuk vendor data updates
+    const handleVendorUpdate = () => {
+      loadVendors();
+    };
+
+    window.addEventListener('vendorDataUpdated', handleVendorUpdate);
+
+    return () => {
+      window.removeEventListener('vendorDataUpdated', handleVendorUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     const kategori = searchParams?.get('kategori');
     
@@ -256,13 +261,11 @@ export default function JasaPage() {
       setSelectedCategory(kategori);
     }
 
-    // Cek status login
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('userToken');
       setIsLoggedIn(!!token);
     }
     
-    // Simulasi loading data
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 300);
@@ -270,25 +273,21 @@ export default function JasaPage() {
     return () => clearTimeout(timer);
   }, [searchParams]);
 
-  // Fungsi untuk memfilter vendor
   const filteredVendors = useMemo(() => {
-    let filtered = [...Vendors];
+    let filtered = [...vendors];
 
-    // Filter berdasarkan kategori
     if (selectedCategory) {
       filtered = filtered.filter(vendor =>
         isVendorInCategory(vendor, selectedCategory)
       );
     }
 
-    // Filter berdasarkan kota
     if (selectedCity) {
       filtered = filtered.filter(vendor =>
         isVendorInCity(vendor, selectedCity)
       );
     }
 
-    // Filter berdasarkan rating
     if (selectedRating && selectedRating !== "semuarating") {
       filtered = filtered.filter(vendor =>
         isVendorWithRating(vendor, selectedRating)
@@ -296,17 +295,14 @@ export default function JasaPage() {
     }
 
     return filtered;
-  }, [selectedCategory, selectedCity, selectedRating]);
+  }, [vendors, selectedCategory, selectedCity, selectedRating]);
 
-  // Reset ke halaman 1 saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategory, selectedCity, selectedRating]);
 
-  // Hitung pagination berdasarkan vendor yang sudah difilter
   const totalPages = Math.max(1, Math.ceil(filteredVendors.length / ITEMS_PER_PAGE));
 
-  // Pastikan currentPage tidak melebihi totalPages
   useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
@@ -329,7 +325,6 @@ export default function JasaPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Fungsi untuk reset semua filter
   const handleResetFilters = () => {
     setSelectedCategory("");
     setSelectedCity("");
@@ -361,7 +356,6 @@ export default function JasaPage() {
         );
       }
     } else {
-      // Always show first page
       items.push(
         <PaginationItem key={1}>
           <PaginationLink
@@ -374,12 +368,10 @@ export default function JasaPage() {
         </PaginationItem>
       );
 
-      // Show ellipsis if needed
       if (currentPage > 3) {
         items.push(<PaginationEllipsis key="ellipsis-start" />);
       }
 
-      // Show pages around current page
       const start = Math.max(2, currentPage - 1);
       const end = Math.min(totalPages - 1, currentPage + 1);
 
@@ -397,12 +389,10 @@ export default function JasaPage() {
         );
       }
 
-      // Show ellipsis if needed
       if (currentPage < totalPages - 2) {
         items.push(<PaginationEllipsis key="ellipsis-end" />);
       }
 
-      // Always show last page
       if (totalPages > 1) {
         items.push(
           <PaginationItem key={totalPages}>
@@ -421,7 +411,6 @@ export default function JasaPage() {
     return items;
   };
 
-  // Get category display name
   const getCategoryDisplayName = (category: string) => {
     const names: Record<string, string> = {
       "ac": "Tukang AC",
@@ -483,12 +472,11 @@ export default function JasaPage() {
               />
             </motion.div>
 
-            {/* Info hasil filter */}
             {(selectedCategory || selectedCity || (selectedRating && selectedRating !== "semuarating")) && (
               <div className="mb-4 mt-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm text-muted-foreground">
                   Menampilkan <span className="font-semibold text-foreground">{filteredVendors.length}</span> dari{" "}
-                  <span className="font-semibold text-foreground">{Vendors.length}</span> jasa
+                  <span className="font-semibold text-foreground">{vendors.length}</span> jasa
                   {selectedCategory && (
                     <span className="ml-2">
                       • Kategori: <span className="font-semibold text-foreground">
@@ -532,7 +520,6 @@ export default function JasaPage() {
               />
             ) : (
               <>
-                {/* Gunakan key yang unik untuk memastikan re-render saat filter berubah */}
                 <motion.section
                   key={`${selectedCategory}-${selectedCity}-${selectedRating}-${currentPage}`}
                   className="mt-6 space-y-4"
@@ -596,7 +583,6 @@ export default function JasaPage() {
         )}
       </motion.main>
 
-      {/* Login Modal */}
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

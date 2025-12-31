@@ -268,8 +268,8 @@ export default function MitraDaftarPage() {
             fotoKTP.file !== null &&
             fotoDenganKTP.file !== null &&
             skck.file !== null &&
-            ((tipeMitra === "perusahaan" && siup.file !== null) || 
-             (tipeMitra === "individu" && cv.file !== null));
+            ((tipeMitra === "perusahaan" && siup.file !== null) ||
+                (tipeMitra === "individu" && cv.file !== null));
 
         setStep2Completed(isStep2Complete);
     }, [email, telepon, alamat, password, confirmPassword, fotoKTP, fotoDenganKTP, skck, siup, cv, tipeMitra]);
@@ -367,10 +367,10 @@ export default function MitraDaftarPage() {
             return true;
         });
 
-        if (hasilPekerjaan.length + validFiles.length > 10) {
+        if (hasilPekerjaan.length + validFiles.length > 6) {
             setErrors((prev) => ({
                 ...prev,
-                hasilPekerjaan: "Maksimal 10 foto",
+                hasilPekerjaan: "Maksimal 6 foto",
             }));
             return;
         }
@@ -1049,8 +1049,7 @@ export default function MitraDaftarPage() {
                                         Hasil Pekerjaan <span className="text-destructive">*</span>
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Upload foto portofolio pekerjaan Anda. Maksimal 10 foto, setiap foto
-                                        maksimal 5MB.
+                                        Upload foto portofolio pekerjaan Anda. Maksimal 6 foto, setiap foto maksimal 5MB.
                                     </p>
 
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
@@ -1073,7 +1072,7 @@ export default function MitraDaftarPage() {
                                             </div>
                                         ))}
 
-                                        {hasilPekerjaan.length < 10 && (
+                                        {hasilPekerjaan.length < 6 && (
                                             <label
                                                 htmlFor="hasil-pekerjaan-input"
                                                 className="aspect-square border-2 border-dashed border-[#7CE0A8]/50 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors"
@@ -1541,7 +1540,7 @@ export default function MitraDaftarPage() {
                                             <label
                                                 htmlFor="skck-input"
                                                 className="w-48 h-32 rounded-lg border-2 border-dashed border-[#7CE0A8]/50 flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors"
-                                                >
+                                            >
                                                 <FileText className="h-8 w-8 text-[#7CE0A8] mb-2" />
                                                 <span className="text-xs text-center text-[#7CE0A8] px-2">
                                                     Upload SKCK
