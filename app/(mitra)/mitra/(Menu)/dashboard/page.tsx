@@ -4,10 +4,8 @@ import { motion } from 'motion/react';
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator
+  BreadcrumbPage
 } from "@/app/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -21,7 +19,6 @@ import {
   User,
   CheckCircle,
   Clock,
-  AlertCircle,
   Download,
   CreditCard,
   Banknote,
@@ -32,7 +29,6 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
-  Check,
   X,
   Info,
   Star,
@@ -349,25 +345,58 @@ export default function DashboardPage() {
   });
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
+
+  // Load vendor ID dari localStorage
+  useEffect(() => {
+    const mitraUser = localStorage.getItem('mitraUser');
+    if (mitraUser) {
+      try {
+        const parsedMitra = JSON.parse(mitraUser);
+        setCurrentVendorId(parsedMitra.id);
+        console.log('Current Vendor ID:', parsedMitra.id);
+      } catch (error) {
+        console.error('Error parsing mitraUser:', error);
+      }
+    }
+  }, []);
 
   // Load data dari localStorage
   useEffect(() => {
+    if (!currentVendorId) return;
+
     loadDashboardData();
 
     const interval = setInterval(loadDashboardData, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentVendorId]);
 
   const loadDashboardData = () => {
+    if (!currentVendorId) {
+      console.log('No vendor ID, skipping load');
+      return;
+    }
+
     try {
+      setIsLoading(true);
       const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
 
-      // Hitung statistik
+      console.log('All Orders:', allOrders);
+      console.log('Filtering for vendor:', currentVendorId);
+
+      // FILTER HANYA PESANAN UNTUK VENDOR INI
+      const vendorOrders = allOrders.filter((order: any) => {
+        return order.vendorId === currentVendorId;
+      });
+
+      console.log('Vendor Orders (filtered):', vendorOrders);
+
+      // Hitung statistik HANYA dari pesanan vendor ini
       let availableBalance = 0;
       let pendingBalance = 0;
       let monthlyIncome = 0;
       let monthlyWithdrawal = 0;
-      let totalOrders = allOrders.length;
+      let totalOrders = vendorOrders.length;
       let completedOrders = 0;
       let pendingOrders = 0;
       let inProgressOrders = 0;
@@ -379,8 +408,8 @@ export default function DashboardPage() {
 
       const transactions: any[] = [];
 
-      // Hitung total dari completed orders
-      allOrders.forEach((order: any) => {
+      // Hitung total dari completed orders VENDOR INI
+      vendorOrders.forEach((order: any) => {
         const orderDate = new Date(order.orderDate);
         const orderMonth = orderDate.getMonth();
         const orderYear = orderDate.getFullYear();
@@ -408,10 +437,15 @@ export default function DashboardPage() {
           if (orderMonth === currentMonth && orderYear === currentYear) {
             monthlyIncome += orderAmount;
           }
-        } else if (order.status === 'in-progress' && order.paymentStatus === 'paid') {
+        } else if (order.status === 'in-progress') {
+          // Pesanan yang sedang dikerjakan = pending (belum selesai)
+          pendingOrders++;
           inProgressOrders++;
-          pendingBalance += order.serviceDetails?.totalPrice || 0;
-        } else if (order.status === 'pending' || order.paymentStatus === 'unpaid') {
+          // Hanya tambahkan ke pending balance jika sudah dibayar
+          if (order.paymentStatus === 'paid') {
+            pendingBalance += order.serviceDetails?.totalPrice || 0;
+          }
+        } else if (order.status === 'pending') {
           pendingOrders++;
         }
 
@@ -424,11 +458,18 @@ export default function DashboardPage() {
 
       console.log('Available Balance BEFORE withdrawal:', availableBalance);
 
-      // Load withdrawal history dan kurangi dari available balance
-      const withdrawalHistory = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
+      // Load withdrawal history VENDOR INI dan kurangi dari available balance
+      const allWithdrawals = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
+
+      // FILTER withdrawal hanya untuk vendor ini
+      const vendorWithdrawals = allWithdrawals.filter((w: any) => w.vendorId === currentVendorId);
+
+      console.log('All Withdrawals:', allWithdrawals);
+      console.log('Vendor Withdrawals (filtered):', vendorWithdrawals);
+
       let totalWithdrawn = 0;
 
-      withdrawalHistory.forEach((withdrawal: any) => {
+      vendorWithdrawals.forEach((withdrawal: any) => {
         transactions.push(withdrawal);
 
         // Kurangi available balance dengan withdrawal yang sudah completed
@@ -443,7 +484,7 @@ export default function DashboardPage() {
         }
       });
 
-      console.log('Total Withdrawn:', totalWithdrawn);
+      console.log('Total Withdrawn (this vendor):', totalWithdrawn);
 
       // Kurangi available balance dengan total yang sudah ditarik
       availableBalance = Math.max(0, availableBalance - totalWithdrawn);
@@ -553,11 +594,16 @@ export default function DashboardPage() {
       case 'failed':
         return <X className="h-3 w-3 md:h-4 md:w-4" />;
       default:
-        return <AlertCircle className="h-3 w-3 md:h-4 md:w-4" />;
+        return <Info className="h-3 w-3 md:h-4 md:w-4" />;
     }
   };
 
   const handleWithdraw = (amount: number, method: string) => {
+    if (!currentVendorId) {
+      alert('Error: Vendor ID tidak ditemukan');
+      return;
+    }
+
     setWithdrawLoading(true);
 
     setTimeout(() => {
@@ -572,14 +618,17 @@ export default function DashboardPage() {
         description: `Penarikan ke ${methodData?.name}`,
         bankName: methodData?.name || '',
         accountNumber: methodData?.accountNumber || '',
-        status: "completed", // Changed from "processing" to "completed"
-        reference: `WD-${Date.now()}`
+        status: "completed",
+        reference: `WD-${Date.now()}`,
+        vendorId: currentVendorId // TAMBAHKAN VENDOR ID
       };
 
       // Simpan withdrawal history
       const withdrawalHistory = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
       withdrawalHistory.push(newWithdrawal);
       localStorage.setItem('withdrawalHistory', JSON.stringify(withdrawalHistory));
+
+      console.log('New withdrawal saved:', newWithdrawal);
 
       setWithdrawLoading(false);
       setShowWithdrawDialog(false);
