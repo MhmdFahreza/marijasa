@@ -29,11 +29,25 @@ import { getVendorById } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { LoginForm } from "@/app/components/ui/login-form";
-import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle, ImageIcon } from "lucide-react";
+import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle, ImageIcon, User } from "lucide-react";
 
 type GalleryImage = {
   src: string;
   alt: string;
+};
+
+type Review = {
+  id: string;
+  orderId: string;
+  vendorId: string;
+  vendorName: string;
+  userName: string;
+  userEmail: string;
+  userAvatar?: string;
+  rating: number;
+  comment: string;
+  serviceType: string;
+  date: string;
 };
 
 export default function VendorDetailPage() {
@@ -46,6 +60,8 @@ export default function VendorDetailPage() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [vendor, setVendor] = useState<any>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(true);
 
   const vendorId = params.vendorId as string;
 
@@ -71,6 +87,86 @@ export default function VendorDetailPage() {
       window.removeEventListener('vendorDataUpdated', handleVendorUpdate);
     };
   }, [vendorId]);
+
+  // Load reviews dari localStorage
+  useEffect(() => {
+    const loadReviews = () => {
+      setIsLoadingReviews(true);
+      try {
+        const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+
+        // Filter orders yang selesai, punya rating, dan sesuai dengan vendor ini
+        const vendorReviews = userOrders
+          .filter((order: any) =>
+            order.status === 'selesai' &&
+            order.rating &&
+            order.rating > 0 &&
+            (order.vendor?.id === vendorId || order.vendorId === vendorId ||
+              order.vendor?.name === vendor?.name || order.vendorName === vendor?.name)
+          )
+          .map((order: any) => {
+            // Ambil data user dari customerInfo atau localStorage
+            const userName = order.customerInfo?.name ||
+              JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
+              "Pengguna";
+            const userEmail = order.customerInfo?.email ||
+              JSON.parse(localStorage.getItem('user') || '{}').email ||
+              "";
+            const userAvatar = JSON.parse(localStorage.getItem('userProfile') || '{}').avatar ||
+              "";
+
+            return {
+              id: order.id || order.orderId,
+              orderId: order.id || order.orderId,
+              vendorId: vendorId,
+              vendorName: order.vendor?.name || order.vendorName || vendor?.name,
+              userName: userName,
+              userEmail: userEmail,
+              userAvatar: userAvatar,
+              rating: order.rating,
+              comment: order.review || "",
+              serviceType: order.serviceType || "Layanan",
+              date: order.orderHistory?.find((h: any) => h.status === "Rating dan Ulasan Diberikan")?.date ||
+                new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                })
+            };
+          })
+          // Sort by date (newest first)
+          .sort((a: Review, b: Review) => {
+            const dateA = new Date(a.date.split(' - ')[0]);
+            const dateB = new Date(b.date.split(' - ')[0]);
+            return dateB.getTime() - dateA.getTime(); 
+          });
+
+        setReviews(vendorReviews);
+      } catch (error) {
+        console.error('Error loading reviews:', error);
+        setReviews([]);
+      } finally {
+        setIsLoadingReviews(false);
+      }
+    };
+
+    if (vendor) {
+      loadReviews();
+    }
+
+    // Listen untuk storage changes
+    const handleStorageChange = () => {
+      if (vendor) {
+        loadReviews();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [vendorId, vendor]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -156,6 +252,15 @@ export default function VendorDetailPage() {
   // Cek apakah ada gallery
   const hasGallery = vendor && vendor.gallery && vendor.gallery.length > 0;
 
+  // Hitung rata-rata rating dari reviews
+  const calculateAverageRating = () => {
+    if (reviews.length === 0) return vendor?.rating || 0;
+    const sum = reviews.reduce((acc, review) => acc + review.rating, 0);
+    return sum / reviews.length;
+  };
+
+  const averageRating = calculateAverageRating();
+
   if (!vendor) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -235,9 +340,9 @@ export default function VendorDetailPage() {
                     </div>
 
                     <div className="flex items-center gap-2 mb-3 md:mb-4 flex-wrap">
-                      <RatingStars value={vendor.rating} />
-                      <span className="font-semibold text-sm md:text-base">{vendor.rating.toFixed(1)}</span>
-                      <span className="text-muted-foreground text-xs md:text-sm">({vendor.reviewCount} ulasan)</span>
+                      <RatingStars value={averageRating} />
+                      <span className="font-semibold text-sm md:text-base">{averageRating.toFixed(1)}</span>
+                      <span className="text-muted-foreground text-xs md:text-sm">({reviews.length} ulasan)</span>
                     </div>
 
                     <p className="text-muted-foreground leading-relaxed text-sm md:text-base">{vendor.summary}</p>
@@ -269,12 +374,17 @@ export default function VendorDetailPage() {
                     className={`
                       py-4 px-1 border-b-2 font-medium text-sm transition-colors
                       ${activeTab === tab.id
-                        ? "border-pink-500 text-pink-600"
+                        ? "border-[#7CE0A8] text-[#7CE0A8]"
                         : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                       }
                     `}
                   >
                     {tab.label}
+                    {tab.id === "ulasan" && reviews.length > 0 && (
+                      <span className="ml-2 text-xs bg-[#7CE0A8]/20 text-[#7CE0A8] px-2 py-0.5 rounded-full">
+                        {reviews.length}
+                      </span>
+                    )}
                   </button>
                 ))}
               </nav>
@@ -363,34 +473,140 @@ export default function VendorDetailPage() {
               )}
             </div>
 
+            {/* ✅ SECTION ULASAN DENGAN SCROLL CONTAINER */}
             <div id="ulasan">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Ulasan</CardTitle>
-                  <div className="flex items-center gap-2 mt-4">
-                    <RatingStars value={vendor.rating} size="lg" />
-                    <span className="text-xl font-bold">{vendor.rating.toFixed(1)}</span>
-                    <span className="text-muted-foreground">
-                      ({vendor.reviewCount} ulasan)
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-12">
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                        <Star className="h-8 w-8 text-gray-400" />
+              <Card className="overflow-hidden">
+                {/* Header Ulasan dengan Summary */}
+                <CardHeader className="bg-gradient-to-br from-[#7CE0A8]/10 to-[#7CE0A8]/5 border-b border-[#7CE0A8]/20 pb-4 md:pb-6">
+                  <CardTitle className="text-xl md:text-2xl text-gray-900 dark:text-white mb-4 md:mb-6">
+                    Ulasan Pelanggan
+                  </CardTitle>
+
+                  {/* Rating Summary Card */}
+                  <div className="bg-white dark:bg-slate-900 rounded-xl p-4 md:p-6 border border-[#7CE0A8]/20 shadow-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+                      {/* Overall Rating */}
+                      <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4">
+                        <div className="text-4xl md:text-5xl font-bold text-[#7CE0A8] mb-2">
+                          {averageRating.toFixed(1)}
+                        </div>
+                        <RatingStars value={averageRating} size="lg" />
+                        <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mt-2 font-medium">
+                          Penilaian Keseluruhan
+                        </p>
                       </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                          Belum Ada Ulasan
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                          Jadilah yang pertama memberikan ulasan untuk vendor ini setelah menggunakan layanan mereka.
+
+                      {/* Review Count */}
+                      <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4 border-t sm:border-t-0 sm:border-l border-[#7CE0A8]/20">
+                        <div className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-1">
+                          {reviews.length}
+                        </div>
+                        <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 font-medium">
+                          Total Ulasan
+                        </p>
+                      </div>
+
+                      {/* Satisfaction */}
+                      <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4 border-t sm:border-t-0 sm:border-l border-[#7CE0A8]/20">
+                        <div className="text-3xl md:text-4xl font-bold text-[#7CE0A8] mb-1">
+                          {reviews.length > 0 ? ((reviews.filter(r => r.rating >= 4).length / reviews.length) * 100).toFixed(0) : 0}%
+                        </div>
+                        <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 font-medium">
+                          Sangat Puas
                         </p>
                       </div>
                     </div>
                   </div>
+                </CardHeader>
+
+                {/* Reviews List dengan Scroll Container */}
+                <CardContent className="p-4 md:p-6">
+                  {isLoadingReviews ? (
+                    <div className="text-center py-12 md:py-16">
+                      <LoaderTwo />
+                      <p className="text-sm text-muted-foreground mt-4">Memuat ulasan...</p>
+                    </div>
+                  ) : reviews.length === 0 ? (
+                    <div className="text-center py-12 md:py-16">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-[#7CE0A8]/10 flex items-center justify-center">
+                          <Star className="h-8 w-8 text-[#7CE0A8]" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                            Belum Ada Ulasan
+                          </h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                            Jadilah yang pertama memberikan ulasan untuk vendor ini setelah menggunakan layanan mereka.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 md:space-y-6">
+                      {/* ✅ SCROLLABLE CONTAINER - SEMUA ULASAN DITAMPILKAN */}
+                      <div className="reviews-scroll-container max-h-[calc(3*150px+24px)] md:max-h-[calc(4*160px+32px)] overflow-y-auto pr-2">
+                        <div className="space-y-4 md:space-y-6">
+                          {reviews.map((review, index) => (
+                            <motion.div
+                              key={review.id}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: index * 0.05 }}
+                              className="group relative rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900/50 hover:border-[#7CE0A8]/30 hover:shadow-md transition-all duration-300 p-4 md:p-5"
+                            >
+                              {/* Accent bar */}
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#7CE0A8] to-[#7CE0A8]/50 rounded-l-lg" />
+
+                              {/* Content */}
+                              <div className="flex flex-col md:flex-row md:items-start gap-3 md:gap-4">
+                                {/* Avatar */}
+                                <Avatar className="h-12 w-12 md:h-14 md:w-14 flex-shrink-0 ring-2 ring-[#7CE0A8]/20">
+                                  <AvatarImage src={review.userAvatar} alt={review.userName} />
+                                  <AvatarFallback className="bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
+                                    <User className="h-6 w-6 text-[#7CE0A8]" />
+                                  </AvatarFallback>
+                                </Avatar>
+
+                                {/* Review Info */}
+                                <div className="flex-1 min-w-0">
+                                  {/* Header: Name, Service, Date */}
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 mb-2 md:mb-3">
+                                    <div className="min-w-0">
+                                      <h4 className="font-semibold text-gray-900 dark:text-white text-sm md:text-base truncate">
+                                        {review.userName}
+                                      </h4>
+                                      <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 truncate">
+                                        {review.serviceType}
+                                      </p>
+                                    </div>
+                                    <span className="text-xs md:text-sm text-gray-500 dark:text-gray-500 font-medium whitespace-nowrap">
+                                      {review.date.split(' - ')[0]}
+                                    </span>
+                                  </div>
+
+                                  {/* Rating */}
+                                  <div className="flex items-center gap-2 mb-3 md:mb-4">
+                                    <RatingStars value={review.rating} size="sm" />
+                                    <span className="text-sm font-semibold text-[#7CE0A8] bg-[#7CE0A8]/10 px-2.5 py-1 rounded-full">
+                                      {review.rating.toFixed(1)}
+                                    </span>
+                                  </div>
+
+                                  {/* Comment */}
+                                  {review.comment && (
+                                    <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4">
+                                      {review.comment}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -428,7 +644,7 @@ export default function VendorDetailPage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full border-2 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition duration-300"
+                  className="w-full border-2 border-gray-300 text-gray-700 hover:border-[#7CE0A8] hover:text-[#7CE0A8] hover:bg-[#7CE0A8]/5 rounded-lg transition duration-300"
                   onClick={handleChatClick}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
@@ -443,11 +659,11 @@ export default function VendorDetailPage() {
           <SiteFooter />
         </div>
 
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-50">
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-gray-700 p-4 shadow-lg z-50">
           <div className="max-w-7xl mx-auto flex gap-3">
             <Button
               variant="outline"
-              className="flex-1 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg transition duration-300"
+              className="flex-1 border-2 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/5 rounded-lg transition duration-300"
               onClick={handleChatClick}
             >
               <MessageCircle className="mr-2 h-4 w-4" />
@@ -458,7 +674,7 @@ export default function VendorDetailPage() {
               onClick={handlePesanSekarang}
             >
               <Send className="mr-2 h-4 w-4" />
-              Pesan Sekarang
+              Pesan
             </Button>
           </div>
         </div>
@@ -480,7 +696,7 @@ export default function VendorDetailPage() {
             <div className="mt-4 text-center text-sm text-muted-foreground">
               <Button
                 variant="link"
-                className="p-0 h-auto text-[#7CE0A8] hover:text-[#6bcb96]"
+                className="p-0 h-auto text-[#7CE0A8] hover:text-[#5CA68A]"
                 onClick={() => {
                   setShowLoginModal(false);
                   router.push('/register');
@@ -506,6 +722,44 @@ export default function VendorDetailPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ✅ CUSTOM SCROLLBAR STYLING */}
+      <style jsx>{`
+        .reviews-scroll-container {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(124, 224, 168, 0.4) transparent;
+        }
+
+        /* Webkit browsers (Chrome, Safari, Edge) */
+        .reviews-scroll-container::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .reviews-scroll-container::-webkit-scrollbar-track {
+          background: transparent;
+          border-radius: 10px;
+        }
+
+        .reviews-scroll-container::-webkit-scrollbar-thumb {
+          background: rgba(124, 224, 168, 0.4);
+          border-radius: 10px;
+        }
+
+        .reviews-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: rgba(124, 224, 168, 0.6);
+        }
+
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+          .reviews-scroll-container {
+            scrollbar-color: rgba(124, 224, 168, 0.4) transparent;
+          }
+
+          .reviews-scroll-container::-webkit-scrollbar-track {
+            background: transparent;
+          }
+        }
+      `}</style>
     </>
   );
 }
@@ -522,7 +776,7 @@ function RatingStars({ value, size = "md" }: { value: number; size?: "sm" | "md"
   };
 
   return (
-    <div className="flex items-center">
+    <div className="flex items-center gap-0.5">
       {Array.from({ length: total }).map((_, i: number) => {
         const filled = i < full || (i === full && half);
         return (
