@@ -15,6 +15,7 @@ type Review = {
   comment: string;
   serviceType: string;
   date: string;
+  dateTimestamp: number; // Tambahkan timestamp untuk sorting yang lebih akurat
   photos?: string[];
   response?: {
     vendorReply: string;
@@ -70,6 +71,32 @@ export default function UlasanPage() {
                             "";
             const userAvatar = JSON.parse(localStorage.getItem('userProfile') || '{}').avatar || "";
 
+            // Ambil tanggal rating dari orderHistory
+            const ratingHistory = order.orderHistory?.find((h: any) => h.status === "Rating dan Ulasan Diberikan");
+            let dateStr = ratingHistory?.date || new Date().toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'long', 
+              year: 'numeric'
+            });
+
+            // Parse tanggal untuk mendapatkan timestamp
+            let timestamp = Date.now();
+            if (ratingHistory?.date) {
+              // Format: "1 Januari 2026 - 14:30"
+              const datePart = ratingHistory.date.split(' - ')[0];
+              try {
+                const [day, month, year] = datePart.split(' ');
+                const months: Record<string, number> = {
+                  'Januari': 0, 'Februari': 1, 'Maret': 2, 'April': 3,
+                  'Mei': 4, 'Juni': 5, 'Juli': 6, 'Agustus': 7,
+                  'September': 8, 'Oktober': 9, 'November': 10, 'Desember': 11
+                };
+                timestamp = new Date(parseInt(year), months[month] || 0, parseInt(day)).getTime();
+              } catch (e) {
+                console.error('Error parsing date:', e);
+              }
+            }
+
             return {
               id: order.id || order.orderId,
               orderId: order.id || order.orderId,
@@ -79,22 +106,12 @@ export default function UlasanPage() {
               rating: order.rating,
               comment: order.review || "",
               serviceType: order.serviceType || "Layanan",
-              date: order.orderHistory?.find((h: any) => h.status === "Rating dan Ulasan Diberikan")?.date ||
-                    new Date().toLocaleDateString('id-ID', {
-                      day: 'numeric',
-                      month: 'long', 
-                      year: 'numeric'
-                    }),
+              date: dateStr,
+              dateTimestamp: timestamp,
               photos: [],
               response: order.vendorResponse || undefined,
               helpfulCount: order.helpfulCount || 0
             };
-          })
-          // Sort by date (newest first)
-          .sort((a: Review, b: Review) => {
-            const dateA = new Date(a.date.split(' - ')[0]);
-            const dateB = new Date(b.date.split(' - ')[0]);
-            return dateB.getTime() - dateA.getTime();
           });
 
         setReviews(vendorReviews);
@@ -142,18 +159,20 @@ export default function UlasanPage() {
     1: reviews.filter(r => r.rating === 1).length
   };
 
+  // Filter reviews dengan rating tinggi (3-5) dan rating rendah (1-2)
   const filteredReviews = reviews.filter(review => {
     if (filter === 'semua') return true;
     if (filter === 'dengan-foto') return review.photos && review.photos.length > 0;
     if (filter === 'dengan-balasan') return review.response;
-    if (filter === 'rating-tinggi') return review.rating >= 4;
-    if (filter === 'rating-rendah') return review.rating <= 2;
+    if (filter === 'rating-tinggi') return review.rating >= 3 && review.rating <= 5; // Rating tinggi 3-5
+    if (filter === 'rating-rendah') return review.rating >= 1 && review.rating <= 2; // Rating rendah 1-2
     return true;
   });
 
+  // Sort reviews berdasarkan timestamp yang lebih akurat
   const sortedReviews = [...filteredReviews].sort((a, b) => {
     if (sortBy === 'terbaru') {
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
+      return b.dateTimestamp - a.dateTimestamp; // Terbaru di atas
     }
     if (sortBy === 'rating-tinggi') {
       return b.rating - a.rating;
@@ -162,7 +181,7 @@ export default function UlasanPage() {
       return a.rating - b.rating;
     }
     if (sortBy === 'terlama') {
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
+      return a.dateTimestamp - b.dateTimestamp; // Terlama di atas
     }
     return 0;
   });
@@ -315,7 +334,7 @@ export default function UlasanPage() {
                 <option value="semua">Semua Ulasan</option>
                 <option value="dengan-foto">Dengan Foto</option>
                 <option value="dengan-balasan">Dengan Balasan</option>
-                <option value="rating-tinggi">Rating Tinggi (4-5)</option>
+                <option value="rating-tinggi">Rating Tinggi (3-5)</option>
                 <option value="rating-rendah">Rating Rendah (1-2)</option>
               </select>
             </div>
