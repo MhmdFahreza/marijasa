@@ -18,6 +18,7 @@ import {
   X as CloseIcon,
   Send,
 } from 'lucide-react'
+import { RatingStars } from '@/app/components/ui/rating-stars'
 
 // Type untuk Review
 type Review = {
@@ -324,19 +325,6 @@ export default function UlasanPage() {
     return 0
   })
 
-  const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        className={`w-4 h-4 md:w-5 md:h-5 ${
-          i < rating
-            ? 'fill-yellow-400 text-yellow-400'
-            : 'fill-gray-200 text-gray-200'
-        }`}
-      />
-    ))
-  }
-
   const calculatePercentage = (count: number) => {
     if (totalReviews === 0) return 0
     return ((count / totalReviews) * 100).toFixed(0)
@@ -376,7 +364,7 @@ export default function UlasanPage() {
               {averageRating.toFixed(1)}
             </div>
             <div className="flex items-center mb-3">
-              {renderStars(Math.round(averageRating))}
+              <RatingStars value={averageRating} size="lg" />
             </div>
             <div className="text-lg font-medium">{totalReviews} Ulasan</div>
             <div className="text-sm opacity-90 mt-2">Rating Keseluruhan</div>
@@ -556,7 +544,7 @@ export default function UlasanPage() {
                     </div>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <div className="flex items-center">
-                        {renderStars(review.rating)}
+                        <RatingStars value={review.rating} size="md" />
                       </div>
                       <span className="text-sm text-neutral-500 dark:text-neutral-400">
                         {review.date}

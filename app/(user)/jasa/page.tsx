@@ -47,6 +47,57 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   furnitur: ["tukang mebel"]
 };
 
+// ⭐ FUNGSI UNTUK MENGHITUNG AVERAGE RATING DARI REVIEWS
+const calculateVendorRating = (vendorId: string, vendorName: string): number => {
+  try {
+    const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+    
+    const vendorReviews = userOrders.filter(
+      (order: any) =>
+        order.status === 'selesai' &&
+        order.rating &&
+        order.rating > 0 &&
+        (order.vendor?.id === vendorId ||
+          order.vendorId === vendorId ||
+          order.vendor?.name === vendorName ||
+          order.vendorName === vendorName)
+    );
+
+    if (vendorReviews.length === 0) {
+      return 0;
+    }
+
+    const sum = vendorReviews.reduce((acc: number, order: any) => acc + order.rating, 0);
+    return sum / vendorReviews.length;
+  } catch (error) {
+    console.error('Error calculating vendor rating:', error);
+    return 0;
+  }
+};
+
+// ⭐ FUNGSI UNTUK MENGHITUNG JUMLAH REVIEWS
+const countVendorReviews = (vendorId: string, vendorName: string): number => {
+  try {
+    const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+    
+    const vendorReviews = userOrders.filter(
+      (order: any) =>
+        order.status === 'selesai' &&
+        order.rating &&
+        order.rating > 0 &&
+        (order.vendor?.id === vendorId ||
+          order.vendorId === vendorId ||
+          order.vendor?.name === vendorName ||
+          order.vendorName === vendorName)
+    );
+
+    return vendorReviews.length;
+  } catch (error) {
+    console.error('Error counting vendor reviews:', error);
+    return 0;
+  }
+};
+
 const isVendorInCategory = (vendor: any, category: string): boolean => {
   if (!category) return true;
 
@@ -79,7 +130,7 @@ const isVendorInCity = (vendor: any, city: string): boolean => {
 const isVendorWithRating = (vendor: any, ratingFilter: string): boolean => {
   if (!ratingFilter || ratingFilter === "semuarating") return true;
 
-  const vendorRating = vendor.rating;
+  const vendorRating = vendor.calculatedRating || vendor.rating;
 
   switch (ratingFilter) {
     case "5":
@@ -233,25 +284,51 @@ export default function JasaPage() {
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
 
-  // Load vendors dengan sync dari localStorage
+  // ⭐ Load vendors dengan rating yang di-sync dari reviews
   useEffect(() => {
     const loadVendors = () => {
-      // ⭐ GUNAKAN getAllVendors() untuk mendapat data terbaru
       const allVendors = getAllVendors();
-      setVendors(allVendors);
+      
+      // ⭐ Hitung rating real-time untuk setiap vendor
+      const vendorsWithCalculatedRating = allVendors.map(vendor => {
+        const calculatedRating = calculateVendorRating(vendor.id, vendor.name);
+        const reviewCount = countVendorReviews(vendor.id, vendor.name);
+        
+        return {
+          ...vendor,
+          calculatedRating: calculatedRating > 0 ? calculatedRating : vendor.rating,
+          reviewCount: reviewCount,
+          // Update rating property juga agar konsisten
+          rating: calculatedRating > 0 ? calculatedRating : vendor.rating
+        };
+      });
+      
+      setVendors(vendorsWithCalculatedRating);
     };
 
     loadVendors();
 
-    // ⭐ LISTEN KE EVENT CUSTOM UNTUK UPDATE REAL-TIME
+    // ⭐ Listen ke event update
     const handleVendorUpdate = () => {
       loadVendors();
     };
 
+    const handleReviewsUpdate = () => {
+      loadVendors();
+    };
+
+    const handleStorageChange = () => {
+      loadVendors();
+    };
+
     window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
+    window.addEventListener('reviewsUpdated', handleReviewsUpdate as EventListener);
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
+      window.removeEventListener('reviewsUpdated', handleReviewsUpdate as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
@@ -606,6 +683,7 @@ export default function JasaPage() {
                   router.push('/register');
                 }}
               >
+                Belum punya akun? Daftar di sini
               </Button>
             </div>
           </div>

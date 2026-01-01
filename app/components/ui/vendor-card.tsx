@@ -12,8 +12,9 @@ import { AspectRatio } from "@/app/components/ui/aspect-ratio";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/app/components/ui/tooltip";
 import { Separator } from "@/app/components/ui/separator";
-import { Heart, Star, CheckCircle2 } from "lucide-react";
+import { Heart, CheckCircle2 } from "lucide-react";
 import { LoaderTwo } from "@/app/components/transition/loader";
+import { RatingStars } from "@/app/components/ui/rating-stars";
 
 type WorkImage = { src: string; alt: string };
 
@@ -191,9 +192,9 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                   </TooltipProvider>
                 </div>
 
-                {/* Rating */}
-                <div className="mt-1 flex items-center gap-1 text-[10px] sm:text-sm md:text-base text-muted-foreground">
-                  <RatingStars value={rating} />
+                {/* Rating - UPDATED */}
+                <div className="mt-1 flex items-center gap-1.5 text-[10px] sm:text-sm md:text-base text-muted-foreground">
+                  <RatingStars value={rating} size="sm" />
                   <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
                   <span>({reviewCount})</span>
                 </div>
@@ -374,29 +375,5 @@ function Check({ className }: { className?: string }) {
       <CheckCircle2 className="h-2.5 w-2.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />
       Verified
     </span>
-  );
-}
-
-function RatingStars({ value }: { value: number }) {
-  const full = Math.floor(value);
-  const half = value - full >= 0.5;
-  const total = 5;
-
-  return (
-    <div className="flex items-center">
-      {Array.from({ length: total }).map((_, i) => {
-        const filled = i < full || (i === full && half);
-        return (
-          <Star
-            key={i}
-            className={`h-2.5 w-2.5 sm:h-4 sm:w-4 md:h-5 md:w-5 ${
-              filled ? "fill-current" : "text-muted-foreground/40"
-            }`}
-            aria-hidden="true"
-          />
-        );
-      })}
-      <span className="sr-only">{value} dari 5</span>
-    </div>
   );
 }

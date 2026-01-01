@@ -32,6 +32,7 @@ import { getVendorById } from '@/app/data/dataVendor'
 import  SiteFooter  from '@/app/footer'
 import { LoaderTwo } from '@/app/components/transition/loader'
 import { LoginForm } from '@/app/components/ui/login-form'
+import { RatingStars } from '@/app/components/ui/rating-stars'
 import {
   Star,
   CheckCircle2,
@@ -430,10 +431,7 @@ export default function VendorDetailPage() {
                   </div>
 
                   <div className="flex items-center gap-2 mb-3 md:mb-4 flex-wrap">
-                    <RatingStars value={averageRating} />
-                    <span className="font-semibold text-sm md:text-base">
-                      {averageRating.toFixed(1)}
-                    </span>
+                    <RatingStars value={averageRating} size="md" showValue />
                     <span className="text-muted-foreground text-xs md:text-sm">
                       {reviews.length} ulasan
                     </span>
@@ -1052,45 +1050,5 @@ export default function VendorDetailPage() {
         }
       `}</style>
     </motion.main>
-  )
-}
-
-function RatingStars({
-  value,
-  size = 'md',
-}: {
-  value: number
-  size?: 'sm' | 'md' | 'lg'
-}) {
-  const full = Math.floor(value)
-  const half = value - full >= 0.5
-  const total = 5
-
-  const sizeClasses = {
-    sm: 'h-4 w-4',
-    md: 'h-4 w-4',
-    lg: 'h-6 w-6',
-  }
-
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: total }).map((_, i) => {
-        const filled = i < full
-        const isHalf = i === full && half
-
-        return (
-          <Star
-            key={i}
-            className={`${sizeClasses[size]} ${
-              filled || isHalf
-                ? 'fill-yellow-400 text-yellow-400'
-                : 'fill-gray-200 text-gray-200'
-            }`}
-            aria-hidden="true"
-          />
-        )
-      })}
-      <span className="sr-only">{value} dari 5</span>
-    </div>
   )
 }
