@@ -457,16 +457,16 @@ export default function UlasanPage() {
         </div>
       </div>
 
-      {/* Filter dan Sort */}
+      {/* Filter dan Sort - PERBAIKAN DISINI */}
       <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 mb-6 shadow-lg border border-neutral-200 dark:border-neutral-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-neutral-500" />
+              <Filter className="w-5 h-5 text-neutral-500 flex-shrink-0" />
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent"
+                className="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent min-w-[180px]"
               >
                 <option value="semua">Semua Ulasan</option>
                 <option value="dengan-foto">Dengan Foto</option>
@@ -475,23 +475,23 @@ export default function UlasanPage() {
                 <option value="rating-rendah">Rating Rendah (1-2)</option>
               </select>
             </div>
+            
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-neutral-500 flex-shrink-0" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent min-w-[180px]"
+              >
+                <option value="terbaru">Terbaru</option>
+                <option value="rating-tinggi">Rating Tertinggi</option>
+                <option value="rating-rendah">Rating Terendah</option>
+                <option value="terlama">Terlama</option>
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-neutral-500" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent"
-            >
-              <option value="terbaru">Terbaru</option>
-              <option value="rating-tinggi">Rating Tertinggi</option>
-              <option value="rating-rendah">Rating Terendah</option>
-              <option value="terlama">Terlama</option>
-            </select>
-          </div>
-
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
             Menampilkan {sortedReviews.length} dari {reviews.length} ulasan
           </div>
         </div>
@@ -533,8 +533,8 @@ export default function UlasanPage() {
                   className="bg-white dark:bg-neutral-800 rounded-xl p-4 md:p-6 shadow-lg border border-neutral-200 dark:border-neutral-700"
                 >
                   {/* Header Ulasan */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-4">
+                    <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#7CE0A8]/20 to-[#5DD494]/20 flex items-center justify-center flex-shrink-0">
                         {review.userAvatar && !review.isAnonymous ? (
                           <img
@@ -546,26 +546,28 @@ export default function UlasanPage() {
                           <User className="w-6 h-6 text-[#7CE0A8]" />
                         )}
                       </div>
-                      <div>
-                        <h4 className="font-semibold text-neutral-900 dark:text-white">
-                          {review.userName}
-                        </h4>
-                        {!review.isAnonymous &&
-                          review.userName !== 'Anonymous' && (
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                          )}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-neutral-900 dark:text-white">
+                            {review.userName}
+                          </h4>
+                          {!review.isAnonymous &&
+                            review.userName !== 'Anonymous' && (
+                              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                          <div className="flex items-center">
+                            <RatingStars value={review.rating} size="md" />
+                          </div>
+                          <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                            {review.date}
+                          </span>
+                        </div>
+                        <span className="inline-block mt-2 text-sm px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded-full">
+                          {review.serviceType}
+                        </span>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <div className="flex items-center">
-                        <RatingStars value={review.rating} size="md" />
-                      </div>
-                      <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                        {review.date}
-                      </span>
-                      <span className="text-sm px-2 py-1 bg-neutral-100 dark:bg-neutral-700 rounded-full">
-                        {review.serviceType}
-                      </span>
                     </div>
                   </div>
 
