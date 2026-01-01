@@ -75,6 +75,49 @@ type Review = {
   isAnonymous?: boolean
 }
 
+// ⭐ FUNGSI HELPER UNTUK FORMAT TANGGAL
+const formatReviewDate = (orderHistory: any[]): string => {
+  try {
+    const ratingHistory = orderHistory?.find(
+      (h: any) => h.status === 'Rating dan Ulasan Diberikan'
+    )
+
+    if (ratingHistory?.date) {
+      // Parse tanggal dari format ISO atau timestamp
+      const dateObj = new Date(ratingHistory.date)
+      
+      // Validasi tanggal
+      if (isNaN(dateObj.getTime())) {
+        return new Date().toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      }
+
+      return dateObj.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    }
+
+    // Default ke tanggal sekarang jika tidak ada
+    return new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  } catch (error) {
+    console.error('Error formatting date:', error)
+    return new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+}
+
 export default function VendorDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -147,6 +190,9 @@ export default function VendorDetailPage() {
               : JSON.parse(localStorage.getItem('userProfile') || '{}')
                   .avatar
 
+            // ⭐ GUNAKAN FUNGSI HELPER UNTUK FORMAT TANGGAL
+            const formattedDate = formatReviewDate(order.orderHistory)
+
             return {
               id: order.id || order.orderId,
               orderId: order.id || order.orderId,
@@ -158,24 +204,7 @@ export default function VendorDetailPage() {
               rating: order.rating,
               comment: order.review || '',
               serviceType: order.serviceType || 'Layanan',
-              date: order.orderHistory?.find(
-                (h: any) => h.status === 'Rating dan Ulasan Diberikan'
-              )?.date
-                ? new Date(
-                    order.orderHistory.find(
-                      (h: any) =>
-                        h.status === 'Rating dan Ulasan Diberikan'
-                    ).date
-                  ).toLocaleDateString('id-ID', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })
-                : new Date().toLocaleDateString('id-ID', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  }),
+              date: formattedDate,
               photos: order.ratingPhotos || [],
               response: order.vendorResponse || undefined,
               helpfulCount: order.helpfulCount || 0,
@@ -184,9 +213,8 @@ export default function VendorDetailPage() {
             }
           })
           .sort((a: Review, b: Review) => {
-            const dateA = new Date(a.date.split(' ')[0]).getTime()
-            const dateB = new Date(b.date.split(' ')[0]).getTime()
-            return dateB - dateA
+            // Sort berdasarkan string tanggal (fallback simple)
+            return b.date.localeCompare(a.date)
           })
 
         setReviews(vendorReviews)
@@ -722,7 +750,7 @@ export default function VendorDetailPage() {
                                         </p>
                                       </div>
                                       <span className="text-xs md:text-sm text-gray-500 dark:text-gray-500 font-medium whitespace-nowrap">
-                                        {review.date.split(' ')[0]}
+                                        {review.date}
                                       </span>
                                     </div>
 

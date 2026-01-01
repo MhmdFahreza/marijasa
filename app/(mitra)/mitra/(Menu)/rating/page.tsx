@@ -38,8 +38,66 @@ type Review = {
     replyDate: string
   }
   helpfulCount: number
-  mitraLikes?: string[] // Array ID mitra yang like
+  mitraLikes?: string[]
   isAnonymous?: boolean
+}
+
+// ⭐ FUNGSI HELPER UNTUK FORMAT TANGGAL
+const formatReviewDate = (orderHistory: any[]): { dateString: string; timestamp: number } => {
+  try {
+    const ratingHistory = orderHistory?.find(
+      (h: any) => h.status === 'Rating dan Ulasan Diberikan'
+    )
+
+    if (ratingHistory?.date) {
+      // Parse tanggal dari format ISO atau timestamp
+      const dateObj = new Date(ratingHistory.date)
+      
+      // Validasi tanggal
+      if (isNaN(dateObj.getTime())) {
+        const now = new Date()
+        return {
+          dateString: now.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          }),
+          timestamp: now.getTime()
+        }
+      }
+
+      return {
+        dateString: dateObj.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        timestamp: dateObj.getTime()
+      }
+    }
+
+    // Default ke tanggal sekarang jika tidak ada
+    const now = new Date()
+    return {
+      dateString: now.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+      timestamp: now.getTime()
+    }
+  } catch (error) {
+    console.error('Error formatting date:', error)
+    const now = new Date()
+    return {
+      dateString: now.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+      timestamp: now.getTime()
+    }
+  }
 }
 
 export default function UlasanPage() {
@@ -100,52 +158,8 @@ export default function UlasanPage() {
               ? ''
               : JSON.parse(localStorage.getItem('userProfile') || '{}').avatar
 
-            // Ambil tanggal rating dari orderHistory
-            const ratingHistory = order.orderHistory?.find(
-              (h: any) => h.status === 'Rating dan Ulasan Diberikan'
-            )
-
-            let dateStr = ratingHistory?.date
-              ? new Date(ratingHistory.date).toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })
-              : new Date().toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })
-
-            // Parse tanggal untuk mendapatkan timestamp
-            let timestamp = Date.now()
-            if (ratingHistory?.date) {
-              const datePart = ratingHistory.date.split(' ')[0]
-              try {
-                const [day, month, year] = datePart.split('/')
-                const months: Record<string, number> = {
-                  'Januari': 0,
-                  'Februari': 1,
-                  'Maret': 2,
-                  'April': 3,
-                  'Mei': 4,
-                  'Juni': 5,
-                  'Juli': 6,
-                  'Agustus': 7,
-                  'September': 8,
-                  'Oktober': 9,
-                  'November': 10,
-                  'Desember': 11,
-                }
-                timestamp = new Date(
-                  parseInt(year),
-                  months[month],
-                  parseInt(day)
-                ).getTime()
-              } catch (e) {
-                console.error('Error parsing date:', e)
-              }
-            }
+            // ⭐ GUNAKAN FUNGSI HELPER UNTUK FORMAT TANGGAL
+            const { dateString, timestamp } = formatReviewDate(order.orderHistory)
 
             return {
               id: order.id || order.orderId,
@@ -156,7 +170,7 @@ export default function UlasanPage() {
               rating: order.rating,
               comment: order.review || '',
               serviceType: order.serviceType || 'Layanan',
-              date: dateStr,
+              date: dateString,
               dateTimestamp: timestamp,
               photos: order.ratingPhotos || [],
               response: order.vendorResponse || undefined,
