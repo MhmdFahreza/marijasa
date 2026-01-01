@@ -29,7 +29,7 @@ import { getVendorById } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { LoginForm } from "@/app/components/ui/login-form";
-import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle, ImageIcon, User } from "lucide-react";
+import { Star, CheckCircle2, Heart, MapPin, Phone, MessageCircle, AlertCircle, ImageIcon, User, Eye, X as CloseIcon } from "lucide-react";
 
 type GalleryImage = {
   src: string;
@@ -48,6 +48,8 @@ type Review = {
   comment: string;
   serviceType: string;
   date: string;
+  photos?: string[];
+  isAnonymous?: boolean;
 };
 
 export default function VendorDetailPage() {
@@ -62,6 +64,7 @@ export default function VendorDetailPage() {
   const [vendor, setVendor] = useState<any>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   const vendorId = params.vendorId as string;
 
@@ -95,7 +98,6 @@ export default function VendorDetailPage() {
       try {
         const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
 
-        // Filter orders yang selesai, punya rating, dan sesuai dengan vendor ini
         const vendorReviews = userOrders
           .filter((order: any) =>
             order.status === 'selesai' &&
@@ -105,15 +107,19 @@ export default function VendorDetailPage() {
               order.vendor?.name === vendor?.name || order.vendorName === vendor?.name)
           )
           .map((order: any) => {
-            // Ambil data user dari customerInfo atau localStorage
-            const userName = order.customerInfo?.name ||
-              JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
-              "Pengguna";
-            const userEmail = order.customerInfo?.email ||
-              JSON.parse(localStorage.getItem('user') || '{}').email ||
-              "";
-            const userAvatar = JSON.parse(localStorage.getItem('userProfile') || '{}').avatar ||
-              "";
+            const userName = order.isAnonymous
+              ? "Anonymous"
+              : (order.customerInfo?.name ||
+                JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
+                "Pengguna");
+            const userEmail = order.isAnonymous
+              ? ""
+              : (order.customerInfo?.email ||
+                JSON.parse(localStorage.getItem('user') || '{}').email ||
+                "");
+            const userAvatar = order.isAnonymous
+              ? ""
+              : (JSON.parse(localStorage.getItem('userProfile') || '{}').avatar || "");
 
             return {
               id: order.id || order.orderId,
@@ -131,14 +137,15 @@ export default function VendorDetailPage() {
                   day: 'numeric',
                   month: 'long',
                   year: 'numeric'
-                })
+                }),
+              photos: order.ratingPhotos || [],
+              isAnonymous: order.isAnonymous || false
             };
           })
-          // Sort by date (newest first)
           .sort((a: Review, b: Review) => {
             const dateA = new Date(a.date.split(' - ')[0]);
             const dateB = new Date(b.date.split(' - ')[0]);
-            return dateB.getTime() - dateA.getTime(); 
+            return dateB.getTime() - dateA.getTime();
           });
 
         setReviews(vendorReviews);
@@ -154,7 +161,6 @@ export default function VendorDetailPage() {
       loadReviews();
     }
 
-    // Listen untuk storage changes
     const handleStorageChange = () => {
       if (vendor) {
         loadReviews();
@@ -249,10 +255,8 @@ export default function VendorDetailPage() {
     { id: "ulasan", label: "Ulasan" },
   ];
 
-  // Cek apakah ada gallery
   const hasGallery = vendor && vendor.gallery && vendor.gallery.length > 0;
 
-  // Hitung rata-rata rating dari reviews
   const calculateAverageRating = () => {
     if (reviews.length === 0) return vendor?.rating || 0;
     const sum = reviews.reduce((acc, review) => acc + review.rating, 0);
@@ -473,19 +477,15 @@ export default function VendorDetailPage() {
               )}
             </div>
 
-            {/* ✅ SECTION ULASAN DENGAN SCROLL CONTAINER */}
             <div id="ulasan">
               <Card className="overflow-hidden">
-                {/* Header Ulasan dengan Summary */}
                 <CardHeader className="bg-gradient-to-br from-[#7CE0A8]/10 to-[#7CE0A8]/5 border-b border-[#7CE0A8]/20 pb-4 md:pb-6">
                   <CardTitle className="text-xl md:text-2xl text-gray-900 dark:text-white mb-4 md:mb-6">
                     Ulasan Pelanggan
                   </CardTitle>
 
-                  {/* Rating Summary Card */}
                   <div className="bg-white dark:bg-slate-900 rounded-xl p-4 md:p-6 border border-[#7CE0A8]/20 shadow-sm">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                      {/* Overall Rating */}
                       <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4">
                         <div className="text-4xl md:text-5xl font-bold text-[#7CE0A8] mb-2">
                           {averageRating.toFixed(1)}
@@ -496,7 +496,6 @@ export default function VendorDetailPage() {
                         </p>
                       </div>
 
-                      {/* Review Count */}
                       <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4 border-t sm:border-t-0 sm:border-l border-[#7CE0A8]/20">
                         <div className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-1">
                           {reviews.length}
@@ -506,7 +505,6 @@ export default function VendorDetailPage() {
                         </p>
                       </div>
 
-                      {/* Satisfaction */}
                       <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4 border-t sm:border-t-0 sm:border-l border-[#7CE0A8]/20">
                         <div className="text-3xl md:text-4xl font-bold text-[#7CE0A8] mb-1">
                           {reviews.length > 0 ? ((reviews.filter(r => r.rating >= 4).length / reviews.length) * 100).toFixed(0) : 0}%
@@ -519,7 +517,6 @@ export default function VendorDetailPage() {
                   </div>
                 </CardHeader>
 
-                {/* Reviews List dengan Scroll Container */}
                 <CardContent className="p-4 md:p-6">
                   {isLoadingReviews ? (
                     <div className="text-center py-12 md:py-16">
@@ -544,7 +541,6 @@ export default function VendorDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-4 md:space-y-6">
-                      {/* ✅ SCROLLABLE CONTAINER - SEMUA ULASAN DITAMPILKAN */}
                       <div className="reviews-scroll-container max-h-[calc(3*150px+24px)] md:max-h-[calc(4*160px+32px)] overflow-y-auto pr-2">
                         <div className="space-y-4 md:space-y-6">
                           {reviews.map((review, index) => (
@@ -555,12 +551,9 @@ export default function VendorDetailPage() {
                               transition={{ delay: index * 0.05 }}
                               className="group relative rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900/50 hover:border-[#7CE0A8]/30 hover:shadow-md transition-all duration-300 p-4 md:p-5"
                             >
-                              {/* Accent bar */}
                               <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#7CE0A8] to-[#7CE0A8]/50 rounded-l-lg" />
 
-                              {/* Content */}
                               <div className="flex flex-col md:flex-row md:items-start gap-3 md:gap-4">
-                                {/* Avatar */}
                                 <Avatar className="h-12 w-12 md:h-14 md:w-14 flex-shrink-0 ring-2 ring-[#7CE0A8]/20">
                                   <AvatarImage src={review.userAvatar} alt={review.userName} />
                                   <AvatarFallback className="bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
@@ -568,9 +561,7 @@ export default function VendorDetailPage() {
                                   </AvatarFallback>
                                 </Avatar>
 
-                                {/* Review Info */}
                                 <div className="flex-1 min-w-0">
-                                  {/* Header: Name, Service, Date */}
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 mb-2 md:mb-3">
                                     <div className="min-w-0">
                                       <h4 className="font-semibold text-gray-900 dark:text-white text-sm md:text-base truncate">
@@ -585,7 +576,6 @@ export default function VendorDetailPage() {
                                     </span>
                                   </div>
 
-                                  {/* Rating */}
                                   <div className="flex items-center gap-2 mb-3 md:mb-4">
                                     <RatingStars value={review.rating} size="sm" />
                                     <span className="text-sm font-semibold text-[#7CE0A8] bg-[#7CE0A8]/10 px-2.5 py-1 rounded-full">
@@ -593,11 +583,31 @@ export default function VendorDetailPage() {
                                     </span>
                                   </div>
 
-                                  {/* Comment */}
                                   {review.comment && (
-                                    <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4">
+                                    <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4 mb-3">
                                       {review.comment}
                                     </p>
+                                  )}
+
+                                  {review.photos && review.photos.length > 0 && (
+                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                      {review.photos.map((photo: string, idx: number) => (
+                                        <div
+                                          key={idx}
+                                          className="relative group/photo cursor-pointer"
+                                          onClick={() => setSelectedPhoto(photo)}
+                                        >
+                                          <img
+                                            src={photo}
+                                            alt={`Foto ${idx + 1}`}
+                                            className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover flex-shrink-0 hover:scale-105 transition-transform"
+                                          />
+                                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                                            <Eye className="w-5 h-5 text-white" />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   )}
                                 </div>
                               </div>

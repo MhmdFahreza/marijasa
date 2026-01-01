@@ -1,7 +1,7 @@
 // app/mitra/rating/page.tsx
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Star, Filter, ChevronDown, Calendar, User, CheckCircle, MessageCircle, ThumbsUp, MoreVertical, ChevronUp } from 'lucide-react';
+import { Star, Filter, ChevronDown, Calendar, User, CheckCircle, MessageCircle, ThumbsUp, MoreVertical, ChevronUp, ImageIcon, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Type untuk Review
@@ -15,13 +15,14 @@ type Review = {
   comment: string;
   serviceType: string;
   date: string;
-  dateTimestamp: number; // Tambahkan timestamp untuk sorting yang lebih akurat
+  dateTimestamp: number;
   photos?: string[];
   response?: {
     vendorReply: string;
     replyDate: string;
   };
   helpfulCount: number;
+  isAnonymous?: boolean;
 };
 
 export default function UlasanPage() {
@@ -32,6 +33,7 @@ export default function UlasanPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [vendorId, setVendorId] = useState<string>('');
   const [vendorName, setVendorName] = useState<string>('');
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   // Load vendor info dan reviews
   useEffect(() => {
@@ -63,13 +65,19 @@ export default function UlasanPage() {
              order.vendorName === vendor.name)
           )
           .map((order: any) => {
-            const userName = order.customerInfo?.name || 
-                           JSON.parse(localStorage.getItem('userProfile') || '{}').name || 
-                           "Anonymous";
-            const userEmail = order.customerInfo?.email || 
-                            JSON.parse(localStorage.getItem('user') || '{}').email || 
-                            "";
-            const userAvatar = JSON.parse(localStorage.getItem('userProfile') || '{}').avatar || "";
+            const userName = order.isAnonymous 
+              ? "Anonymous" 
+              : (order.customerInfo?.name || 
+                 JSON.parse(localStorage.getItem('userProfile') || '{}').name || 
+                 "Pengguna");
+            const userEmail = order.isAnonymous 
+              ? "" 
+              : (order.customerInfo?.email || 
+                 JSON.parse(localStorage.getItem('user') || '{}').email || 
+                 "");
+            const userAvatar = order.isAnonymous 
+              ? "" 
+              : (JSON.parse(localStorage.getItem('userProfile') || '{}').avatar || "");
 
             // Ambil tanggal rating dari orderHistory
             const ratingHistory = order.orderHistory?.find((h: any) => h.status === "Rating dan Ulasan Diberikan");
@@ -82,7 +90,6 @@ export default function UlasanPage() {
             // Parse tanggal untuk mendapatkan timestamp
             let timestamp = Date.now();
             if (ratingHistory?.date) {
-              // Format: "1 Januari 2026 - 14:30"
               const datePart = ratingHistory.date.split(' - ')[0];
               try {
                 const [day, month, year] = datePart.split(' ');
@@ -108,9 +115,10 @@ export default function UlasanPage() {
               serviceType: order.serviceType || "Layanan",
               date: dateStr,
               dateTimestamp: timestamp,
-              photos: [],
+              photos: order.ratingPhotos || [],
               response: order.vendorResponse || undefined,
-              helpfulCount: order.helpfulCount || 0
+              helpfulCount: order.helpfulCount || 0,
+              isAnonymous: order.isAnonymous || false
             };
           });
 
@@ -125,7 +133,6 @@ export default function UlasanPage() {
 
     loadData();
 
-    // Listen untuk storage changes
     const handleStorageChange = () => {
       loadData();
     };
@@ -159,20 +166,20 @@ export default function UlasanPage() {
     1: reviews.filter(r => r.rating === 1).length
   };
 
-  // Filter reviews dengan rating tinggi (3-5) dan rating rendah (1-2)
+  // Filter reviews
   const filteredReviews = reviews.filter(review => {
     if (filter === 'semua') return true;
     if (filter === 'dengan-foto') return review.photos && review.photos.length > 0;
     if (filter === 'dengan-balasan') return review.response;
-    if (filter === 'rating-tinggi') return review.rating >= 3 && review.rating <= 5; // Rating tinggi 3-5
-    if (filter === 'rating-rendah') return review.rating >= 1 && review.rating <= 2; // Rating rendah 1-2
+    if (filter === 'rating-tinggi') return review.rating >= 3 && review.rating <= 5;
+    if (filter === 'rating-rendah') return review.rating >= 1 && review.rating <= 2;
     return true;
   });
 
-  // Sort reviews berdasarkan timestamp yang lebih akurat
+  // Sort reviews
   const sortedReviews = [...filteredReviews].sort((a, b) => {
     if (sortBy === 'terbaru') {
-      return b.dateTimestamp - a.dateTimestamp; // Terbaru di atas
+      return b.dateTimestamp - a.dateTimestamp;
     }
     if (sortBy === 'rating-tinggi') {
       return b.rating - a.rating;
@@ -181,12 +188,11 @@ export default function UlasanPage() {
       return a.rating - b.rating;
     }
     if (sortBy === 'terlama') {
-      return a.dateTimestamp - b.dateTimestamp; // Terlama di atas
+      return a.dateTimestamp - b.dateTimestamp;
     }
     return 0;
   });
 
-  // Fungsi untuk menampilkan bintang
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
       <Star
@@ -196,7 +202,6 @@ export default function UlasanPage() {
     ));
   };
 
-  // Fungsi untuk menghitung persentase rating
   const calculatePercentage = (count: number) => {
     if (totalReviews === 0) return 0;
     return (count / totalReviews) * 100;
@@ -392,7 +397,7 @@ export default function UlasanPage() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#7CE0A8]/20 to-[#5DD494]/20 flex items-center justify-center flex-shrink-0">
-                      {review.userAvatar ? (
+                      {review.userAvatar && !review.isAnonymous ? (
                         <img 
                           src={review.userAvatar} 
                           alt={review.userName}
@@ -407,7 +412,7 @@ export default function UlasanPage() {
                         <h4 className="font-semibold text-neutral-900 dark:text-white">
                           {review.userName}
                         </h4>
-                        {review.userName !== "Anonymous" && (
+                        {!review.isAnonymous && review.userName !== "Anonymous" && (
                           <CheckCircle className="w-4 h-4 text-green-500" />
                         )}
                       </div>
@@ -452,12 +457,20 @@ export default function UlasanPage() {
                   <div className="mb-4">
                     <div className="flex gap-2 overflow-x-auto pb-2">
                       {review.photos.map((photo: string, idx: number) => (
-                        <img
+                        <div
                           key={idx}
-                          src={photo}
-                          alt={`Foto ulasan ${idx + 1}`}
-                          className="w-24 h-24 md:w-32 md:h-32 rounded-lg object-cover flex-shrink-0 hover:scale-105 transition-transform cursor-pointer"
-                        />
+                          className="relative group cursor-pointer"
+                          onClick={() => setSelectedPhoto(photo)}
+                        >
+                          <img
+                            src={photo}
+                            alt={`Foto ulasan ${idx + 1}`}
+                            className="w-24 h-24 md:w-32 md:h-32 rounded-lg object-cover flex-shrink-0 hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                            <Eye className="w-6 h-6 text-white" />
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -509,22 +522,38 @@ export default function UlasanPage() {
         </div>
       )}
 
-      {/* Pagination - Hidden when empty */}
-      {sortedReviews.length > 10 && (
-        <div className="mt-8 flex justify-center">
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors">
-              Sebelumnya
-            </button>
-            <button className="px-3 py-2 rounded-lg bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] text-white">
-              1
-            </button>
-            <button className="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors">
-              Selanjutnya
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Modal Photo Viewer */}
+      <AnimatePresence>
+        {selectedPhoto && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+            onClick={() => setSelectedPhoto(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="relative max-w-4xl max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setSelectedPhoto(null)}
+                className="absolute -top-10 right-0 text-white hover:text-gray-300 text-xl"
+              >
+                ✕
+              </button>
+              <img
+                src={selectedPhoto}
+                alt="Preview"
+                className="max-w-full max-h-[90vh] rounded-lg object-contain"
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Statistik Ringkas Mobile */}
       <div className="lg:hidden mt-6 bg-white dark:bg-neutral-800 rounded-xl p-4 shadow-lg border border-neutral-200 dark:border-neutral-700">

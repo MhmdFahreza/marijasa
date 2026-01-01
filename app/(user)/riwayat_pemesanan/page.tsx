@@ -119,7 +119,9 @@ export default function OrderHistoryPage() {
   const [ratingData, setRatingData] = useState({
     rating: 0,
     comment: "",
-    isSubmitted: false
+    isSubmitted: false,
+    photos: [] as string[], // ✅ TAMBAHKAN INI
+    isAnonymous: false // ✅ TAMBAHKAN INI
   });
   const [showThankYouModal, setShowThankYouModal] = useState(false);
 
@@ -702,7 +704,9 @@ export default function OrderHistoryPage() {
     setRatingData({
       rating: order.rating || 0,
       comment: order.review || "",
-      isSubmitted: false
+      isSubmitted: false,
+      photos: order.ratingPhotos || [], // ✅ TAMBAHKAN INI
+      isAnonymous: order.isAnonymous || false // ✅ TAMBAHKAN INI
     });
     setShowCompletionModal(true);
   };
@@ -740,6 +744,8 @@ export default function OrderHistoryPage() {
         if (hasRating) {
           updatedOrder.rating = ratingData.rating;
           updatedOrder.review = ratingData.comment;
+          updatedOrder.ratingPhotos = ratingData.photos; // ✅ TAMBAHKAN INI
+          updatedOrder.isAnonymous = ratingData.isAnonymous; // ✅ TAMBAHKAN INI
           updatedOrder.orderHistory.push({
             status: "Rating dan Ulasan Diberikan",
             date: new Date().toLocaleDateString('id-ID', {
@@ -884,6 +890,8 @@ export default function OrderHistoryPage() {
         if (hasRating) {
           updatedOrder.rating = ratingData.rating;
           updatedOrder.review = ratingData.comment;
+          updatedOrder.ratingPhotos = ratingData.photos; // ✅ TAMBAHKAN INI
+          updatedOrder.isAnonymous = ratingData.isAnonymous; // ✅ TAMBAHKAN INI
           updatedOrder.orderHistory.push({
             status: "Rating dan Ulasan Diberikan",
             date: new Date().toLocaleDateString('id-ID', {
@@ -920,6 +928,50 @@ export default function OrderHistoryPage() {
     setRatingData(prev => ({
       ...prev,
       rating: star
+    }));
+  };
+
+  // Fungsi untuk handle upload foto rating
+  const handleRatingPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const maxPhotos = 5;
+    const currentPhotos = ratingData.photos.length;
+
+    if (currentPhotos >= maxPhotos) {
+      toast.error(`Maksimal ${maxPhotos} foto`);
+      return;
+    }
+
+    const remainingSlots = maxPhotos - currentPhotos;
+    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+
+    filesToProcess.forEach(file => {
+      // Validasi ukuran file (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`Ukuran foto ${file.name} terlalu besar (max 5MB)`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setRatingData(prev => ({
+            ...prev,
+            photos: [...prev.photos, e.target!.result as string]
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Fungsi untuk remove foto rating
+  const removeRatingPhoto = (index: number) => {
+    setRatingData(prev => ({
+      ...prev,
+      photos: prev.photos.filter((_, i) => i !== index)
     }));
   };
 
@@ -2097,7 +2149,7 @@ export default function OrderHistoryPage() {
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md overflow-hidden"
+              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -2120,8 +2172,8 @@ export default function OrderHistoryPage() {
                 </div>
               </div>
 
-              {/* Content */}
-              <div className="p-6">
+              {/* Content - Scrollable */}
+              <div className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
                 <div className="space-y-6">
                   {/* Konfirmasi Selesai */}
                   <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
@@ -2155,7 +2207,7 @@ export default function OrderHistoryPage() {
                           key={star}
                           type="button"
                           onClick={() => handleStarClick(star)}
-                          className="focus:outline-none"
+                          className="focus:outline-none transition-transform hover:scale-110"
                         >
                           <Star
                             className={`h-10 w-10 ${star <= ratingData.rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
@@ -2163,6 +2215,38 @@ export default function OrderHistoryPage() {
                         </button>
                       ))}
                     </div>
+
+                    {/* ✅ OPSI ANONYMOUS - Muncul hanya jika ada rating */}
+                    <AnimatePresence>
+                      {ratingData.rating > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="mb-4"
+                        >
+                          <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <input
+                              type="checkbox"
+                              id="anonymous"
+                              checked={ratingData.isAnonymous}
+                              onChange={(e) => setRatingData(prev => ({
+                                ...prev,
+                                isAnonymous: e.target.checked
+                              }))}
+                              className="h-4 w-4 rounded border-gray-300 text-[#7CE0A8] focus:ring-[#7CE0A8]"
+                            />
+                            <label htmlFor="anonymous" className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                              Sembunyikan identitas saya (Anonymous)
+                            </label>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 ml-1">
+                            Nama Anda akan disembunyikan dari vendor
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     <div className="space-y-2">
                       <Label htmlFor="comment" className="text-sm font-medium">
@@ -2179,6 +2263,60 @@ export default function OrderHistoryPage() {
                         }))}
                         className="resize-none"
                       />
+                    </div>
+
+                    {/* ✅ UPLOAD FOTO RATING */}
+                    <div className="mt-4">
+                      <Label className="text-sm font-medium mb-2 block">
+                        Tambah Foto (Opsional)
+                        <span className="text-gray-500 font-normal ml-1">Max 5 foto</span>
+                      </Label>
+
+                      {/* Preview Photos */}
+                      {ratingData.photos.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          {ratingData.photos.map((photo, index) => (
+                            <div key={index} className="relative group">
+                              <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                                <img
+                                  src={photo}
+                                  alt={`Foto ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeRatingPhoto(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Upload Button */}
+                      {ratingData.photos.length < 5 && (
+                        <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg cursor-pointer hover:border-[#7CE0A8] transition-colors bg-gray-50 dark:bg-gray-800">
+                          <div className="flex flex-col items-center justify-center pt-2 pb-2">
+                            <Camera className="h-6 w-6 text-gray-400 mb-1" />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              <span className="font-medium text-[#7CE0A8]">Klik untuk upload</span>
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              PNG, JPG (max 5MB)
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            multiple
+                            onChange={handleRatingPhotoUpload}
+                          />
+                        </label>
+                      )}
                     </div>
                   </div>
 
@@ -2254,8 +2392,31 @@ export default function OrderHistoryPage() {
                 ))}
               </div>
               {ratingData.comment && (
-                <p className="text-gray-600 italic mb-6">
+                <p className="text-gray-600 italic mb-4">
                   "{ratingData.comment}"
+                </p>
+              )}
+              {/* ✅ TAMPILKAN FOTO JIKA ADA */}
+              {ratingData.photos.length > 0 && (
+                <div className="flex gap-2 justify-center mb-4 overflow-x-auto">
+                  {ratingData.photos.slice(0, 3).map((photo, idx) => (
+                    <img
+                      key={idx}
+                      src={photo}
+                      alt={`Foto ${idx + 1}`}
+                      className="w-16 h-16 rounded-lg object-cover"
+                    />
+                  ))}
+                  {ratingData.photos.length > 3 && (
+                    <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-sm text-gray-600">
+                      +{ratingData.photos.length - 3}
+                    </div>
+                  )}
+                </div>
+              )}
+              {ratingData.isAnonymous && (
+                <p className="text-sm text-gray-500 mb-4">
+                  ✓ Identitas Anda disembunyikan
                 </p>
               )}
               <Button
