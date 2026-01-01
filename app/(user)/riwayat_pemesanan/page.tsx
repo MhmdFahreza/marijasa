@@ -936,7 +936,7 @@ export default function OrderHistoryPage() {
     const files = e.target.files;
     if (!files) return;
 
-    const maxPhotos = 5;
+    const maxPhotos = 3;
     const currentPhotos = ratingData.photos.length;
 
     if (currentPhotos >= maxPhotos) {
@@ -2269,7 +2269,7 @@ export default function OrderHistoryPage() {
                     <div className="mt-4">
                       <Label className="text-sm font-medium mb-2 block">
                         Tambah Foto (Opsional)
-                        <span className="text-gray-500 font-normal ml-1">Max 5 foto</span>
+                        <span className="text-gray-500 font-normal ml-1">Max 3 foto</span>
                       </Label>
 
                       {/* Preview Photos */}
