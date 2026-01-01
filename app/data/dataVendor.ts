@@ -1,4 +1,3 @@
-// app/data/dataVendor.ts
 import { Vendor } from "../components/ui/vendor-card";
 
 export const Vendors: Vendor[] = [
@@ -6,11 +5,10 @@ export const Vendors: Vendor[] = [
         id: "1",
         name: "Edi Taulany Karya Baru",
         verified: true,
-        rating: 4.3,
-        reviewCount: 74,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang AC", "Instalasi AC", "Cuci AC"],
-        summary:
-            "Spesialis instalasi, perbaikan, dan perawatan AC rumah serta kantor. Menangani AC split, cassette, dan central dengan standar kerja rapi, cepat, dan bergaransi 30 hari.",
+        summary: "Spesialis instalasi, perbaikan, dan perawatan AC rumah serta kantor. Menangani AC split, cassette, dan central dengan standar kerja rapi, cepat, dan bergaransi 30 hari.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=12",
         serviceAreas: ["Jakarta Barat", "Jakarta Utara", "Tangerang", "Cirebon", "Subang"],
@@ -54,11 +52,10 @@ export const Vendors: Vendor[] = [
         id: "2",
         name: "Berkah Teknik Listrik",
         verified: true,
-        rating: 4.7,
-        reviewCount: 89,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang Listrik", "Panel Listrik", "Instalasi Rumah"],
-        summary:
-            "Layanan instalasi dan perapihan kabel, pemasangan MCB, penambahan titik listrik, hingga panel distribusi untuk rumah dan ruko. Fokus pada keamanan, kerapian, dan kepatuhan standar nasional.",
+        summary: "Layanan instalasi dan perapihan kabel, pemasangan MCB, penambahan titik listrik, hingga panel distribusi untuk rumah dan ruko. Fokus pada keamanan, kerapian, dan kepatuhan standar nasional.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=32",
         serviceAreas: ["Jakarta Selatan", "Depok", "Bogor", "Sukabumi", "Cianjur"],
@@ -93,11 +90,10 @@ export const Vendors: Vendor[] = [
         id: "3",
         name: "Clean&Co",
         verified: false,
-        rating: 4.2,
-        reviewCount: 56,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang Pembersihan Rumah", "Deep Cleaning"],
-        summary:
-            "Jasa kebersihan profesional untuk apartemen, rumah, dan kantor. Termasuk general cleaning, deep cleaning pasca renovasi, sanitasi kamar mandi, dan pembersihan sofa serta karpet.",
+        summary: "Jasa kebersihan profesional untuk apartemen, rumah, dan kantor. Termasuk general cleaning, deep cleaning pasca renovasi, sanitasi kamar mandi, dan pembersihan sofa serta karpet.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=5",
         serviceAreas: ["Jakarta Pusat", "Bandung", "Cimahi", "Tasikmalaya", "Garut"],
@@ -132,11 +128,10 @@ export const Vendors: Vendor[] = [
         id: "4",
         name: "Jaya Plumbing",
         verified: true,
-        rating: 4.8,
-        reviewCount: 112,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang Ledeng", "Bongkar Pasang Wastafel", "Perbaikan Kebocoran"],
-        summary:
-            "Menangani bocor pipa, mampet, instalasi pompa air, wastafel, kloset, hingga toren. Respon cepat dengan diagnosa jelas sebelum pengerjaan dan hasil rapi tanpa banyak bongkar.",
+        summary: "Menangani bocor pipa, mampet, instalasi pompa air, wastafel, kloset, hingga toren. Respon cepat dengan diagnosa jelas sebelum pengerjaan dan hasil rapi tanpa banyak bongkar.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=47",
         serviceAreas: ["Bekasi", "Karawang", "Cilegon", "Serang", "Pandeglang"],
@@ -171,11 +166,10 @@ export const Vendors: Vendor[] = [
         id: "5",
         name: "Sedot WC Barokah",
         verified: false,
-        rating: 4.1,
-        reviewCount: 42,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang Sedot WC", "Saluran Mampet"],
-        summary:
-            "Layanan sedot WC dan saluran mampet dengan armada siap panggil. Menjaga area kerja tetap bersih, proses cepat, dan transparan dalam estimasi biaya.",
+        summary: "Layanan sedot WC dan saluran mampet dengan armada siap panggil. Menjaga area kerja tetap bersih, proses cepat, dan transparan dalam estimasi biaya.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=21",
         serviceAreas: ["Semarang", "Solo", "Magelang", "Salatiga", "Purwokerto"],
@@ -201,11 +195,10 @@ export const Vendors: Vendor[] = [
         id: "6",
         name: "Green Yard",
         verified: true,
-        rating: 4.9,
-        reviewCount: 93,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang Kebun", "Perawatan Taman", "Desain Landscape"],
-        summary:
-            "Layanan penataan taman minimalis, vertical garden, pemangkasan pohon, hingga perawatan rumput rutin. Menghadirkan ruang hijau estetik dan fungsional untuk rumah dan kantor.",
+        summary: "Layanan penataan taman minimalis, vertical garden, pemangkasan pohon, hingga perawatan rumput rutin. Menghadirkan ruang hijau estetik dan fungsional untuk rumah dan kantor.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=8",
         serviceAreas: ["Yogyakarta", "Bantul", "Sleman", "Magelang", "Klaten"],
@@ -231,11 +224,10 @@ export const Vendors: Vendor[] = [
         id: "7",
         name: "Karya Furnitur",
         verified: true,
-        rating: 4.6,
-        reviewCount: 67,
+        rating: 0,
+        reviewCount: 0,
         tags: ["Tukang Mebel", "Custom Lemari", "Kitchen Set"],
-        summary:
-            "Workshop furnitur custom untuk lemari, kitchen set, rak TV, dan meja kerja. Menggunakan material pilihan dengan finishing rapi dan desain menyesuaikan kebutuhan ruangan.",
+        summary: "Workshop furnitur custom untuk lemari, kitchen set, rak TV, dan meja kerja. Menggunakan material pilihan dengan finishing rapi dan desain menyesuaikan kebutuhan ruangan.",
         gallery: [],
         avatar: "https://i.pravatar.cc/120?img=57",
         serviceAreas: ["Surabaya", "Sidoarjo", "Gresik", "Mojokerto", "Pasuruan"],
@@ -259,12 +251,19 @@ export const Vendors: Vendor[] = [
     },
 ];
 
-// Helper function to find vendor by email
+// ⭐ HELPER FUNCTION - Hitung rating dinamis dengan rumus
+export const calculateNewRating = (currentRating: number, currentCount: number, newRating: number): number => {
+    if (currentCount === 0) {
+        return newRating;
+    }
+    const newValue = (currentRating * currentCount + newRating) / (currentCount + 1);
+    return Math.round(newValue * 100) / 100;
+};
+
 export const findVendorByEmail = (email: string) => {
     return Vendors.find(vendor => vendor.email === email);
 };
 
-// Helper function to validate vendor login
 export const validateVendorLogin = (email: string, password: string) => {
     const vendor = findVendorByEmail(email);
     if (vendor && vendor.password === password) {
@@ -273,9 +272,7 @@ export const validateVendorLogin = (email: string, password: string) => {
     return null;
 };
 
-// Helper function to get vendor by ID with memory sync
 export const getVendorById = (id: string) => {
-    // PRIORITAS 1: Cek localStorage mitraUser (untuk vendor yang sedang login)
     if (typeof window !== 'undefined') {
         try {
             const mitraUser = localStorage.getItem('mitraUser');
@@ -290,7 +287,6 @@ export const getVendorById = (id: string) => {
         }
     }
 
-    // PRIORITAS 2: Cek sessionStorage updatedVendorsData
     if (typeof window !== 'undefined') {
         try {
             const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
@@ -306,42 +302,34 @@ export const getVendorById = (id: string) => {
         }
     }
     
-    // PRIORITAS 3: Fallback ke data original
     return Vendors.find(vendor => vendor.id === id);
 };
 
-// Helper function to get all vendors with memory sync
 export const getAllVendors = () => {
     if (typeof window !== 'undefined') {
         try {
-            // Ambil mitraUser dari localStorage
             const mitraUser = localStorage.getItem('mitraUser');
             let mitraData: any = null;
             if (mitraUser) {
                 mitraData = JSON.parse(mitraUser);
             }
 
-            // Ambil updated vendors dari sessionStorage
             const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
             let updatedVendors: Record<string, any> = {};
             if (updatedVendorsData) {
                 updatedVendors = JSON.parse(updatedVendorsData);
             }
 
-            // Merge data: prioritaskan mitraUser untuk vendor yang sedang login
             return Vendors.map(vendor => {
-                // Jika ini vendor yang sedang login, gunakan data dari localStorage
                 if (mitraData && mitraData.id === vendor.id) {
                     return { ...vendor, ...mitraData };
                 }
                 
-                // Jika ada update di sessionStorage, gunakan itu
                 const updated = updatedVendors[vendor.id];
                 if (updated) {
                     return { ...vendor, ...updated };
                 }
                 
-                // Fallback ke data original
                 return vendor;
             });
         } catch (e) {
@@ -351,11 +339,9 @@ export const getAllVendors = () => {
     return Vendors;
 };
 
-// Helper function to update vendor data
-export const updateVendorData = (vendorId: string, updates: Partial<Vendor>) => {
+export const updateVendorData = (vendorId: string, updates: Partial<any>) => {
     if (typeof window !== 'undefined') {
         try {
-            // Update sessionStorage
             const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
             const updatedVendors: Record<string, any> = updatedVendorsData ? JSON.parse(updatedVendorsData) : {};
             
@@ -368,7 +354,6 @@ export const updateVendorData = (vendorId: string, updates: Partial<Vendor>) => 
             
             sessionStorage.setItem('updatedVendorsData', JSON.stringify(updatedVendors));
             
-            // Update localStorage jika ini vendor yang sedang login
             const mitraUser = localStorage.getItem('mitraUser');
             if (mitraUser) {
                 const parsedMitra = JSON.parse(mitraUser);
@@ -381,7 +366,6 @@ export const updateVendorData = (vendorId: string, updates: Partial<Vendor>) => 
                 }
             }
             
-            // Trigger custom event
             const event = new CustomEvent('vendorDataUpdated', {
                 detail: { vendorId, updates }
             });
@@ -396,7 +380,6 @@ export const updateVendorData = (vendorId: string, updates: Partial<Vendor>) => 
     return false;
 };
 
-// Helper function to get category from tags
 export const getCategoryFromTags = (tags: string[]): string => {
     const tagToCategory: Record<string, string> = {
         "Tukang AC": "ac",

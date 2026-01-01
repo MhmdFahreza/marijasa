@@ -711,10 +711,9 @@ export default function OrderHistoryPage() {
   const handleConfirmCompletion = () => {
     if (!selectedOrder) return;
 
-    // Simpan rating dan review jika ada
     const hasRating = ratingData.rating > 0;
 
-    // Update data pesanan di localStorage
+    // Update data pesanan di localStorage (userOrders)
     const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
     const updatedOrders = existingOrders.map((order: any) => {
       if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
@@ -738,7 +737,6 @@ export default function OrderHistoryPage() {
           ]
         };
 
-        // Tambahkan rating jika ada
         if (hasRating) {
           updatedOrder.rating = ratingData.rating;
           updatedOrder.review = ratingData.comment;
@@ -762,13 +760,97 @@ export default function OrderHistoryPage() {
 
     localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
+    // ⭐ SINKRONISASI RATING KE VENDOR - KODE BARU DIMULAI
+    if (hasRating) {
+      try {
+        // Import fungsi helper
+        const { calculateNewRating, getVendorById, Vendors } = require('@/app/data/dataVendor');
+
+        // Cari vendor berdasarkan nama
+        const foundVendor = Vendors.find((v: any) => v.name === selectedOrder.vendorName);
+        let actualVendorId = foundVendor?.id;
+
+        // Jika tidak ditemukan, coba dari updatedVendorsData
+        if (!actualVendorId) {
+          const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+          if (updatedVendorsData) {
+            const updatedVendors = JSON.parse(updatedVendorsData);
+            actualVendorId = Object.keys(updatedVendors).find(id => {
+              const vendor = updatedVendors[id];
+              return vendor.name === selectedOrder.vendorName;
+            });
+          }
+        }
+
+        if (actualVendorId) {
+          // Ambil data vendor terbaru
+          let vendor = getVendorById(actualVendorId);
+
+          if (!vendor) {
+            vendor = foundVendor;
+          }
+
+          if (vendor) {
+            // Hitung rating baru dengan rumus: R_baru = (R_lama * n + rating_baru) / (n + 1)
+            const newRating = calculateNewRating(
+              vendor.rating || 0,
+              vendor.reviewCount || 0,
+              ratingData.rating
+            );
+
+            // Update data vendor
+            const updatedVendor = {
+              ...vendor,
+              rating: newRating,
+              reviewCount: (vendor.reviewCount || 0) + 1
+            };
+
+            // Simpan ke sessionStorage (updatedVendorsData)
+            const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+            const updatedVendors: Record<string, any> = updatedVendorsData ? JSON.parse(updatedVendorsData) : {};
+
+            updatedVendors[actualVendorId] = updatedVendor;
+            sessionStorage.setItem('updatedVendorsData', JSON.stringify(updatedVendors));
+
+            // Update localStorage jika vendor sedang login
+            const mitraUser = localStorage.getItem('mitraUser');
+            if (mitraUser) {
+              const parsedMitra = JSON.parse(mitraUser);
+              if (parsedMitra.id === actualVendorId) {
+                parsedMitra.rating = newRating;
+                parsedMitra.reviewCount = (parsedMitra.reviewCount || 0) + 1;
+                localStorage.setItem('mitraUser', JSON.stringify(parsedMitra));
+              }
+            }
+
+            // Trigger custom event untuk update real-time di halaman lain
+            const event = new CustomEvent('vendorDataUpdated', {
+              detail: {
+                vendorId: actualVendorId,
+                updates: {
+                  rating: newRating,
+                  reviewCount: (vendor.reviewCount || 0) + 1
+                }
+              }
+            });
+            window.dispatchEvent(event);
+
+            console.log(`✅ Rating updated for vendor ${selectedOrder.vendorName}: ${newRating} (${(vendor.reviewCount || 0) + 1} reviews)`);
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing rating to vendor:', error);
+      }
+    }
+    // ⭐ AKHIR SINKRONISASI RATING KE VENDOR
+
     // Update status di allOrders untuk mitra
     const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
     const updatedAllOrders = allOrders.map((order: any) => {
       if (order.id === selectedOrder.id) {
         return {
           ...order,
-          status: "completed" // Status selesai untuk mitra
+          status: "completed"
         };
       }
       return order;
@@ -799,7 +881,6 @@ export default function OrderHistoryPage() {
           ]
         };
 
-        // Tambahkan rating jika ada
         if (hasRating) {
           updatedOrder.rating = ratingData.rating;
           updatedOrder.review = ratingData.comment;
@@ -823,7 +904,6 @@ export default function OrderHistoryPage() {
 
     setShowCompletionModal(false);
 
-    // Tampilkan modal terima kasih jika memberikan rating
     if (hasRating) {
       setShowThankYouModal(true);
       setTimeout(() => {

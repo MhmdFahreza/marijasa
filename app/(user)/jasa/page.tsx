@@ -236,27 +236,28 @@ export default function JasaPage() {
   // Load vendors dengan sync dari localStorage
   useEffect(() => {
     const loadVendors = () => {
+      // ⭐ GUNAKAN getAllVendors() untuk mendapat data terbaru
       const allVendors = getAllVendors();
       setVendors(allVendors);
     };
 
     loadVendors();
 
-    // Listen untuk vendor data updates
+    // ⭐ LISTEN KE EVENT CUSTOM UNTUK UPDATE REAL-TIME
     const handleVendorUpdate = () => {
       loadVendors();
     };
 
-    window.addEventListener('vendorDataUpdated', handleVendorUpdate);
+    window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
 
     return () => {
-      window.removeEventListener('vendorDataUpdated', handleVendorUpdate);
+      window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
     };
   }, []);
 
   useEffect(() => {
     const kategori = searchParams?.get('kategori');
-    
+
     if (kategori) {
       setSelectedCategory(kategori);
     }
@@ -265,11 +266,11 @@ export default function JasaPage() {
       const token = localStorage.getItem('userToken');
       setIsLoggedIn(!!token);
     }
-    
+
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 300);
-    
+
     return () => clearTimeout(timer);
   }, [searchParams]);
 
@@ -542,8 +543,8 @@ export default function JasaPage() {
                       }}
                       transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
                     >
-                      <VendorCard 
-                        vendor={v} 
+                      <VendorCard
+                        vendor={v}
                         isLoggedIn={isLoggedIn}
                         onLoginRequired={() => setShowLoginModal(true)}
                       />
@@ -597,8 +598,8 @@ export default function JasaPage() {
           <div className="py-4">
             <LoginForm userType="user" onSuccess={handleLoginSuccess} />
             <div className="mt-4 text-center text-sm text-muted-foreground">
-              <Button 
-                variant="link" 
+              <Button
+                variant="link"
                 className="p-0 h-auto text-[#7CE0A8] hover:text-[#6bcb96]"
                 onClick={() => {
                   setShowLoginModal(false);
