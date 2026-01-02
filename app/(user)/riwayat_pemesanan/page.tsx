@@ -1,3 +1,4 @@
+// app/riwayat_pemesanan/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -58,6 +59,8 @@ import {
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
+import { Checkbox } from "@/app/components/ui/checkbox";
+import { Separator } from "@/app/components/ui/separator";
 
 // Biaya layanan tetap (sama dengan di form)
 const SERVICE_FEE = 10000;
@@ -85,11 +88,14 @@ export default function OrderHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("semua");
   const [newServiceData, setNewServiceData] = useState({
-    description: "",
+    selectedServices: [] as string[],
+    quantities: {} as Record<string, number>,
     reason: "",
     images: [] as File[],
     previews: [] as string[]
   });
+  const [vendorServices, setVendorServices] = useState<any[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
 
   // State untuk modal metode pembayaran
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -120,8 +126,8 @@ export default function OrderHistoryPage() {
     rating: 0,
     comment: "",
     isSubmitted: false,
-    photos: [] as string[], // ✅ TAMBAHKAN INI
-    isAnonymous: false // ✅ TAMBAHKAN INI
+    photos: [] as string[],
+    isAnonymous: false
   });
   const [showThankYouModal, setShowThankYouModal] = useState(false);
 
@@ -178,6 +184,99 @@ export default function OrderHistoryPage() {
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  // PERBAIKAN: Fungsi untuk mendapatkan layanan dari vendor yang diperbarui
+  const loadVendorServices = async (vendorName: string) => {
+    setIsLoadingServices(true);
+    try {
+      // 1. Coba dari localStorage mitraUser (jika vendor sedang login)
+      const mitraUser = JSON.parse(localStorage.getItem('mitraUser') || '{}');
+      
+      // 2. Coba dari sessionStorage updatedVendorsData (data vendor yang diperbarui)
+      const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+      let updatedVendors: Record<string, any> = {};
+      if (updatedVendorsData) {
+        updatedVendors = JSON.parse(updatedVendorsData);
+      }
+      
+      // 3. Coba dari localStorage allVendors (data vendor global)
+      const allVendors = JSON.parse(localStorage.getItem('allVendors') || '[]');
+      
+      let vendorData = null;
+      
+      // Cari vendor berdasarkan nama dari berbagai sumber
+      // Prioritas 1: mitraUser (vendor yang sedang login)
+      if (mitraUser.name === vendorName) {
+        vendorData = mitraUser;
+      } 
+      // Prioritas 2: updatedVendorsData (sessionStorage)
+      else {
+        const updatedVendorKey = Object.keys(updatedVendors).find(key => 
+          updatedVendors[key].name === vendorName
+        );
+        if (updatedVendorKey) {
+          vendorData = updatedVendors[updatedVendorKey];
+        } 
+        // Prioritas 3: allVendors (localStorage)
+        else {
+          vendorData = allVendors.find((v: any) => v.name === vendorName);
+        }
+      }
+      
+      // Jika masih tidak ditemukan, coba dari data statis Vendors
+      if (!vendorData) {
+        try {
+          // Dynamic import untuk menghindari SSR issues
+          const dataVendorModule = await import('@/app/data/dataVendor');
+          const Vendors = dataVendorModule.Vendors;
+          vendorData = Vendors.find((v: any) => v.name === vendorName);
+        } catch (importError) {
+          console.error("Error importing Vendors data:", importError);
+        }
+      }
+      
+      // Ambil layanan aktif dari vendor
+      if (vendorData && vendorData.services) {
+        const activeServices = vendorData.services.filter((s: any) => s.active) || [];
+        console.log(`Loaded ${activeServices.length} active services for ${vendorName}:`, activeServices);
+        setVendorServices(activeServices);
+      } else {
+        console.warn(`No services found for vendor: ${vendorName}`);
+        setVendorServices([]);
+      }
+    } catch (error) {
+      console.error("Error loading vendor services:", error);
+      setVendorServices([]);
+    } finally {
+      setIsLoadingServices(false);
+    }
+  };
+
+  // PERBAIKAN: Fungsi untuk sinkronisasi data vendor ke localStorage allVendors
+  const syncVendorDataToAllVendors = () => {
+    try {
+      const allVendors = JSON.parse(localStorage.getItem('allVendors') || '[]');
+      const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
+      
+      if (updatedVendorsData) {
+        const updatedVendors = JSON.parse(updatedVendorsData);
+        
+        // Update allVendors dengan data terbaru dari updatedVendors
+        Object.values(updatedVendors).forEach((updatedVendor: any) => {
+          const existingIndex = allVendors.findIndex((v: any) => v.id === updatedVendor.id);
+          if (existingIndex >= 0) {
+            allVendors[existingIndex] = { ...allVendors[existingIndex], ...updatedVendor };
+          } else {
+            allVendors.push(updatedVendor);
+          }
+        });
+        
+        localStorage.setItem('allVendors', JSON.stringify(allVendors));
+      }
+    } catch (error) {
+      console.error("Error syncing vendor data:", error);
+    }
   };
 
   useEffect(() => {
@@ -275,7 +374,9 @@ export default function OrderHistoryPage() {
               vendorNotes: order.vendorNotes || "",
               // Tambahkan rating jika ada
               rating: order.rating || null,
-              review: order.review || ""
+              review: order.review || "",
+              // Tambahkan vendorId untuk referensi layanan
+              vendorId: order.vendorId || null
             };
           });
 
@@ -292,18 +393,40 @@ export default function OrderHistoryPage() {
     };
 
     loadOrders();
+    // Sinkronisasi data vendor saat pertama kali load
+    syncVendorDataToAllVendors();
 
     // Tambahkan event listener untuk update real-time
     const handleStorageChange = () => {
       loadOrders();
+      syncVendorDataToAllVendors();
     };
 
     window.addEventListener('storage', handleStorageChange);
+    
+    // Tambahkan listener untuk custom event vendorDataUpdated
+    const handleVendorDataUpdated = () => {
+      syncVendorDataToAllVendors();
+      // Jika modal layanan terbuka, reload layanan vendor
+      if (isAddServiceModalOpen && selectedOrder) {
+        loadVendorServices(selectedOrder.vendorName);
+      }
+    };
+
+    window.addEventListener('vendorDataUpdated', handleVendorDataUpdated);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('vendorDataUpdated', handleVendorDataUpdated);
     };
-  }, []);
+  }, [isAddServiceModalOpen, selectedOrder]);
+
+  // Effect untuk load services ketika order dipilih dan modal dibuka
+  useEffect(() => {
+    if (selectedOrder && isAddServiceModalOpen) {
+      loadVendorServices(selectedOrder.vendorName);
+    }
+  }, [selectedOrder, isAddServiceModalOpen]);
 
   // Helper function untuk menentukan warna status
   const getStatusColor = (status: string) => {
@@ -338,6 +461,16 @@ export default function OrderHistoryPage() {
   const handleAddServiceClick = () => {
     if (!selectedOrder) return;
     setIsAddServiceModalOpen(true);
+    // Reset form data
+    setNewServiceData({
+      selectedServices: [],
+      quantities: {},
+      reason: "",
+      images: [],
+      previews: []
+    });
+    // Load vendor services
+    loadVendorServices(selectedOrder.vendorName);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -373,17 +506,76 @@ export default function OrderHistoryPage() {
     }));
   };
 
+  // Fungsi untuk menangani pemilihan layanan
+  const handleServiceSelection = (serviceId: string, checked: boolean) => {
+    if (checked) {
+      setNewServiceData(prev => ({
+        ...prev,
+        selectedServices: [...prev.selectedServices, serviceId],
+        quantities: { ...prev.quantities, [serviceId]: 1 }
+      }));
+    } else {
+      const newQuantities = { ...newServiceData.quantities };
+      delete newQuantities[serviceId];
+      
+      setNewServiceData(prev => ({
+        ...prev,
+        selectedServices: prev.selectedServices.filter(id => id !== serviceId),
+        quantities: newQuantities
+      }));
+    }
+  };
+
+  // Fungsi untuk mengubah jumlah layanan
+  const handleQuantityChange = (serviceId: string, quantity: number) => {
+    if (quantity < 1) quantity = 1;
+    setNewServiceData(prev => ({
+      ...prev,
+      quantities: { ...prev.quantities, [serviceId]: quantity }
+    }));
+  };
+
   const handleSubmitNewService = () => {
-    if (!newServiceData.description.trim() || !newServiceData.reason.trim()) {
-      toast.error("Harap isi deskripsi dan alasan permintaan layanan tambahan");
+    if (newServiceData.selectedServices.length === 0) {
+      toast.error("Harap pilih minimal satu layanan tambahan");
       return;
     }
+
+    if (!newServiceData.reason.trim()) {
+      toast.error("Harap isi alasan permintaan layanan tambahan");
+      return;
+    }
+
+    // Ambil detail layanan yang dipilih
+    const selectedServiceDetails = vendorServices
+      .filter((service: any) => newServiceData.selectedServices.includes(service.id))
+      .map((service: any) => ({
+        id: service.id,
+        name: service.name,
+        price: service.price,
+        quantity: newServiceData.quantities[service.id] || 1,
+        priceType: service.priceType,
+        description: service.description
+      }));
+
+    // Buat deskripsi dari layanan yang dipilih
+    const serviceDescription = selectedServiceDetails
+      .map((service: any) => `${service.name} (${service.quantity}x)`)
+      .join(', ');
+
+    // Hitung total harga
+    const totalPrice = selectedServiceDetails.reduce((total: number, service: any) => {
+      return total + (service.price * service.quantity);
+    }, 0);
 
     // Simpan data layanan tambahan
     const newService = {
       id: `ADD-${Date.now()}`,
       orderId: selectedOrder.id,
-      description: newServiceData.description,
+      vendorName: selectedOrder.vendorName,
+      services: selectedServiceDetails,
+      description: serviceDescription,
+      totalPrice: totalPrice,
       reason: newServiceData.reason,
       images: newServiceData.previews,
       submittedAt: new Date().toISOString(),
@@ -394,10 +586,40 @@ export default function OrderHistoryPage() {
     const existingRequests = JSON.parse(localStorage.getItem('additionalServiceRequests') || '[]');
     localStorage.setItem('additionalServiceRequests', JSON.stringify([...existingRequests, newService]));
 
+    // Update order dengan layanan tambahan
+    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+    const updatedOrders = existingOrders.map((order: any) => {
+      if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
+        const additionalServices = order.additionalServices || [];
+        return {
+          ...order,
+          additionalServices: [...additionalServices, newService],
+          totalPrice: (order.totalPrice || 0) + totalPrice
+        };
+      }
+      return order;
+    });
+
+    localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+
+    // Update state orders
+    setOrders(prevOrders => prevOrders.map(order => {
+      if (order.id === selectedOrder.id) {
+        const additionalServices = order.additionalServices || [];
+        return {
+          ...order,
+          additionalServices: [...additionalServices, newService],
+          totalPrice: (order.totalPrice || 0) + totalPrice
+        };
+      }
+      return order;
+    }));
+
     toast.success("Permintaan layanan tambahan berhasil dikirim!");
     setIsAddServiceModalOpen(false);
     setNewServiceData({
-      description: "",
+      selectedServices: [],
+      quantities: {},
       reason: "",
       images: [],
       previews: []
@@ -543,21 +765,20 @@ export default function OrderHistoryPage() {
 
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
-      // ⭐ KODE BARU - Update status di mitra (allOrders)
+      // Update status di mitra (allOrders)
       const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
       const updatedAllOrders = allOrders.map((mitraOrder: any) => {
         if (mitraOrder.id === order.id) {
           return {
             ...mitraOrder,
-            status: "in-progress", // Status untuk mitra (in-progress)
-            paymentStatus: "paid" // Update payment status jadi paid
+            status: "in-progress",
+            paymentStatus: "paid"
           };
         }
         return mitraOrder;
       });
 
       localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
-      // ⭐ AKHIR KODE BARU
 
       // Update state orders
       setOrders(prevOrders => prevOrders.map(o => {
@@ -641,13 +862,13 @@ export default function OrderHistoryPage() {
 
       localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
-      // ⭐ TAMBAHKAN KODE INI - Update status di mitra (allOrders)
+      // Update status di mitra (allOrders)
       const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
       const updatedAllOrders = allOrders.map((order: any) => {
         if (order.id === selectedOrder.id) {
           return {
             ...order,
-            status: "rejected", // Status untuk mitra
+            status: "rejected",
             cancellationReason: cancelReason,
             cancelledBy: "user",
             cancelledAt: new Date().toISOString()
@@ -657,7 +878,6 @@ export default function OrderHistoryPage() {
       });
 
       localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
-      // ⭐ AKHIR KODE TAMBAHAN
 
       // Update state orders
       setOrders(prevOrders => prevOrders.map(order => {
@@ -705,8 +925,8 @@ export default function OrderHistoryPage() {
       rating: order.rating || 0,
       comment: order.review || "",
       isSubmitted: false,
-      photos: order.ratingPhotos || [], // ✅ TAMBAHKAN INI
-      isAnonymous: order.isAnonymous || false // ✅ TAMBAHKAN INI
+      photos: order.ratingPhotos || [],
+      isAnonymous: order.isAnonymous || false
     });
     setShowCompletionModal(true);
   };
@@ -744,8 +964,8 @@ export default function OrderHistoryPage() {
         if (hasRating) {
           updatedOrder.rating = ratingData.rating;
           updatedOrder.review = ratingData.comment;
-          updatedOrder.ratingPhotos = ratingData.photos; // ✅ TAMBAHKAN INI
-          updatedOrder.isAnonymous = ratingData.isAnonymous; // ✅ TAMBAHKAN INI
+          updatedOrder.ratingPhotos = ratingData.photos;
+          updatedOrder.isAnonymous = ratingData.isAnonymous;
           updatedOrder.orderHistory.push({
             status: "Rating dan Ulasan Diberikan",
             date: new Date().toLocaleDateString('id-ID', {
@@ -766,89 +986,79 @@ export default function OrderHistoryPage() {
 
     localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
 
-    // ⭐ SINKRONISASI RATING KE VENDOR - KODE BARU DIMULAI
+    // SINKRONISASI RATING KE VENDOR
     if (hasRating) {
       try {
         // Import fungsi helper
-        const { calculateNewRating, getVendorById, Vendors } = require('@/app/data/dataVendor');
+        const { calculateNewRating } = require('@/app/data/dataVendor');
 
         // Cari vendor berdasarkan nama
-        const foundVendor = Vendors.find((v: any) => v.name === selectedOrder.vendorName);
-        let actualVendorId = foundVendor?.id;
+        const allVendors = JSON.parse(localStorage.getItem('allVendors') || '[]');
+        const vendorData = allVendors.find((v: any) => v.name === selectedOrder.vendorName);
+        
+        if (vendorData) {
+          // Hitung rating baru dengan rumus: R_baru = (R_lama * n + rating_baru) / (n + 1)
+          const newRating = calculateNewRating(
+            vendorData.rating || 0,
+            vendorData.reviewCount || 0,
+            ratingData.rating
+          );
 
-        // Jika tidak ditemukan, coba dari updatedVendorsData
-        if (!actualVendorId) {
+          // Update data vendor di allVendors
+          const updatedAllVendors = allVendors.map((vendor: any) => {
+            if (vendor.name === selectedOrder.vendorName) {
+              return {
+                ...vendor,
+                rating: newRating,
+                reviewCount: (vendor.reviewCount || 0) + 1
+              };
+            }
+            return vendor;
+          });
+
+          localStorage.setItem('allVendors', JSON.stringify(updatedAllVendors));
+
+          // Update sessionStorage (updatedVendorsData)
           const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
-          if (updatedVendorsData) {
-            const updatedVendors = JSON.parse(updatedVendorsData);
-            actualVendorId = Object.keys(updatedVendors).find(id => {
-              const vendor = updatedVendors[id];
-              return vendor.name === selectedOrder.vendorName;
-            });
-          }
-        }
-
-        if (actualVendorId) {
-          // Ambil data vendor terbaru
-          let vendor = getVendorById(actualVendorId);
-
-          if (!vendor) {
-            vendor = foundVendor;
-          }
-
-          if (vendor) {
-            // Hitung rating baru dengan rumus: R_baru = (R_lama * n + rating_baru) / (n + 1)
-            const newRating = calculateNewRating(
-              vendor.rating || 0,
-              vendor.reviewCount || 0,
-              ratingData.rating
-            );
-
-            // Update data vendor
-            const updatedVendor = {
-              ...vendor,
-              rating: newRating,
-              reviewCount: (vendor.reviewCount || 0) + 1
-            };
-
-            // Simpan ke sessionStorage (updatedVendorsData)
-            const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
-            const updatedVendors: Record<string, any> = updatedVendorsData ? JSON.parse(updatedVendorsData) : {};
-
-            updatedVendors[actualVendorId] = updatedVendor;
+          const updatedVendors: Record<string, any> = updatedVendorsData ? JSON.parse(updatedVendorsData) : {};
+          
+          // Find vendor by ID in updatedVendors
+          const vendorId = vendorData.id;
+          if (vendorId && updatedVendors[vendorId]) {
+            updatedVendors[vendorId].rating = newRating;
+            updatedVendors[vendorId].reviewCount = (updatedVendors[vendorId].reviewCount || 0) + 1;
             sessionStorage.setItem('updatedVendorsData', JSON.stringify(updatedVendors));
+          }
 
-            // Update localStorage jika vendor sedang login
-            const mitraUser = localStorage.getItem('mitraUser');
-            if (mitraUser) {
-              const parsedMitra = JSON.parse(mitraUser);
-              if (parsedMitra.id === actualVendorId) {
-                parsedMitra.rating = newRating;
-                parsedMitra.reviewCount = (parsedMitra.reviewCount || 0) + 1;
-                localStorage.setItem('mitraUser', JSON.stringify(parsedMitra));
+          // Update localStorage jika vendor sedang login
+          const mitraUser = localStorage.getItem('mitraUser');
+          if (mitraUser) {
+            const parsedMitra = JSON.parse(mitraUser);
+            if (parsedMitra.name === selectedOrder.vendorName) {
+              parsedMitra.rating = newRating;
+              parsedMitra.reviewCount = (parsedMitra.reviewCount || 0) + 1;
+              localStorage.setItem('mitraUser', JSON.stringify(parsedMitra));
+            }
+          }
+
+          // Trigger custom event untuk update real-time di halaman lain
+          const event = new CustomEvent('vendorDataUpdated', {
+            detail: {
+              vendorId: vendorData.id,
+              updates: {
+                rating: newRating,
+                reviewCount: (vendorData.reviewCount || 0) + 1
               }
             }
+          });
+          window.dispatchEvent(event);
 
-            // Trigger custom event untuk update real-time di halaman lain
-            const event = new CustomEvent('vendorDataUpdated', {
-              detail: {
-                vendorId: actualVendorId,
-                updates: {
-                  rating: newRating,
-                  reviewCount: (vendor.reviewCount || 0) + 1
-                }
-              }
-            });
-            window.dispatchEvent(event);
-
-            console.log(`✅ Rating updated for vendor ${selectedOrder.vendorName}: ${newRating} (${(vendor.reviewCount || 0) + 1} reviews)`);
-          }
+          console.log(`✅ Rating updated for vendor ${selectedOrder.vendorName}: ${newRating} (${(vendorData.reviewCount || 0) + 1} reviews)`);
         }
       } catch (error) {
         console.error('Error syncing rating to vendor:', error);
       }
     }
-    // ⭐ AKHIR SINKRONISASI RATING KE VENDOR
 
     // Update status di allOrders untuk mitra
     const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
@@ -890,8 +1100,8 @@ export default function OrderHistoryPage() {
         if (hasRating) {
           updatedOrder.rating = ratingData.rating;
           updatedOrder.review = ratingData.comment;
-          updatedOrder.ratingPhotos = ratingData.photos; // ✅ TAMBAHKAN INI
-          updatedOrder.isAnonymous = ratingData.isAnonymous; // ✅ TAMBAHKAN INI
+          updatedOrder.ratingPhotos = ratingData.photos;
+          updatedOrder.isAnonymous = ratingData.isAnonymous;
           updatedOrder.orderHistory.push({
             status: "Rating dan Ulasan Diberikan",
             date: new Date().toLocaleDateString('id-ID', {
@@ -1016,6 +1226,19 @@ export default function OrderHistoryPage() {
     const subtotal = order.paymentDetails?.subtotal || 0;
     const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
     return subtotal + SERVICE_FEE + transactionFee;
+  };
+
+  // Hitung total harga untuk layanan tambahan yang dipilih
+  const calculateNewServiceTotal = () => {
+    let total = 0;
+    newServiceData.selectedServices.forEach(serviceId => {
+      const service = vendorServices.find((s: any) => s.id === serviceId);
+      if (service) {
+        const quantity = newServiceData.quantities[serviceId] || 1;
+        total += service.price * quantity;
+      }
+    });
+    return total;
   };
 
   if (isLoading) {
@@ -1478,6 +1701,46 @@ export default function OrderHistoryPage() {
                                       </div>
                                     </div>
                                   </div>
+
+                                  {/* Layanan Tambahan (jika ada) */}
+                                  {order.additionalServices && order.additionalServices.length > 0 && (
+                                    <div className="mt-6 pt-4 border-t">
+                                      <h4 className="font-medium mb-3 text-[#7CE0A8]">Layanan Tambahan</h4>
+                                      <div className="space-y-3">
+                                        {order.additionalServices.map((addService: any, idx: number) => (
+                                          <Card key={idx} className="border-[#7CE0A8]/30">
+                                            <CardContent className="p-4">
+                                              <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                  <p className="font-medium">{addService.description}</p>
+                                                  <p className="text-sm text-gray-500">Status: {addService.status}</p>
+                                                </div>
+                                                <Badge className={
+                                                  addService.status === "diterima" ? "bg-green-100 text-green-800" :
+                                                    addService.status === "ditolak" ? "bg-red-100 text-red-800" :
+                                                      "bg-yellow-100 text-yellow-800"
+                                                }>
+                                                  {addService.status}
+                                                </Badge>
+                                              </div>
+                                              <div className="space-y-2">
+                                                {addService.services && addService.services.map((service: any, sIdx: number) => (
+                                                  <div key={sIdx} className="flex justify-between items-center text-sm">
+                                                    <span>{service.name} ({service.quantity}x)</span>
+                                                    <span className="font-medium">Rp {formatPrice(service.price * service.quantity)}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                              {addService.reason && (
+                                                <p className="text-sm text-gray-600 mt-2">Alasan: {addService.reason}</p>
+                                              )}
+                                              <p className="text-sm font-medium mt-2">Total: Rp {formatPrice(addService.totalPrice)}</p>
+                                            </CardContent>
+                                          </Card>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -2216,7 +2479,7 @@ export default function OrderHistoryPage() {
                       ))}
                     </div>
 
-                    {/* ✅ OPSI ANONYMOUS - Muncul hanya jika ada rating */}
+                    {/* OPSI ANONYMOUS - Muncul hanya jika ada rating */}
                     <AnimatePresence>
                       {ratingData.rating > 0 && (
                         <motion.div
@@ -2265,7 +2528,7 @@ export default function OrderHistoryPage() {
                       />
                     </div>
 
-                    {/* ✅ UPLOAD FOTO RATING */}
+                    {/* UPLOAD FOTO RATING */}
                     <div className="mt-4">
                       <Label className="text-sm font-medium mb-2 block">
                         Tambah Foto (Opsional)
@@ -2396,7 +2659,7 @@ export default function OrderHistoryPage() {
                   "{ratingData.comment}"
                 </p>
               )}
-              {/* ✅ TAMPILKAN FOTO JIKA ADA */}
+              {/* TAMPILKAN FOTO JIKA ADA */}
               {ratingData.photos.length > 0 && (
                 <div className="flex gap-2 justify-center mb-4 overflow-x-auto">
                   {ratingData.photos.slice(0, 3).map((photo, idx) => (
@@ -2549,7 +2812,7 @@ export default function OrderHistoryPage() {
         )}
       </AnimatePresence>
 
-      {/* Modal Tambah Layanan */}
+      {/* Modal Tambah Layanan (DIPERBARUI) */}
       <AnimatePresence>
         {isAddServiceModalOpen && selectedOrder && (
           <motion.div
@@ -2589,22 +2852,112 @@ export default function OrderHistoryPage() {
               {/* Content */}
               <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
                 <div className="space-y-6">
-                  {/* Deskripsi Layanan */}
+                  {/* Pilih Layanan dari Vendor */}
                   <div>
-                    <Label htmlFor="serviceDescription" className="text-sm font-medium mb-2 block">
-                      Deskripsi Layanan Tambahan *
+                    <Label className="text-sm font-medium mb-2 block">
+                      Pilih Layanan Tambahan *
                     </Label>
-                    <Textarea
-                      id="serviceDescription"
-                      placeholder="Jelaskan layanan tambahan yang Anda butuhkan..."
-                      rows={4}
-                      value={newServiceData.description}
-                      onChange={(e) => setNewServiceData(prev => ({
-                        ...prev,
-                        description: e.target.value
-                      }))}
-                      className="resize-none"
-                    />
+                    <p className="text-sm text-gray-500 mb-3">
+                      Pilih layanan tambahan yang Anda butuhkan dari vendor ini
+                    </p>
+
+                    {isLoadingServices ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#7CE0A8]" />
+                        <p className="text-sm text-gray-500 mt-2">Memuat layanan...</p>
+                      </div>
+                    ) : vendorServices.length === 0 ? (
+                      <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                        <Package className="h-12 w-12 mx-auto text-gray-300 mb-2" />
+                        <p className="text-gray-500">Tidak ada layanan tersedia dari vendor ini</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {vendorServices.map((service: any) => (
+                          <div key={service.id} className="border rounded-lg p-4">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-start gap-3 flex-1">
+                                <Checkbox
+                                  id={`service-${service.id}`}
+                                  checked={newServiceData.selectedServices.includes(service.id)}
+                                  onCheckedChange={(checked) => 
+                                    handleServiceSelection(service.id, checked as boolean)
+                                  }
+                                  className="mt-1"
+                                />
+                                <div className="flex-1">
+                                  <Label 
+                                    htmlFor={`service-${service.id}`} 
+                                    className="font-medium cursor-pointer"
+                                  >
+                                    {service.name}
+                                  </Label>
+                                  <p className="text-sm text-gray-500 mt-1">
+                                    {service.description}
+                                  </p>
+                                  {service.estimatedTime && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      ⏱️ Estimasi: {service.estimatedTime}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="text-right">
+                                <div className="font-semibold text-[#7CE0A8]">
+                                  Rp {service.price.toLocaleString('id-ID')}
+                                  {service.priceType === 'hourly' && '/jam'}
+                                  {service.priceType === 'unit' && '/unit'}
+                                </div>
+                                
+                                {newServiceData.selectedServices.includes(service.id) && (
+                                  <div className="mt-2">
+                                    <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>
+                                    <Input
+                                      id={`qty-${service.id}`}
+                                      type="number"
+                                      min="1"
+                                      value={newServiceData.quantities[service.id] || 1}
+                                      onChange={(e) => {
+                                        const qty = parseInt(e.target.value) || 1;
+                                        handleQuantityChange(service.id, qty);
+                                      }}
+                                      className="w-20 mt-1"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Ringkasan Layanan yang Dipilih */}
+                    {newServiceData.selectedServices.length > 0 && (
+                      <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <h4 className="font-medium mb-2">Layanan yang Dipilih:</h4>
+                        <div className="space-y-2">
+                          {newServiceData.selectedServices.map(serviceId => {
+                            const service = vendorServices.find((s: any) => s.id === serviceId);
+                            if (!service) return null;
+                            const quantity = newServiceData.quantities[serviceId] || 1;
+                            const total = service.price * quantity;
+                            return (
+                              <div key={serviceId} className="flex justify-between items-center text-sm">
+                                <span>{service.name} ({quantity}x)</span>
+                                <span className="font-medium">Rp {formatPrice(total)}</span>
+                              </div>
+                            );
+                          })}
+                          <Separator />
+                          <div className="flex justify-between items-center font-semibold">
+                            <span>Total</span>
+                            <span className="text-[#7CE0A8]">Rp {formatPrice(calculateNewServiceTotal())}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Alasan */}
@@ -2691,7 +3044,7 @@ export default function OrderHistoryPage() {
                         <ul className="space-y-1 text-blue-700 dark:text-blue-400">
                           <li>• Permintaan layanan tambahan akan dikirim ke vendor untuk konfirmasi</li>
                           <li>• Vendor dapat menolak permintaan jika tidak memungkinkan</li>
-                          <li>• Harga layanan tambahan akan ditentukan setelah disetujui vendor</li>
+                          <li>• Harga layanan tambahan akan ditentukan berdasarkan pilihan Anda</li>
                           <li>• Anda akan menerima notifikasi via email/SMS</li>
                         </ul>
                       </div>
@@ -2713,7 +3066,7 @@ export default function OrderHistoryPage() {
                   <Button
                     className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
                     onClick={handleSubmitNewService}
-                    disabled={!newServiceData.description.trim() || !newServiceData.reason.trim()}
+                    disabled={newServiceData.selectedServices.length === 0 || !newServiceData.reason.trim()}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Kirim Permintaan
