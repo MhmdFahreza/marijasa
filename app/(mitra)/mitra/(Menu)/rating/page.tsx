@@ -42,7 +42,26 @@ type Review = {
   isAnonymous?: boolean
 }
 
-// ⭐ FUNGSI HELPER UNTUK FORMAT TANGGAL
+// ✅ FUNGSI HELPER UNTUK MENDAPATKAN NAMA USER YANG BENAR
+const getUserNameFromOrder = (order: any): { name: string; email: string; avatar: string } => {
+  // Jika anonymous, return "Anonymous"
+  if (order.isAnonymous) {
+    return {
+      name: 'Anonymous',
+      email: order.customerInfo?.email || '',
+      avatar: ''
+    };
+  }
+
+  // Prioritas: raterName (data saat memberikan rating) > customerInfo.name > fallback
+  const name = order.raterName || order.customerInfo?.name || 'Pengguna';
+  const email = order.raterEmail || order.customerInfo?.email || '';
+  const avatar = order.raterAvatar || order.customerInfo?.avatar || '';
+
+  return { name, email, avatar };
+};
+
+// FUNGSI HELPER UNTUK FORMAT TANGGAL
 const formatReviewDate = (orderHistory: any[]): { dateString: string; timestamp: number } => {
   try {
     const ratingHistory = orderHistory?.find(
@@ -50,10 +69,8 @@ const formatReviewDate = (orderHistory: any[]): { dateString: string; timestamp:
     )
 
     if (ratingHistory?.date) {
-      // Parse tanggal dari format ISO atau timestamp
       const dateObj = new Date(ratingHistory.date)
       
-      // Validasi tanggal
       if (isNaN(dateObj.getTime())) {
         const now = new Date()
         return {
@@ -76,7 +93,6 @@ const formatReviewDate = (orderHistory: any[]): { dateString: string; timestamp:
       }
     }
 
-    // Default ke tanggal sekarang jika tidak ada
     const now = new Date()
     return {
       dateString: now.toLocaleDateString('id-ID', {
@@ -144,29 +160,17 @@ export default function UlasanPage() {
                 order.vendorName === vendor.name)
           )
           .map((order: any) => {
-            const userName = order.isAnonymous
-              ? 'Anonymous'
-              : order.customerInfo?.name ||
-                JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
-                'Pengguna'
+            // ✅ PERBAIKAN: Gunakan fungsi helper untuk mendapatkan nama yang benar
+            const userData = getUserNameFromOrder(order);
 
-            const userEmail = order.isAnonymous
-              ? order.customerInfo?.email
-              : JSON.parse(localStorage.getItem('user') || '{}').email
-
-            const userAvatar = order.isAnonymous
-              ? ''
-              : JSON.parse(localStorage.getItem('userProfile') || '{}').avatar
-
-            // ⭐ GUNAKAN FUNGSI HELPER UNTUK FORMAT TANGGAL
             const { dateString, timestamp } = formatReviewDate(order.orderHistory)
 
             return {
               id: order.id || order.orderId,
               orderId: order.id || order.orderId,
-              userName,
-              userEmail,
-              userAvatar,
+              userName: userData.name,
+              userEmail: userData.email,
+              userAvatar: userData.avatar,
               rating: order.rating,
               comment: order.review || '',
               serviceType: order.serviceType || 'Layanan',
@@ -457,7 +461,7 @@ export default function UlasanPage() {
         </div>
       </div>
 
-      {/* Filter dan Sort - PERBAIKAN DISINI */}
+      {/* Filter dan Sort */}
       <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 mb-6 shadow-lg border border-neutral-200 dark:border-neutral-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-wrap">

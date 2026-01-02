@@ -63,9 +63,8 @@ export default function VendorFormPage() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [vendor, setVendor] = useState<any>(null);
 
-  useEffect(() => {
-    setMounted(true);
-
+  // Fungsi untuk load profile data
+  const loadProfileData = () => {
     const savedProfile = localStorage.getItem("userProfile");
     if (savedProfile) {
       const profile = JSON.parse(savedProfile);
@@ -77,12 +76,55 @@ export default function VendorFormPage() {
         gpsLink: profile.gpsLink || ""
       });
     }
+  };
 
-    // Load vendor data dengan sync dari localStorage/sessionStorage
+  useEffect(() => {
+    setMounted(true);
+    
+    // Load initial profile data
+    loadProfileData();
+
+    // Load vendor data
     const vendorId = params.vendorId as string;
     const vendorData = getVendorById(vendorId);
     setVendor(vendorData);
+
+    // Listen untuk profile updates
+    const handleProfileUpdate = (event: CustomEvent) => {
+      const updatedProfile = event.detail;
+      setFormData((prev: any) => ({
+        ...prev,
+        name: updatedProfile.name || "",
+        phone: updatedProfile.phone || "",
+        address: updatedProfile.address || "",
+        gpsLink: updatedProfile.gpsLink || ""
+      }));
+      toast.success("Data profil telah diperbarui!");
+    };
+
+    window.addEventListener('profileUpdated', handleProfileUpdate as EventListener);
+
+    // Cleanup listener
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate as EventListener);
+    };
   }, [params.vendorId]);
+
+  // Tambahkan effect untuk reload profile data ketika kembali dari halaman lain
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Reload profile data when page becomes visible again
+        loadProfileData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const handleNavigation = async (url: string) => {
     setLeaving(true);
@@ -1077,8 +1119,8 @@ function ConfirmationStep({
           <div className="space-y-3">
             <div>
               <h3 className="font-bold text-lg">{formData.name || "Nama Pelanggan"}</h3>
-              <p className="text-muted-foreground">{formData.email || "dinosaur123@gmail.com"}</p>
-              <p className="text-muted-foreground">{formData.phone || "08838553739"}</p>
+              <p className="text-muted-foreground">{formData.email || "email@example.com"}</p>
+              <p className="text-muted-foreground">{formData.phone || "08xxxxxxxxxx"}</p>
             </div>
 
             <div className="border-t pt-3">
