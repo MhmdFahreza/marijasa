@@ -339,59 +339,129 @@ export default function DashboardPage() {
     completedOrders: 0,
     pendingOrders: 0,
     inProgressOrders: 0,
-    averageRating: 0,
-    totalReviews: 0,
+    vendorRating: 0,
+    vendorReviewCount: 0,
     totalRevenue: 0
   });
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
+  const [currentVendorName, setCurrentVendorName] = useState<string>('');
 
-  // Load vendor ID dari localStorage
+  // Load vendor ID dan nama dari localStorage
   useEffect(() => {
     const mitraUser = localStorage.getItem('mitraUser');
     if (mitraUser) {
       try {
         const parsedMitra = JSON.parse(mitraUser);
         setCurrentVendorId(parsedMitra.id);
-        console.log('Current Vendor ID:', parsedMitra.id);
+        setCurrentVendorName(parsedMitra.name);
+        console.log('Current Vendor:', parsedMitra.name, '(ID:', parsedMitra.id, ')');
       } catch (error) {
         console.error('Error parsing mitraUser:', error);
       }
     }
   }, []);
 
-  // Load data dari localStorage
+  // FUNGSI UNTUK MENGHITUNG RATING DARI USER ORDERS
+  const calculateVendorRatingFromOrders = (vendorId: string, vendorName: string) => {
+    try {
+      const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+      
+      // Filter orders yang selesai, punya rating, dan sesuai vendor ini
+      const vendorReviews = userOrders.filter((order: any) => 
+        order.status === 'selesai' && 
+        order.rating && 
+        order.rating > 0 &&
+        (order.vendor?.id === vendorId || 
+         order.vendorId === vendorId || 
+         order.vendor?.name === vendorName || 
+         order.vendorName === vendorName)
+      );
+
+      console.log('Orders with rating for this vendor:', vendorReviews);
+
+      if (vendorReviews.length === 0) {
+        return { rating: 0, reviewCount: 0 };
+      }
+
+      // Hitung total rating
+      const totalRating = vendorReviews.reduce((sum: number, order: any) => sum + (order.rating || 0), 0);
+      const averageRating = totalRating / vendorReviews.length;
+
+      console.log('Calculated rating from orders:', {
+        totalRating,
+        reviewCount: vendorReviews.length,
+        averageRating: averageRating.toFixed(2)
+      });
+
+      return {
+        rating: Math.round(averageRating * 100) / 100, // Round ke 2 desimal
+        reviewCount: vendorReviews.length
+      };
+    } catch (error) {
+      console.error('Error calculating vendor rating:', error);
+      return { rating: 0, reviewCount: 0 };
+    }
+  };
+
+  // Load data dari localStorage dengan sinkronisasi rating vendor
   useEffect(() => {
-    if (!currentVendorId) return;
+    if (!currentVendorId || !currentVendorName) return;
 
     loadDashboardData();
 
     const interval = setInterval(loadDashboardData, 5000);
-    return () => clearInterval(interval);
-  }, [currentVendorId]);
+    
+    // Event listener untuk vendorDataUpdated
+    const handleVendorDataUpdated = () => {
+      console.log('Vendor data updated event received, reloading dashboard...');
+      loadDashboardData();
+    };
+
+    // Event listener untuk reviewsUpdated (dari halaman rating)
+    const handleReviewsUpdated = () => {
+      console.log('Reviews updated event received, reloading dashboard...');
+      loadDashboardData();
+    };
+    
+    window.addEventListener('vendorDataUpdated', handleVendorDataUpdated);
+    window.addEventListener('reviewsUpdated', handleReviewsUpdated);
+    window.addEventListener('storage', loadDashboardData);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('vendorDataUpdated', handleVendorDataUpdated);
+      window.removeEventListener('reviewsUpdated', handleReviewsUpdated);
+      window.removeEventListener('storage', loadDashboardData);
+    };
+  }, [currentVendorId, currentVendorName]);
 
   const loadDashboardData = () => {
-    if (!currentVendorId) {
-      console.log('No vendor ID, skipping load');
+    if (!currentVendorId || !currentVendorName) {
+      console.log('No vendor ID or name, skipping load');
       return;
     }
 
     try {
       setIsLoading(true);
+
+      // HITUNG RATING LANGSUNG DARI USER ORDERS (SUMBER UTAMA)
+      const ratingFromOrders = calculateVendorRatingFromOrders(currentVendorId, currentVendorName);
+      let vendorRating = ratingFromOrders.rating;
+      let vendorReviewCount = ratingFromOrders.reviewCount;
+
+      console.log('Final rating from orders:', { vendorRating, vendorReviewCount });
+
+      // Load pesanan
       const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-
-      console.log('All Orders:', allOrders);
-      console.log('Filtering for vendor:', currentVendorId);
-
-      // FILTER HANYA PESANAN UNTUK VENDOR INI
       const vendorOrders = allOrders.filter((order: any) => {
         return order.vendorId === currentVendorId;
       });
 
       console.log('Vendor Orders (filtered):', vendorOrders);
 
-      // Hitung statistik HANYA dari pesanan vendor ini
+      // Hitung statistik
       let availableBalance = 0;
       let pendingBalance = 0;
       let monthlyIncome = 0;
@@ -400,27 +470,23 @@ export default function DashboardPage() {
       let completedOrders = 0;
       let pendingOrders = 0;
       let inProgressOrders = 0;
-      let totalRating = 0;
-      let ratingCount = 0;
 
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
 
       const transactions: any[] = [];
 
-      // Hitung total dari completed orders VENDOR INI
+      // Hitung dari pesanan
       vendorOrders.forEach((order: any) => {
         const orderDate = new Date(order.orderDate);
         const orderMonth = orderDate.getMonth();
         const orderYear = orderDate.getFullYear();
 
-        // Hitung berdasarkan status
         if (order.status === 'completed') {
           completedOrders++;
           const orderAmount = order.serviceDetails?.totalPrice || 0;
           availableBalance += orderAmount;
 
-          // Tambahkan ke transaksi income
           transactions.push({
             id: `INC-${order.id}`,
             type: "income",
@@ -438,33 +504,22 @@ export default function DashboardPage() {
             monthlyIncome += orderAmount;
           }
         } else if (order.status === 'in-progress') {
-          // Pesanan yang sedang dikerjakan = pending (belum selesai)
           pendingOrders++;
           inProgressOrders++;
-          // Hanya tambahkan ke pending balance jika sudah dibayar
           if (order.paymentStatus === 'paid') {
             pendingBalance += order.serviceDetails?.totalPrice || 0;
           }
         } else if (order.status === 'pending') {
           pendingOrders++;
         }
-
-        // Hitung rating
-        if (order.rating) {
-          totalRating += order.rating;
-          ratingCount++;
-        }
       });
 
       console.log('Available Balance BEFORE withdrawal:', availableBalance);
 
-      // Load withdrawal history VENDOR INI dan kurangi dari available balance
+      // Load withdrawal history
       const allWithdrawals = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
-
-      // FILTER withdrawal hanya untuk vendor ini
       const vendorWithdrawals = allWithdrawals.filter((w: any) => w.vendorId === currentVendorId);
 
-      console.log('All Withdrawals:', allWithdrawals);
       console.log('Vendor Withdrawals (filtered):', vendorWithdrawals);
 
       let totalWithdrawn = 0;
@@ -472,7 +527,6 @@ export default function DashboardPage() {
       vendorWithdrawals.forEach((withdrawal: any) => {
         transactions.push(withdrawal);
 
-        // Kurangi available balance dengan withdrawal yang sudah completed
         if (withdrawal.status === 'completed') {
           totalWithdrawn += withdrawal.amount;
           console.log('Withdrawal:', withdrawal.amount, 'Total withdrawn so far:', totalWithdrawn);
@@ -486,7 +540,6 @@ export default function DashboardPage() {
 
       console.log('Total Withdrawn (this vendor):', totalWithdrawn);
 
-      // Kurangi available balance dengan total yang sudah ditarik
       availableBalance = Math.max(0, availableBalance - totalWithdrawn);
 
       console.log('Available Balance AFTER withdrawal:', availableBalance);
@@ -503,8 +556,8 @@ export default function DashboardPage() {
         completedOrders,
         pendingOrders,
         inProgressOrders,
-        averageRating: ratingCount > 0 ? totalRating / ratingCount : 0,
-        totalReviews: ratingCount,
+        vendorRating: vendorRating,
+        vendorReviewCount: vendorReviewCount,
         totalRevenue: availableBalance + pendingBalance
       });
 
@@ -609,7 +662,6 @@ export default function DashboardPage() {
     setTimeout(() => {
       const methodData = paymentMethods.find(m => m.id === method);
 
-      // Set status completed langsung agar langsung mengurangi saldo
       const newWithdrawal = {
         id: `WD-${Date.now()}`,
         type: "withdrawal",
@@ -620,10 +672,9 @@ export default function DashboardPage() {
         accountNumber: methodData?.accountNumber || '',
         status: "completed",
         reference: `WD-${Date.now()}`,
-        vendorId: currentVendorId // TAMBAHKAN VENDOR ID
+        vendorId: currentVendorId
       };
 
-      // Simpan withdrawal history
       const withdrawalHistory = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
       withdrawalHistory.push(newWithdrawal);
       localStorage.setItem('withdrawalHistory', JSON.stringify(withdrawalHistory));
@@ -633,7 +684,6 @@ export default function DashboardPage() {
       setWithdrawLoading(false);
       setShowWithdrawDialog(false);
 
-      // Reload data untuk memperbarui saldo
       loadDashboardData();
     }, 1500);
   };
@@ -842,7 +892,7 @@ export default function DashboardPage() {
             </Card>
           </motion.div>
 
-          {/* Total Rating */}
+          {/* Rating Vendor */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -852,19 +902,19 @@ export default function DashboardPage() {
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs md:text-sm text-neutral-600 dark:text-neutral-400 mb-1">Total Rating</p>
+                    <p className="text-xs md:text-sm text-neutral-600 dark:text-neutral-400 mb-1">Rating Vendor</p>
                     <div className="flex items-center gap-2">
                       <p className="text-xl md:text-2xl font-bold text-neutral-900 dark:text-white">
-                        {statData.averageRating > 0 ? statData.averageRating.toFixed(1) : '-'}
+                        {statData.vendorRating > 0 ? statData.vendorRating.toFixed(1) : '-'}
                       </p>
-                      {statData.averageRating > 0 && (
+                      {statData.vendorRating > 0 && (
                         <div className="flex items-center">
-                          {renderStars(statData.averageRating)}
+                          {renderStars(statData.vendorRating)}
                         </div>
                       )}
                     </div>
                     <p className="text-xs text-neutral-500 mt-1">
-                      {statData.totalReviews > 0 ? `dari ${statData.totalReviews} ulasan` : 'Belum ada ulasan'}
+                      {statData.vendorReviewCount > 0 ? `dari ${statData.vendorReviewCount} ulasan` : 'Belum ada ulasan'}
                     </p>
                   </div>
                   <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
