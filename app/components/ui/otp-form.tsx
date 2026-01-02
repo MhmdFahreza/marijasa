@@ -49,12 +49,12 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
     // Simulasi proses verifikasi OTP
     setTimeout(() => {
       setIsLoading(false)
-      if (otp === "123456") { // OTP dummy
-        // Simpan data user ke localStorage
+      if (otp === "123456") {
+        // OTP berhasil - simpan token dan user data
         const userData = {
-          name: "User", // Nama default
+          name: "User",
           email: emailFromParams,
-          avatar: "/profile.svg" // Gambar default seperti Tokopedia
+          avatar: "/profile.svg"
         };
 
         const authData = {
@@ -63,10 +63,16 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
           loginTime: new Date().toISOString()
         };
 
-        localStorage.setItem("authData", JSON.stringify(authData));
+        // Simpan ke localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem("userToken", "dummy-token");
+          localStorage.setItem("user", JSON.stringify(userData));
+          localStorage.setItem("authData", JSON.stringify(authData));
+        }
 
         // Redirect ke halaman utama setelah verifikasi berhasil
         router.push("/")
+        router.refresh()
       } else {
         alert("Kode OTP salah. Coba lagi dengan 123456")
       }
@@ -83,7 +89,6 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Skeleton untuk OTP input */}
             <div className="space-y-2">
               <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
               <div className="flex items-center gap-2.5">

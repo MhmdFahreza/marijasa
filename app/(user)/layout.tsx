@@ -31,6 +31,7 @@ import {
 
 const LANG_STORAGE_KEY = "appLanguage";
 const AUTH_STORAGE_KEY = "authData";
+const TOKEN_STORAGE_KEY = "userToken"; // ⭐ Key untuk token
 
 interface UserData {
   name: string;
@@ -55,17 +56,37 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setSelectedLanguage(savedLang);
     }
 
-    const authData = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    if (authData) {
-      try {
-        const parsedAuth = JSON.parse(authData);
-        setIsLoggedIn(true);
-        setUserData(parsedAuth.user);
-      } catch (error) {
-        console.error("Error parsing auth data:", error);
-        localStorage.removeItem(AUTH_STORAGE_KEY);
+    // ⭐ Function untuk check login status
+    const checkLoginStatus = () => {
+      const token = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+      const authData = window.localStorage.getItem(AUTH_STORAGE_KEY);
+      
+      if (token && authData) {
+        try {
+          const parsedAuth = JSON.parse(authData);
+          setIsLoggedIn(true);
+          setUserData(parsedAuth.user);
+        } catch (error) {
+          console.error("Error parsing auth data:", error);
+          localStorage.removeItem(AUTH_STORAGE_KEY);
+          localStorage.removeItem(TOKEN_STORAGE_KEY);
+        }
       }
-    }
+    };
+
+    // Check initial login status
+    checkLoginStatus();
+
+    // ⭐ Listen untuk event login berhasil dari OTP
+    const handleUserLoggedIn = () => {
+      checkLoginStatus();
+    };
+
+    window.addEventListener('userLoggedIn', handleUserLoggedIn);
+
+    return () => {
+      window.removeEventListener('userLoggedIn', handleUserLoggedIn);
+    };
   }, []);
 
   useEffect(() => {
@@ -116,7 +137,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleLogoClick = () => {
-    // Cek apakah sudah di halaman home
     if (pathname === "/") {
       setIsMobileMenuOpen(false);
       return;
@@ -129,15 +149,34 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, 300);
   };
 
+  // ⭐ Fungsi logout yang diperbaiki - hapus semua data terkait auth
   const handleLogout = () => {
+    // Hapus token dan auth data
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    
+    // ⭐ Optional: Hapus data lain yang terkait user jika perlu
+    // localStorage.removeItem('userOrders');
+    // localStorage.removeItem('favoriteVendors');
+    
+    // Update state
     setIsLoggedIn(false);
     setUserData(null);
-    router.push("/");
+    
+    // Tutup mobile menu jika terbuka
+    setIsMobileMenuOpen(false);
+    
+    // ⭐ Dispatch event untuk memberitahu komponen lain
+    window.dispatchEvent(new Event('userLoggedOut'));
+    
+    // Redirect ke home
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push("/");
+    }, 300);
   };
 
   const handleProfileClick = () => {
-    // Cek apakah sudah di halaman profile
     if (pathname === "/profile") {
       setIsMobileMenuOpen(false);
       return;
@@ -151,7 +190,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleOrderHistoryClick = () => {
-    // Cek apakah sudah di halaman order history
     if (pathname === "/riwayat_pemesanan") {
       setIsMobileMenuOpen(false);
       return;
@@ -165,7 +203,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleFavoriteVendorsClick = () => {
-    // Cek apakah sudah di halaman vendor favorit
     if (pathname === "/vendor_favorit") {
       setIsMobileMenuOpen(false);
       return;
@@ -254,7 +291,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
                     <DropdownMenuItem
                       onClick={handleLogout}
-                      className="flex items-center gap-2 text-red-600 cursor-pointer py-2.5"
+                      className="flex items-center gap-2 text-red-600 cursor-pointer py-2.5 hover:bg-red-50 dark:hover:bg-red-900/20"
                     >
                       <LogOut className="w-4 h-4" />
                       Keluar

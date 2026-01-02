@@ -29,7 +29,7 @@ import {
 } from '@/app/components/ui/dialog'
 import { Send } from 'lucide-react'
 import { getVendorById } from '@/app/data/dataVendor'
-import  SiteFooter  from '@/app/footer'
+import SiteFooter from '@/app/footer'
 import { LoaderTwo } from '@/app/components/transition/loader'
 import { LoginForm } from '@/app/components/ui/login-form'
 import { RatingStars } from '@/app/components/ui/rating-stars'
@@ -82,10 +82,8 @@ const formatReviewDate = (orderHistory: any[]): string => {
     )
 
     if (ratingHistory?.date) {
-      // Parse tanggal dari format ISO atau timestamp
       const dateObj = new Date(ratingHistory.date)
-      
-      // Validasi tanggal
+
       if (isNaN(dateObj.getTime())) {
         return new Date().toLocaleDateString('id-ID', {
           day: 'numeric',
@@ -101,7 +99,6 @@ const formatReviewDate = (orderHistory: any[]): string => {
       })
     }
 
-    // Default ke tanggal sekarang jika tidak ada
     return new Date().toLocaleDateString('id-ID', {
       day: 'numeric',
       month: 'long',
@@ -130,14 +127,23 @@ export default function VendorDetailPage() {
   const [reviews, setReviews] = useState<Review[]>([])
   const [isLoadingReviews, setIsLoadingReviews] = useState(true)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
+  const [isTransitioning, setIsTransitioning] = useState(false)
 
   const vendorId = params.vendorId as string
 
-  // Load vendor data dengan sync
+  // Load vendor data dengan sync - DIPERBAIKI
   useEffect(() => {
     const loadVendor = () => {
       const vendorData = getVendorById(vendorId)
-      setVendor(vendorData)
+      if (vendorData) {
+        // Pastikan summary/description selalu ada
+        const finalVendor = {
+          ...vendorData,
+          summary: vendorData.summary || vendorData.description || 'Deskripsi tidak tersedia',
+          description: vendorData.description || vendorData.summary || 'Deskripsi tidak tersedia'
+        }
+        setVendor(finalVendor)
+      }
     }
 
     loadVendor()
@@ -148,9 +154,18 @@ export default function VendorDetailPage() {
       }
     }
 
+    // Listen untuk update dari mitra profile
+    const handleMitraUpdate = () => {
+      loadVendor()
+    }
+
     window.addEventListener('vendorDataUpdated', handleVendorUpdate)
-    return () =>
+    window.addEventListener('mitraProfileUpdated', handleMitraUpdate)
+
+    return () => {
       window.removeEventListener('vendorDataUpdated', handleVendorUpdate)
+      window.removeEventListener('mitraProfileUpdated', handleMitraUpdate)
+    }
   }, [vendorId])
 
   // Load reviews dari localStorage dan dengarkan perubahan
@@ -177,8 +192,8 @@ export default function VendorDetailPage() {
             const userName = order.isAnonymous
               ? 'Anonymous'
               : order.customerInfo?.name ||
-                JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
-                'Pengguna'
+              JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
+              'Pengguna'
 
             const userEmail = order.isAnonymous
               ? order.customerInfo?.email
@@ -187,9 +202,8 @@ export default function VendorDetailPage() {
             const userAvatar = order.isAnonymous
               ? undefined
               : JSON.parse(localStorage.getItem('userProfile') || '{}')
-                  .avatar
+                .avatar
 
-            // ⭐ GUNAKAN FUNGSI HELPER UNTUK FORMAT TANGGAL
             const formattedDate = formatReviewDate(order.orderHistory)
 
             return {
@@ -211,7 +225,6 @@ export default function VendorDetailPage() {
             }
           })
           .sort((a: Review, b: Review) => {
-            // Sort berdasarkan string tanggal (fallback simple)
             return b.date.localeCompare(a.date)
           })
 
@@ -287,10 +300,26 @@ export default function VendorDetailPage() {
     }
   }
 
-  const handleLoginSuccess = () => {
-    setIsLoggedIn(true)
-    setShowLoginModal(false)
-  }
+  const handleLoginSuccess = async (email: string) => {
+    setIsTransitioning(true);
+
+    // Simpan email ke localStorage untuk halaman OTP
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pendingLoginEmail', email);
+    }
+
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
+
+    // Redirect ke halaman OTP
+    router.push(`/login/otp?email=${encodeURIComponent(email)}`);
+  };
+
+  const handleRegisterClick = async () => {
+    setShowLoginModal(false);
+    setIsTransitioning(true);
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
+    router.push('/register');
+  };
 
   const handleFavoriteClick = () => {
     if (!isLoggedIn) {
@@ -464,7 +493,7 @@ export default function VendorDetailPage() {
                   </div>
 
                   <p className="text-muted-foreground leading-relaxed text-sm md:text-base">
-                    {vendor.summary}
+                    {vendor.summary || vendor.description || 'Deskripsi tidak tersedia'}
                   </p>
                 </div>
 
@@ -503,11 +532,10 @@ export default function VendorDetailPage() {
                 <button
                   key={tab.id}
                   onClick={() => scrollToSection(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === tab.id
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
                       ? 'border-[#7CE0A8] text-[#7CE0A8]'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                   {tab.id === 'ulasan' && reviews.length > 0 && (
@@ -655,12 +683,12 @@ export default function VendorDetailPage() {
                       <div className="text-3xl md:text-4xl font-bold text-[#7CE0A8] mb-1">
                         {reviews.length > 0
                           ? (
-                              (reviews.filter(
-                                (r) => r.rating >= 4
-                              ).length /
-                                reviews.length) *
-                              100
-                            ).toFixed(0)
+                            (reviews.filter(
+                              (r) => r.rating >= 4
+                            ).length /
+                              reviews.length) *
+                            100
+                          ).toFixed(0)
                           : 0}
                         %
                       </div>
@@ -782,9 +810,8 @@ export default function VendorDetailPage() {
                                               >
                                                 <img
                                                   src={photo}
-                                                  alt={`Foto ${
-                                                    idx + 1
-                                                  }`}
+                                                  alt={`Foto ${idx + 1
+                                                    }`}
                                                   className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover flex-shrink-0 hover:scale-105 transition-transform"
                                                 />
                                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
@@ -931,20 +958,8 @@ export default function VendorDetailPage() {
         </div>
       </div>
 
-      {/* Gallery Modal */}
-      <motion.main
-        className="min-h-screen"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{
-          duration: prefersReduced ? 0 : 0.25,
-        }}
-      />
-
-      <Dialog
-        open={showLoginModal}
-        onOpenChange={setShowLoginModal}
-      >
+      {/* Login Modal */}
+      <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -952,33 +967,18 @@ export default function VendorDetailPage() {
               Login Diperlukan
             </DialogTitle>
             <DialogDescription>
-              Anda perlu login untuk mengakses fitur ini. Silakan
-              masuk ke akun Anda terlebih dahulu.
+              Anda perlu login untuk mengakses fitur ini. Silakan masuk ke akun Anda terlebih dahulu.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <LoginForm
-              userType="user"
-              onSuccess={handleLoginSuccess}
-            />
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              <Button
-                variant="link"
-                className="p-0 h-auto text-[#7CE0A8] hover:text-[#5CA68A]"
-                onClick={() => {
-                  setShowLoginModal(false)
-                  router.push('/register')
-                }}
-              >
-                Belum punya akun? Daftar di sini
-              </Button>
-            </div>
+            <LoginForm userType="user" onSuccess={handleLoginSuccess} />
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Transition Loader */}
       <AnimatePresence>
-        {leaving && (
+        {(leaving || isTransitioning) && (
           <motion.div
             key="route-leave"
             initial={{ opacity: 0 }}
@@ -987,7 +987,7 @@ export default function VendorDetailPage() {
             transition={{
               duration: prefersReduced ? 0 : 0.5,
             }}
-            className="fixed inset-0 z-9999 bg-white dark:bg-neutral-950 flex items-center justify-center"
+            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
           >
             <LoaderTwo />
           </motion.div>
@@ -1034,7 +1034,6 @@ export default function VendorDetailPage() {
           scrollbar-color: rgba(124, 224, 168, 0.4) transparent;
         }
 
-        /* Webkit browsers (Chrome, Safari, Edge) */
         .reviews-scroll-container::-webkit-scrollbar {
           width: 8px;
         }
@@ -1053,7 +1052,6 @@ export default function VendorDetailPage() {
           background: rgba(124, 224, 168, 0.6);
         }
 
-        /* Dark mode */
         @media (prefers-color-scheme: dark) {
           .reviews-scroll-container {
             scrollbar-color: rgba(124, 224, 168, 0.4) transparent;

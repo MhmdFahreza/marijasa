@@ -51,7 +51,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 const calculateVendorRating = (vendorId: string, vendorName: string): number => {
   try {
     const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    
+
     const vendorReviews = userOrders.filter(
       (order: any) =>
         order.status === 'selesai' &&
@@ -79,7 +79,7 @@ const calculateVendorRating = (vendorId: string, vendorName: string): number => 
 const countVendorReviews = (vendorId: string, vendorName: string): number => {
   try {
     const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    
+
     const vendorReviews = userOrders.filter(
       (order: any) =>
         order.status === 'selesai' &&
@@ -279,6 +279,7 @@ export default function JasaPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [vendors, setVendors] = useState<any[]>([]);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedCity, setSelectedCity] = useState<string>("");
@@ -288,21 +289,20 @@ export default function JasaPage() {
   useEffect(() => {
     const loadVendors = () => {
       const allVendors = getAllVendors();
-      
+
       // ⭐ Hitung rating real-time untuk setiap vendor
       const vendorsWithCalculatedRating = allVendors.map(vendor => {
         const calculatedRating = calculateVendorRating(vendor.id, vendor.name);
         const reviewCount = countVendorReviews(vendor.id, vendor.name);
-        
+
         return {
           ...vendor,
           calculatedRating: calculatedRating > 0 ? calculatedRating : vendor.rating,
           reviewCount: reviewCount,
-          // Update rating property juga agar konsisten
           rating: calculatedRating > 0 ? calculatedRating : vendor.rating
         };
       });
-      
+
       setVendors(vendorsWithCalculatedRating);
     };
 
@@ -321,14 +321,22 @@ export default function JasaPage() {
       loadVendors();
     };
 
+    // ⭐ Listen ke event logout
+    const handleUserLogout = () => {
+      setIsLoggedIn(false);
+      setShowLoginModal(false);
+    };
+
     window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
     window.addEventListener('reviewsUpdated', handleReviewsUpdate as EventListener);
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('userLoggedOut', handleUserLogout);
 
     return () => {
       window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
       window.removeEventListener('reviewsUpdated', handleReviewsUpdate as EventListener);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userLoggedOut', handleUserLogout);
     };
   }, []);
 
@@ -339,6 +347,7 @@ export default function JasaPage() {
       setSelectedCategory(kategori);
     }
 
+    // ⭐ Cek token untuk validasi login
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('userToken');
       setIsLoggedIn(!!token);
@@ -410,9 +419,25 @@ export default function JasaPage() {
     setCurrentPage(1);
   };
 
-  const handleLoginSuccess = () => {
-    setIsLoggedIn(true);
+  const handleLoginSuccess = async (email: string) => {
+    setIsTransitioning(true);
+
+    // Simpan email ke localStorage untuk halaman OTP
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pendingLoginEmail', email);
+    }
+
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
+
+    // Redirect ke halaman OTP
+    router.push(`/login/otp?email=${encodeURIComponent(email)}`);
+  };
+
+  const handleRegisterClick = async () => {
     setShowLoginModal(false);
+    setIsTransitioning(true);
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
+    router.push('/register');
   };
 
   const renderPaginationItems = () => {
@@ -674,24 +699,12 @@ export default function JasaPage() {
           </DialogHeader>
           <div className="py-4">
             <LoginForm userType="user" onSuccess={handleLoginSuccess} />
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              <Button
-                variant="link"
-                className="p-0 h-auto text-[#7CE0A8] hover:text-[#6bcb96]"
-                onClick={() => {
-                  setShowLoginModal(false);
-                  router.push('/register');
-                }}
-              >
-                Belum punya akun? Daftar di sini
-              </Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
 
       <AnimatePresence>
-        {leaving && (
+        {(leaving || isTransitioning) && (
           <motion.div
             key="route-leave"
             initial={{ opacity: 0 }}
