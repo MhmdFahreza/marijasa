@@ -42,6 +42,22 @@ const PAYMENT_FEES = {
 
 const SERVICE_FEE = 10000;
 
+// Fungsi untuk mendapatkan info user dari Gmail (sama seperti di profile)
+const getUserInfoFromGmail = (email: string): { name: string; phone: string } => {
+  const emailPrefix = email.split('@')[0];
+  const capitalizedName = emailPrefix
+    .split(/[._-]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+  
+  const phoneNumber = `08${Math.abs(emailPrefix.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 100000000).toString().padStart(9, '0')}`;
+  
+  return {
+    name: capitalizedName,
+    phone: phoneNumber
+  };
+};
+
 export default function VendorFormPage() {
   const params = useParams();
   const router = useRouter();
@@ -63,23 +79,86 @@ export default function VendorFormPage() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [vendor, setVendor] = useState<any>(null);
 
-  // Fungsi untuk load profile data
+  // PERBAIKAN: Fungsi untuk load profile data dengan fallback ke user data
+  // gpsLink TIDAK auto-fill, hanya terisi saat klik tombol "Lokasi Saya"
   const loadProfileData = () => {
+    // Cek apakah ada userProfile yang tersimpan
     const savedProfile = localStorage.getItem("userProfile");
+    
     if (savedProfile) {
+      // Jika ada profile tersimpan, gunakan itu (KECUALI gpsLink)
       const profile = JSON.parse(savedProfile);
-      setFormData({
+      setFormData((prev: any) => ({
+        ...prev,
         name: profile.name || "",
         email: profile.email || "",
         phone: profile.phone || "",
         address: profile.address || "",
-        gpsLink: profile.gpsLink || ""
-      });
+        // gpsLink sengaja TIDAK di-auto fill, biarkan kosong
+        gpsLink: prev.gpsLink || ""
+      }));
+      return;
+    }
+    
+    // PERBAIKAN: Jika belum ada userProfile, buat dari data login (user dan authData)
+    const userData = localStorage.getItem("user");
+    const authData = localStorage.getItem("authData");
+    
+    if (userData) {
+      try {
+        const parsedUserData = JSON.parse(userData);
+        const parsedAuthData = authData ? JSON.parse(authData) : null;
+        
+        // Generate nama dan nomor telepon dari email (sama seperti di profile)
+        const userInfo = getUserInfoFromGmail(parsedUserData.email);
+        
+        // Buat profile baru
+        const newProfile = {
+          id: `user-${Date.now()}`,
+          name: userInfo.name,
+          email: parsedUserData.email,
+          phone: userInfo.phone,
+          address: "",
+          gpsLink: "",
+          joinDate: parsedAuthData?.loginTime 
+            ? new Date(parsedAuthData.loginTime).toISOString().split('T')[0] 
+            : new Date().toISOString().split('T')[0],
+          avatar: parsedUserData.avatar || "/avatars/user-avatar.jpg",
+        };
+        
+        // Simpan profile baru ke localStorage untuk sinkronisasi dengan halaman profile
+        localStorage.setItem("userProfile", JSON.stringify(newProfile));
+        
+        // Set form data (gpsLink tetap kosong)
+        setFormData((prev: any) => ({
+          ...prev,
+          name: newProfile.name,
+          email: newProfile.email,
+          phone: newProfile.phone,
+          address: newProfile.address,
+          // gpsLink sengaja TIDAK di-auto fill, biarkan kosong
+          gpsLink: ""
+        }));
+        
+      } catch (error) {
+        console.error("Error parsing user data:", error);
+      }
     }
   };
 
   useEffect(() => {
     setMounted(true);
+    
+    // PERBAIKAN: Cek apakah user sudah login terlebih dahulu
+    const authData = localStorage.getItem("authData");
+    const userData = localStorage.getItem("user");
+    const userToken = localStorage.getItem("userToken");
+
+    if (!authData || !userData || !userToken) {
+      toast.error("Anda harus login terlebih dahulu");
+      router.push("/login");
+      return;
+    }
     
     // Load initial profile data
     loadProfileData();
@@ -89,7 +168,7 @@ export default function VendorFormPage() {
     const vendorData = getVendorById(vendorId);
     setVendor(vendorData);
 
-    // Listen untuk profile updates
+    // Listen untuk profile updates (KECUALI gpsLink - tidak auto update)
     const handleProfileUpdate = (event: CustomEvent) => {
       const updatedProfile = event.detail;
       setFormData((prev: any) => ({
@@ -97,7 +176,7 @@ export default function VendorFormPage() {
         name: updatedProfile.name || "",
         phone: updatedProfile.phone || "",
         address: updatedProfile.address || "",
-        gpsLink: updatedProfile.gpsLink || ""
+        // gpsLink TIDAK di-update otomatis, hanya via tombol "Lokasi Saya"
       }));
       toast.success("Data profil telah diperbarui!");
     };
@@ -108,7 +187,7 @@ export default function VendorFormPage() {
     return () => {
       window.removeEventListener('profileUpdated', handleProfileUpdate as EventListener);
     };
-  }, [params.vendorId]);
+  }, [params.vendorId, router]);
 
   // Tambahkan effect untuk reload profile data ketika kembali dari halaman lain
   useEffect(() => {
