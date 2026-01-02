@@ -187,35 +187,25 @@ export function LoginForm({
         }, 1500)
       })
       
-      // Simpan token di localStorage berdasarkan user type
-      if (typeof window !== 'undefined') {
-        if (userType === "admin") {
+      // PERBAIKAN: Untuk admin, simpan token langsung
+      if (userType === "admin") {
+        if (typeof window !== 'undefined') {
           localStorage.setItem('adminToken', 'dummy-token')
           localStorage.setItem('adminUser', JSON.stringify({ 
             email,
             name: "Administrator",
             role: "admin"
           }))
-        } else {
-          // Untuk user biasa
-          localStorage.setItem('userToken', 'dummy-token')
-          localStorage.setItem('user', JSON.stringify({ 
-            email,
-            name: "Pengguna",
-            role: "user"
-          }))
         }
-      }
-      
-      // Jika ada callback onSuccess (untuk modal), panggil
-      if (onSuccess) {
-        onSuccess(email)
-        setIsLoading(false)
-        return
-      }
-      
-      // Hanya tampilkan loader redirect untuk admin
-      if (userType === "admin") {
+        
+        // Jika ada callback onSuccess (untuk modal), panggil
+        if (onSuccess) {
+          onSuccess(email)
+          setIsLoading(false)
+          return
+        }
+        
+        // Tampilkan loader redirect untuk admin
         setShowRedirectLoader(true)
         
         // Tunggu sebentar untuk menampilkan loader redirect
@@ -224,6 +214,23 @@ export function LoginForm({
           router.refresh()
         }, 1000)
       } else {
+        // PERBAIKAN: Untuk user biasa, JANGAN simpan token dulu
+        // Hanya simpan pendingAuth untuk verifikasi di halaman OTP
+        if (typeof window !== 'undefined') {
+          // Simpan data sementara untuk diverifikasi di OTP
+          const pendingAuth = {
+            email,
+            timestamp: new Date().toISOString(),
+            verified: false
+          }
+          localStorage.setItem('pendingAuth', JSON.stringify(pendingAuth))
+          
+          // HAPUS token lama jika ada
+          localStorage.removeItem('userToken')
+          localStorage.removeItem('user')
+          localStorage.removeItem('authData')
+        }
+        
         // Untuk user biasa, langsung redirect ke OTP tanpa loading overlay
         router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
       }

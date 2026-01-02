@@ -33,6 +33,7 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
   const [otp, setOtp] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -40,17 +41,53 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
 
   useEffect(() => {
     setIsMounted(true)
-  }, [])
+    
+    // PERBAIKAN: Cek apakah ada pendingAuth yang valid
+    if (typeof window !== 'undefined') {
+      const pendingAuth = localStorage.getItem('pendingAuth')
+      
+      if (!pendingAuth) {
+        // Jika tidak ada pendingAuth, redirect ke login
+        router.push('/login')
+        return
+      }
+      
+      try {
+        const authData = JSON.parse(pendingAuth)
+        
+        // Cek apakah email sesuai
+        if (authData.email !== emailFromParams) {
+          router.push('/login')
+          return
+        }
+        
+        // Cek apakah sudah expired (5 menit)
+        const timestamp = new Date(authData.timestamp).getTime()
+        const now = new Date().getTime()
+        const fiveMinutes = 5 * 60 * 1000
+        
+        if (now - timestamp > fiveMinutes) {
+          localStorage.removeItem('pendingAuth')
+          router.push('/login')
+          return
+        }
+      } catch (error) {
+        console.error('Error parsing pendingAuth:', error)
+        router.push('/login')
+      }
+    }
+  }, [emailFromParams, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setIsLoading(true)
 
     // Simulasi proses verifikasi OTP
     setTimeout(() => {
       setIsLoading(false)
       if (otp === "123456") {
-        // OTP berhasil - simpan token dan user data
+        // PERBAIKAN: OTP berhasil - BARU simpan token dan user data
         const userData = {
           name: "User",
           email: emailFromParams,
@@ -63,18 +100,21 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
           loginTime: new Date().toISOString()
         };
 
-        // Simpan ke localStorage
+        // PERBAIKAN: Simpan ke localStorage HANYA setelah OTP berhasil
         if (typeof window !== 'undefined') {
           localStorage.setItem("userToken", "dummy-token");
           localStorage.setItem("user", JSON.stringify(userData));
           localStorage.setItem("authData", JSON.stringify(authData));
+          
+          // Hapus pendingAuth setelah berhasil
+          localStorage.removeItem('pendingAuth');
         }
 
         // Redirect ke halaman utama setelah verifikasi berhasil
         router.push("/")
         router.refresh()
       } else {
-        alert("Kode OTP salah. Coba lagi dengan 123456")
+        setError("Kode OTP salah. Coba lagi dengan 123456")
       }
     }, 1000)
   }
@@ -113,16 +153,33 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
 
   const handleResend = () => {
     // Simulasi kirim ulang OTP
+    setOtp("")
+    setError(null)
     alert("OTP telah dikirim ulang! Gunakan 123456")
+  }
+
+  const handleBackToLogin = () => {
+    // PERBAIKAN: Hapus pendingAuth saat kembali ke login
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('pendingAuth')
+    }
+    router.push('/login')
   }
 
   return (
     <Card {...props}>
       <CardHeader>
         <CardTitle>Enter verification code</CardTitle>
-        <CardDescription>We sent a 6-digit code to your email.</CardDescription>
+        <CardDescription>
+          We sent a 6-digit code to {emailFromParams || 'your email'}.
+        </CardDescription>
       </CardHeader>
       <CardContent>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+            {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
@@ -161,12 +218,22 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
               >
                 {isLoading ? "Verifying..." : "Verify"}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleBackToLogin}
+                disabled={isLoading}
+                className="w-full mt-2"
+              >
+                Back to Login
+              </Button>
               <FieldDescription className="text-center">
                 Didn&apos;t receive the code?{" "}
                 <button
                   type="button"
                   onClick={handleResend}
-                  className="text-foreground font-medium hover:underline focus:outline-none focus:underline"
+                  disabled={isLoading}
+                  className="text-foreground font-medium hover:underline focus:outline-none focus:underline disabled:opacity-50"
                 >
                   Resend
                 </button>
