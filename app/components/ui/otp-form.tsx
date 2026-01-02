@@ -48,7 +48,7 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
       
       if (!pendingAuth) {
         // Jika tidak ada pendingAuth, redirect ke login
-        router.push('/login')
+        router.replace('/login')
         return
       }
       
@@ -57,7 +57,8 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
         
         // Cek apakah email sesuai
         if (authData.email !== emailFromParams) {
-          router.push('/login')
+          localStorage.removeItem('pendingAuth')
+          router.replace('/login')
           return
         }
         
@@ -68,15 +69,41 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
         
         if (now - timestamp > fiveMinutes) {
           localStorage.removeItem('pendingAuth')
-          router.push('/login')
+          router.replace('/login')
           return
         }
       } catch (error) {
         console.error('Error parsing pendingAuth:', error)
-        router.push('/login')
+        localStorage.removeItem('pendingAuth')
+        router.replace('/login')
       }
     }
   }, [emailFromParams, router])
+
+  // PERBAIKAN: Tangani browser back button
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault()
+      
+      // Hapus pendingAuth saat user menekan back browser
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('pendingAuth')
+      }
+      
+      // Redirect ke halaman utama
+      router.replace('/')
+    }
+
+    // Tambahkan entry ke history agar back button bisa di-handle
+    window.history.pushState(null, '', window.location.href)
+    
+    // Listen untuk popstate (back button)
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,8 +138,7 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
         }
 
         // Redirect ke halaman utama setelah verifikasi berhasil
-        router.push("/")
-        router.refresh()
+        router.replace("/")
       } else {
         setError("Kode OTP salah. Coba lagi dengan 123456")
       }
@@ -163,7 +189,7 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('pendingAuth')
     }
-    router.push('/login')
+    router.replace('/login')
   }
 
   return (
