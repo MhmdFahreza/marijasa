@@ -26,13 +26,15 @@ type UserType = "user" | "mitra" | "admin"
 
 interface LoginFormProps extends React.ComponentProps<"div"> {
   userType?: UserType
-  onSuccess?: (email: string) => void  // Changed from () => void
+  onSuccess?: (email: string) => void
+  onRegisterClick?: () => void
 }
 
 export function LoginForm({
   className,
   userType = "user",
   onSuccess,
+  onRegisterClick,
   ...props
 }: LoginFormProps) {
   const [email, setEmail] = useState("")
@@ -75,46 +77,46 @@ export function LoginForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-
+    
     // Validasi email format
     if (!validateEmail(email)) {
       setError("Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)")
       return
     }
-
+    
     if (password.length < 8) {
       setError("Password minimal 8 karakter")
       return
     }
-
+    
     // Validasi khusus untuk admin
     if (userType === "admin") {
       const dummyAdminCredentials = [
         { email: "Marijasa@gmail.com", password: "admin1234" },
       ]
-
+      
       const isValid = dummyAdminCredentials.some(
         cred => cred.email === email && cred.password === password
       )
-
+      
       if (!isValid) {
         setError("Email atau password admin salah.")
         return
       }
     }
-
+    
     // Validasi khusus untuk mitra - cek dari dataVendor
     if (userType === "mitra") {
       const vendor = validateVendorLogin(email, password)
-
+      
       if (!vendor) {
         setError("Email atau password mitra salah. Pastikan Anda menggunakan kredensial yang benar.")
         return
       }
-
+      
       // Login berhasil untuk mitra
       setIsLoading(true)
-
+      
       try {
         // Simulasi API call
         await new Promise((resolve) => {
@@ -122,10 +124,10 @@ export function LoginForm({
             resolve({ success: true, token: "dummy-token" })
           }, 1000)
         })
-
+        
         // Determine category from tags
         const category = getCategoryFromTags(vendor.tags);
-
+        
         // Simpan data mitra ke localStorage dengan semua data dari dataVendor
         if (typeof window !== 'undefined') {
           localStorage.setItem('mitraToken', 'dummy-token')
@@ -148,35 +150,35 @@ export function LoginForm({
             role: "mitra"
           }))
         }
-
+        
         // Jika ada callback onSuccess (untuk modal), panggil
         if (onSuccess) {
-          onSuccess(email)  // Pass email parameter
+          onSuccess(email)
           setIsLoading(false)
           return
         }
-
+        
         // Tampilkan loader redirect untuk mitra
         setShowRedirectLoader(true)
-
+        
         // Tunggu sebentar untuk menampilkan loader redirect
         setTimeout(() => {
           router.push("/mitra/dashboard")
           router.refresh()
         }, 1000)
-
+        
       } catch (error) {
         console.error("Login error:", error)
         setError("Terjadi kesalahan saat login. Silakan coba lagi.")
         setIsLoading(false)
       }
-
+      
       return
     }
-
+    
     // Untuk user dan admin
     setIsLoading(true)
-
+    
     try {
       // Simulasi API call
       const response = await new Promise((resolve) => {
@@ -184,12 +186,12 @@ export function LoginForm({
           resolve({ success: true, token: "dummy-token" })
         }, 1500)
       })
-
+      
       // Simpan token di localStorage berdasarkan user type
       if (typeof window !== 'undefined') {
         if (userType === "admin") {
           localStorage.setItem('adminToken', 'dummy-token')
-          localStorage.setItem('adminUser', JSON.stringify({
+          localStorage.setItem('adminUser', JSON.stringify({ 
             email,
             name: "Administrator",
             role: "admin"
@@ -197,24 +199,25 @@ export function LoginForm({
         } else {
           // Untuk user biasa
           localStorage.setItem('userToken', 'dummy-token')
-          localStorage.setItem('user', JSON.stringify({
+          localStorage.setItem('user', JSON.stringify({ 
             email,
             name: "Pengguna",
             role: "user"
           }))
         }
       }
-
+      
       // Jika ada callback onSuccess (untuk modal), panggil
       if (onSuccess) {
-        onSuccess(email)  // Pass email parameter
+        onSuccess(email)
         setIsLoading(false)
         return
       }
+      
       // Hanya tampilkan loader redirect untuk admin
       if (userType === "admin") {
         setShowRedirectLoader(true)
-
+        
         // Tunggu sebentar untuk menampilkan loader redirect
         setTimeout(() => {
           router.push("/admin/dashboard")
@@ -224,11 +227,20 @@ export function LoginForm({
         // Untuk user biasa, langsung redirect ke OTP tanpa loading overlay
         router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
       }
-
+      
     } catch (error) {
       console.error("Login error:", error)
       setError("Terjadi kesalahan saat login. Silakan coba lagi.")
       setIsLoading(false)
+    }
+  }
+
+  const handleRegisterLinkClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (onRegisterClick) {
+      onRegisterClick()
+    } else {
+      router.push('/register')
     }
   }
 
@@ -271,7 +283,7 @@ export function LoginForm({
           </p>
         </div>
       )}
-
+      
       <div className={cn("flex flex-col gap-6", className)} {...props}>
         <Card>
           <CardHeader>
@@ -297,11 +309,11 @@ export function LoginForm({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={
-                      userType === "admin"
-                        ? "admin@gmail.com"
+                      userType === "admin" 
+                        ? "admin@gmail.com" 
                         : userType === "mitra"
-                          ? "mitra@marijasa.com"
-                          : "masukkan email"
+                        ? "mitra@marijasa.com"
+                        : "masukkan email"
                     }
                     autoComplete="email"
                     disabled={isLoading || showRedirectLoader}
@@ -324,10 +336,10 @@ export function LoginForm({
                       </a>
                     )}
                   </div>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
+                  <Input 
+                    id="password" 
+                    type="password" 
+                    required 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="minimal 8 karakter"
@@ -339,8 +351,8 @@ export function LoginForm({
                   </p>
                 </Field>
                 <Field>
-                  <Button
-                    type="submit"
+                  <Button 
+                    type="submit" 
                     disabled={isLoading || showRedirectLoader}
                     className={cn(
                       "w-full bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
@@ -355,10 +367,10 @@ export function LoginForm({
                       </>
                     ) : showRedirectLoader ? "Mengalihkan..." : "Login"}
                   </Button>
-
+                  
                   {userType !== "admin" && userType !== "mitra" && !showRedirectLoader && (
-                    <Button
-                      variant="outline"
+                    <Button 
+                      variant="outline" 
                       type="button"
                       disabled={isLoading}
                       className="w-full mt-3 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
@@ -366,16 +378,17 @@ export function LoginForm({
                       Login dengan Google
                     </Button>
                   )}
-
+                  
                   {config.registerLink && !showRedirectLoader && (
                     <FieldDescription className="text-center mt-4">
                       Belum punya akun?{" "}
-                      <Link
-                        href={config.registerLink}
+                      <button
+                        type="button"
+                        onClick={handleRegisterLinkClick}
                         className="text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline"
                       >
                         {config.registerText}
-                      </Link>
+                      </button>
                     </FieldDescription>
                   )}
                 </Field>

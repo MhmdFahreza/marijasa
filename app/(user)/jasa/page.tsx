@@ -47,11 +47,10 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   furnitur: ["tukang mebel"]
 };
 
-// ⭐ FUNGSI UNTUK MENGHITUNG AVERAGE RATING DARI REVIEWS
 const calculateVendorRating = (vendorId: string, vendorName: string): number => {
   try {
     const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-
+    
     const vendorReviews = userOrders.filter(
       (order: any) =>
         order.status === 'selesai' &&
@@ -75,11 +74,10 @@ const calculateVendorRating = (vendorId: string, vendorName: string): number => 
   }
 };
 
-// ⭐ FUNGSI UNTUK MENGHITUNG JUMLAH REVIEWS
 const countVendorReviews = (vendorId: string, vendorName: string): number => {
   try {
     const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-
+    
     const vendorReviews = userOrders.filter(
       (order: any) =>
         order.status === 'selesai' &&
@@ -285,16 +283,14 @@ export default function JasaPage() {
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
 
-  // ⭐ Load vendors dengan rating yang di-sync dari reviews
   useEffect(() => {
     const loadVendors = () => {
       const allVendors = getAllVendors();
-
-      // ⭐ Hitung rating real-time untuk setiap vendor
+      
       const vendorsWithCalculatedRating = allVendors.map(vendor => {
         const calculatedRating = calculateVendorRating(vendor.id, vendor.name);
         const reviewCount = countVendorReviews(vendor.id, vendor.name);
-
+        
         return {
           ...vendor,
           calculatedRating: calculatedRating > 0 ? calculatedRating : vendor.rating,
@@ -302,13 +298,12 @@ export default function JasaPage() {
           rating: calculatedRating > 0 ? calculatedRating : vendor.rating
         };
       });
-
+      
       setVendors(vendorsWithCalculatedRating);
     };
 
     loadVendors();
 
-    // ⭐ Listen ke event update
     const handleVendorUpdate = () => {
       loadVendors();
     };
@@ -321,7 +316,6 @@ export default function JasaPage() {
       loadVendors();
     };
 
-    // ⭐ Listen ke event logout
     const handleUserLogout = () => {
       setIsLoggedIn(false);
       setShowLoginModal(false);
@@ -347,7 +341,6 @@ export default function JasaPage() {
       setSelectedCategory(kategori);
     }
 
-    // ⭐ Cek token untuk validasi login
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('userToken');
       setIsLoggedIn(!!token);
@@ -421,15 +414,13 @@ export default function JasaPage() {
 
   const handleLoginSuccess = async (email: string) => {
     setIsTransitioning(true);
-
-    // Simpan email ke localStorage untuk halaman OTP
+    
     if (typeof window !== 'undefined') {
       localStorage.setItem('pendingLoginEmail', email);
     }
-
+    
     await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-
-    // Redirect ke halaman OTP
+    
     router.push(`/login/otp?email=${encodeURIComponent(email)}`);
   };
 
@@ -698,7 +689,11 @@ export default function JasaPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <LoginForm userType="user" onSuccess={handleLoginSuccess} />
+            <LoginForm 
+              userType="user" 
+              onSuccess={handleLoginSuccess}
+              onRegisterClick={handleRegisterClick}
+            />
           </div>
         </DialogContent>
       </Dialog>

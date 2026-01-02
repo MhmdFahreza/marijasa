@@ -533,8 +533,8 @@ export default function VendorDetailPage() {
                   key={tab.id}
                   onClick={() => scrollToSection(tab.id)}
                   className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
-                      ? 'border-[#7CE0A8] text-[#7CE0A8]'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-[#7CE0A8] text-[#7CE0A8]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
                 >
                   {tab.label}
@@ -958,7 +958,6 @@ export default function VendorDetailPage() {
         </div>
       </div>
 
-      {/* Login Modal */}
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -971,7 +970,11 @@ export default function VendorDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <LoginForm userType="user" onSuccess={handleLoginSuccess} />
+            <LoginForm
+              userType="user"
+              onSuccess={handleLoginSuccess}
+              onRegisterClick={handleRegisterClick}
+            />
           </div>
         </DialogContent>
       </Dialog>
