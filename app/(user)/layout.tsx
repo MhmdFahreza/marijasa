@@ -74,6 +74,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
   const notificationRef = useRef<HTMLDivElement>(null);
+  const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -99,10 +100,14 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  // Save notifications to localStorage
+  // Save notifications to localStorage - PERBAIKAN: Fungsi yang lebih reliable
   const saveNotifications = (newNotifications: Notification[]) => {
     try {
       localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(newNotifications));
+      // Dispatch event untuk sinkronisasi antar komponen
+      window.dispatchEvent(new CustomEvent('notificationUpdated', { 
+        detail: { type: 'user', action: 'save' }
+      }));
     } catch (error) {
       console.error("Error saving notifications:", error);
     }
@@ -170,16 +175,25 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, [pathname]);
 
-  // Close notifications when clicking outside
+  // Close notifications when clicking outside - PERBAIKAN: Handling yang lebih baik
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      
+      // Check if click is outside both desktop and mobile notification refs
+      const isOutsideDesktop = notificationRef.current && !notificationRef.current.contains(target);
+      const isOutsideMobile = mobileNotificationRef.current && !mobileNotificationRef.current.contains(target);
+      
+      if (isOutsideDesktop && isOutsideMobile) {
         setIsNotificationOpen(false);
       }
     };
 
     if (isNotificationOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      // Use setTimeout to avoid immediate trigger
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 0);
     }
 
     return () => {
@@ -300,14 +314,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const toggleNotification = () => {
-    setIsNotificationOpen(!isNotificationOpen);
-    if (!isNotificationOpen) {
+    const newState = !isNotificationOpen;
+    setIsNotificationOpen(newState);
+    if (newState) {
       // Mark all as read when opening notifications
       markAllAsRead();
     }
   };
 
   const markAllAsRead = () => {
+    if (notifications.length === 0) return;
+    
     const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
     setNotifications(updatedNotifications);
     saveNotifications(updatedNotifications);
@@ -321,27 +338,37 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     saveNotifications(updatedNotifications);
   };
 
-  // PERBAIKAN: Fungsi delete notifikasi dengan stopPropagation yang benar
+  // PERBAIKAN: Fungsi delete notifikasi yang benar
   const deleteNotification = (notificationId: string, e: React.MouseEvent) => {
-    // CRITICAL: Stop event dari bubbling ke parent
+    // Prevent event bubbling
     e.stopPropagation();
     e.preventDefault();
     
+    // Filter out the notification to delete
     const updatedNotifications = notifications.filter(notif => notif.id !== notificationId);
+    
+    // Update state
     setNotifications(updatedNotifications);
-    saveNotifications(updatedNotifications);
+    
+    // Save to localStorage
+    localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(updatedNotifications));
+    
+    console.log(`Notification ${notificationId} deleted. Remaining: ${updatedNotifications.length}`);
   };
 
-  // PERBAIKAN: Fungsi delete all dengan stopPropagation yang benar
+  // PERBAIKAN: Fungsi delete all notifications yang benar
   const deleteAllNotifications = (e: React.MouseEvent) => {
-    // CRITICAL: Stop event dari bubbling
+    // Prevent event bubbling
     e.stopPropagation();
     e.preventDefault();
     
+    // Clear all notifications
     setNotifications([]);
-    saveNotifications([]);
-    // Jangan close notifikasi saat delete all
-    // setIsNotificationOpen(false); // HAPUS INI
+    
+    // Save empty array to localStorage
+    localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify([]));
+    
+    console.log("All notifications deleted");
   };
 
   const getNotificationIcon = (type: Notification['type']) => {
@@ -493,7 +520,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                         )}
                                         <button
                                           onClick={(e) => deleteNotification(notification.id, e)}
-                                          className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded"
+                                          className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded transition-colors"
+                                          title="Hapus notifikasi"
                                         >
                                           <X className="w-3 h-3 text-gray-500" />
                                         </button>
@@ -534,7 +562,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         <div className="p-4 border-t border-gray-200 dark:border-neutral-700">
                           <button
                             onClick={(e) => deleteAllNotifications(e)}
-                            className="w-full text-sm text-center text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 py-2"
+                            className="w-full text-sm text-center text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                           >
                             Hapus Semua Notifikasi
                           </button>
@@ -639,9 +667,12 @@ export default function UserLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-2">
               {/* Mobile Notification Bell in Header */}
               {isLoggedIn && (
-                <div className="relative md:hidden" ref={notificationRef}>
+                <div className="relative md:hidden" ref={mobileNotificationRef}>
                   <button
-                    onClick={toggleNotification}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleNotification();
+                    }}
                     className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
                     aria-label="Notifikasi"
                   >
@@ -722,7 +753,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                             )}
                                             <button
                                               onClick={(e) => deleteNotification(notification.id, e)}
-                                              className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded"
+                                              className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded transition-colors"
+                                              title="Hapus notifikasi"
                                             >
                                               <X className="w-3 h-3 text-gray-500" />
                                             </button>
@@ -828,7 +860,9 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       <button
                         onClick={() => {
                           setIsMobileMenuOpen(false);
-                          toggleNotification();
+                          setTimeout(() => {
+                            toggleNotification();
+                          }, 100);
                         }}
                         className="w-full flex items-center justify-between px-4 py-3 text-left rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
                       >
