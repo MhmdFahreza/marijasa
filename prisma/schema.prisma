@@ -1,8 +1,283 @@
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../app/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==========================================
+// ENUM TYPES
+// ==========================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum VendorStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum ServicePriceType {
+  FIXED
+  HOURLY
+  UNIT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// ==========================================
+// USER TABLES
+// ==========================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  phone         String?
+  password      String    // Hashed password
+  avatar        String?   @default("/profile.svg")
+  role          UserRole  @default(USER)
+  emailVerified Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  otpCodes      OTPCode[]
+  bookings      Booking[]
+  reviews       Review[]
+  
+  @@map("users")
+}
+
+model OTPCode {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  code      String   // 6-digit OTP code
+  type      String   // 'register', 'login', 'reset_password'
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([email, type])
+  @@index([code])
+  @@map("otp_codes")
+}
+
+// ==========================================
+// ADMIN TABLES
+// ==========================================
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String   // Hashed password
+  avatar    String?
+  isActive  Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("admins")
+}
+
+// ==========================================
+// VENDOR/MITRA TABLES
+// ==========================================
+
+model Vendor {
+  id              String        @id @default(cuid())
+  email           String        @unique
+  password        String        // Hashed password
+  name            String
+  phone           String
+  avatar          String?       @default("https://i.pravatar.cc/120")
+  description     String        @db.Text
+  
+  // Status & Verification
+  verified        Boolean       @default(false)
+  status          VendorStatus  @default(PENDING)
+  
+  // Ratings
+  rating          Float         @default(0)
+  reviewCount     Int           @default(0)
+  
+  // Service Info
+  serviceAreas    String[]      // Array of service area names
+  specialties     String[]      // Array of specialty tags
+  tags            String[]      // Array of category tags
+  category        String?       // Main category (ac, electrical, cleaning, etc.)
+  
+  // Metadata
+  joinDate        DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  services        Service[]
+  gallery         VendorGallery[]
+  bookings        Booking[]
+  reviews         Review[]
+  
+  @@index([email])
+  @@index([status])
+  @@index([category])
+  @@map("vendors")
+}
+
+model Service {
+  id              String          @id @default(cuid())
+  vendorId        String
+  name            String
+  description     String          @db.Text
+  price           Float
+  priceType       ServicePriceType @default(FIXED)
+  estimatedTime   String?         // e.g., "2-3 jam", "1-2 hari"
+  active          Boolean         @default(true)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  // Relations
+  vendor          Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  bookingItems    BookingItem[]
+  
+  @@index([vendorId])
+  @@index([active])
+  @@map("services")
+}
+
+model VendorGallery {
+  id          String   @id @default(cuid())
+  vendorId    String
+  imageUrl    String
+  caption     String?
+  order       Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  @@index([vendorId])
+  @@map("vendor_gallery")
+}
+
+// ==========================================
+// BOOKING TABLES
+// ==========================================
+
+model Booking {
+  id              String        @id @default(cuid())
+  bookingNumber   String        @unique // e.g., "BK-20240101-0001"
+  
+  // User Info
+  userId          String
+  
+  // Vendor Info
+  vendorId        String
+  
+  // Booking Details
+  scheduledDate   DateTime
+  scheduledTime   String        // e.g., "09:00"
+  location        String
+  notes           String?       @db.Text
+  
+  // Status
+  status          BookingStatus @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  
+  // Pricing
+  subtotal        Float
+  serviceFee      Float         @default(0)
+  total           Float
+  
+  // Metadata
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  
+  // Relations
+  user            User          @relation(fields: [userId], references: [id])
+  vendor          Vendor        @relation(fields: [vendorId], references: [id])
+  items           BookingItem[]
+  review          Review?
+  
+  @@index([userId])
+  @@index([vendorId])
+  @@index([status])
+  @@index([bookingNumber])
+  @@map("bookings")
+}
+
+model BookingItem {
+  id          String   @id @default(cuid())
+  bookingId   String
+  serviceId   String
+  quantity    Int      @default(1)
+  price       Float
+  subtotal    Float
+  
+  // Relations
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service     Service  @relation(fields: [serviceId], references: [id])
+  
+  @@index([bookingId])
+  @@index([serviceId])
+  @@map("booking_items")
+}
+
+// ==========================================
+// REVIEW TABLES
+// ==========================================
+
+model Review {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  userId      String
+  vendorId    String
+  
+  rating      Int      // 1-5
+  comment     String?  @db.Text
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+  vendor      Vendor   @relation(fields: [vendorId], references: [id])
+  
+  @@index([vendorId])
+  @@index([userId])
+  @@map("reviews")
 }
