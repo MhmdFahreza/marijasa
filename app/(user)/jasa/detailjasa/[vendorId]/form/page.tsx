@@ -49,9 +49,9 @@ const getUserInfoFromGmail = (email: string): { name: string; phone: string } =>
     .split(/[._-]/)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-  
+
   const phoneNumber = `08${Math.abs(emailPrefix.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 100000000).toString().padStart(9, '0')}`;
-  
+
   return {
     name: capitalizedName,
     phone: phoneNumber
@@ -64,7 +64,7 @@ export default function VendorFormPage() {
   const [formData, setFormData] = useState<any>({});
   const [mounted, setMounted] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [navigationUrl, setNavigationUrl] = useState<string | null>(null);
+  const [navigationUrl, setNavigationUrl] = useState<string>("");
   const [gettingLocation, setGettingLocation] = useState(false);
   const [currentStep, setCurrentStep] = useState<'form' | 'confirmation'>('form');
   const [selectedPayment, setSelectedPayment] = useState<string>("");
@@ -74,7 +74,7 @@ export default function VendorFormPage() {
     cvv: ""
   });
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [initialOrderId, setInitialOrderId] = useState<string | null>(null);
+  const [initialOrderId, setInitialOrderId] = useState<string>("");
   const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [vendor, setVendor] = useState<any>(null);
@@ -84,7 +84,7 @@ export default function VendorFormPage() {
   const loadProfileData = () => {
     // Cek apakah ada userProfile yang tersimpan
     const savedProfile = localStorage.getItem("userProfile");
-    
+
     if (savedProfile) {
       // Jika ada profile tersimpan, gunakan itu (KECUALI gpsLink)
       const profile = JSON.parse(savedProfile);
@@ -99,19 +99,19 @@ export default function VendorFormPage() {
       }));
       return;
     }
-    
+
     // PERBAIKAN: Jika belum ada userProfile, buat dari data login (user dan authData)
     const userData = localStorage.getItem("user");
     const authData = localStorage.getItem("authData");
-    
+
     if (userData) {
       try {
         const parsedUserData = JSON.parse(userData);
         const parsedAuthData = authData ? JSON.parse(authData) : null;
-        
+
         // Generate nama dan nomor telepon dari email (sama seperti di profile)
         const userInfo = getUserInfoFromGmail(parsedUserData.email);
-        
+
         // Buat profile baru
         const newProfile = {
           id: `user-${Date.now()}`,
@@ -120,15 +120,15 @@ export default function VendorFormPage() {
           phone: userInfo.phone,
           address: "",
           gpsLink: "",
-          joinDate: parsedAuthData?.loginTime 
-            ? new Date(parsedAuthData.loginTime).toISOString().split('T')[0] 
+          joinDate: parsedAuthData?.loginTime
+            ? new Date(parsedAuthData.loginTime).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0],
           avatar: parsedUserData.avatar || "/avatars/user-avatar.jpg",
         };
-        
+
         // Simpan profile baru ke localStorage untuk sinkronisasi dengan halaman profile
         localStorage.setItem("userProfile", JSON.stringify(newProfile));
-        
+
         // Set form data (gpsLink tetap kosong)
         setFormData((prev: any) => ({
           ...prev,
@@ -139,7 +139,7 @@ export default function VendorFormPage() {
           // gpsLink sengaja TIDAK di-auto fill, biarkan kosong
           gpsLink: ""
         }));
-        
+
       } catch (error) {
         console.error("Error parsing user data:", error);
       }
@@ -148,7 +148,7 @@ export default function VendorFormPage() {
 
   useEffect(() => {
     setMounted(true);
-    
+
     // PERBAIKAN: Cek apakah user sudah login terlebih dahulu
     const authData = localStorage.getItem("authData");
     const userData = localStorage.getItem("user");
@@ -159,7 +159,7 @@ export default function VendorFormPage() {
       router.push("/login");
       return;
     }
-    
+
     // Load initial profile data
     loadProfileData();
 
@@ -245,7 +245,7 @@ export default function VendorFormPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     selectedDate.setHours(0, 0, 0, 0);
-    
+
     if (selectedDate <= today) {
       toast.error("Tanggal harus mulai dari besok. Tidak bisa memilih tanggal hari ini atau yang sudah lewat.");
       return;
@@ -385,6 +385,36 @@ export default function VendorFormPage() {
     }, 2000);
   };
 
+  const createUserNotification = (notification: {
+    title: string;
+    message: string;
+    type: 'order' | 'promo' | 'system' | 'reminder' | 'additional_service';
+    orderId?: string;
+  }) => {
+    const notifications = JSON.parse(localStorage.getItem('userNotifications') || '[]');
+    const newNotification = {
+      id: `notif-${Date.now()}`,
+      ...notification,
+      time: new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }),
+      read: false
+    };
+    notifications.unshift(newNotification);
+    localStorage.setItem('userNotifications', JSON.stringify(notifications));
+
+    // Dispatch event untuk update notifikasi di layout
+    window.dispatchEvent(new CustomEvent('notificationUpdated', {
+      detail: { type: 'user', notification: newNotification }
+    }));
+  };
+
   const handleFinalSubmit = async () => {
     if (!selectedPayment) {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
@@ -413,6 +443,13 @@ export default function VendorFormPage() {
         return;
       }
     }
+
+    createUserNotification({
+      title: "Pesanan Baru Dibuat",
+      message: `Pesanan #${initialOrderId} telah berhasil dibuat. Silakan tunggu konfirmasi dari vendor.`,
+      type: 'order',
+      orderId: initialOrderId
+    });
 
     setIsProcessingPayment(true);
 
@@ -926,16 +963,16 @@ function OrderForm({
                             onCheckedChange={(checked) => {
                               const current = formData.selectedServices || [];
                               if (checked) {
-                                setFormData({ 
-                                  ...formData, 
+                                setFormData({
+                                  ...formData,
                                   selectedServices: [...current, service.id],
                                   quantities: { ...(formData.quantities || {}), [service.id]: 1 }
                                 });
                               } else {
                                 const newQuantities = { ...(formData.quantities || {}) };
                                 delete newQuantities[service.id];
-                                setFormData({ 
-                                  ...formData, 
+                                setFormData({
+                                  ...formData,
                                   selectedServices: current.filter((i: string) => i !== service.id),
                                   quantities: newQuantities
                                 });
@@ -956,14 +993,14 @@ function OrderForm({
                             )}
                           </div>
                         </div>
-                        
+
                         <div className="text-right">
                           <div className="font-semibold text-primary">
                             Rp {service.price.toLocaleString('id-ID')}
                             {service.priceType === 'hourly' && '/jam'}
                             {service.priceType === 'unit' && '/unit'}
                           </div>
-                          
+
                           {(formData.selectedServices || []).includes(service.id) && (
                             <div className="mt-2">
                               <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>

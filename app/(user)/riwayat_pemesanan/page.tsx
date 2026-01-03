@@ -54,7 +54,8 @@ import {
   Loader2,
   ChevronUp,
   Star,
-  CheckCircle
+  CheckCircle,
+  Upload
 } from "lucide-react";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
@@ -96,6 +97,7 @@ export default function OrderHistoryPage() {
   });
   const [vendorServices, setVendorServices] = useState<any[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
+  const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
 
   // State untuk modal metode pembayaran
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -376,7 +378,9 @@ export default function OrderHistoryPage() {
               rating: order.rating || null,
               review: order.review || "",
               // Tambahkan vendorId untuk referensi layanan
-              vendorId: order.vendorId || null
+              vendorId: order.vendorId || null,
+              // Tambahkan additionalServices jika ada
+              additionalServices: order.additionalServices || []
             };
           });
 
@@ -480,7 +484,32 @@ export default function OrderHistoryPage() {
     const newFiles = Array.from(files);
     const newPreviews: string[] = [];
 
+    // Wajib ada minimal 1 foto
+    if (newFiles.length === 0) {
+      toast.error("Wajib mengunggah minimal 1 foto bukti");
+      return;
+    }
+
+    // Validasi jumlah maksimal foto
+    const currentCount = newServiceData.images.length;
+    if (currentCount + newFiles.length > 5) {
+      toast.error("Maksimal 5 foto");
+      return;
+    }
+
     newFiles.forEach(file => {
+      // Validasi ukuran file (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`Ukuran foto ${file.name} terlalu besar (max 5MB)`);
+        return;
+      }
+
+      // Validasi tipe file
+      if (!file.type.startsWith('image/')) {
+        toast.error(`File ${file.name} bukan gambar`);
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
@@ -535,14 +564,77 @@ export default function OrderHistoryPage() {
     }));
   };
 
+  // BUAT NOTIFIKASI UNTUK USER
+  const createUserNotification = (notification: {
+    title: string;
+    message: string;
+    type: 'order' | 'promo' | 'system' | 'reminder' | 'additional_service';
+    orderId?: string;
+  }) => {
+    const notifications = JSON.parse(localStorage.getItem('userNotifications') || '[]');
+    const newNotification = {
+      id: `notif-${Date.now()}`,
+      ...notification,
+      time: new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }),
+      read: false
+    };
+    notifications.unshift(newNotification);
+    localStorage.setItem('userNotifications', JSON.stringify(notifications));
+    
+    // Dispatch event untuk update notifikasi di layout
+    window.dispatchEvent(new CustomEvent('notificationUpdated', { 
+      detail: { type: 'user', notification: newNotification }
+    }));
+  };
+
+  // BUAT NOTIFIKASI UNTUK ADMIN
+  const createAdminNotification = (notification: {
+    title: string;
+    message: string;
+    type: 'additional_service_request' | 'order' | 'system';
+    requestId?: string;
+    orderId?: string;
+  }) => {
+    const adminNotifications = JSON.parse(localStorage.getItem('adminNotifications') || '[]');
+    const newNotification = {
+      id: `admin-notif-${Date.now()}`,
+      ...notification,
+      time: new Date().toISOString(),
+      read: false
+    };
+    adminNotifications.unshift(newNotification);
+    localStorage.setItem('adminNotifications', JSON.stringify(adminNotifications));
+    
+    // Dispatch event untuk update notifikasi admin
+    window.dispatchEvent(new CustomEvent('notificationUpdated', { 
+      detail: { type: 'admin', notification: newNotification }
+    }));
+  };
+
   const handleSubmitNewService = () => {
+    // Validasi wajib: minimal 1 layanan
     if (newServiceData.selectedServices.length === 0) {
       toast.error("Harap pilih minimal satu layanan tambahan");
       return;
     }
 
+    // Validasi wajib: alasan
     if (!newServiceData.reason.trim()) {
       toast.error("Harap isi alasan permintaan layanan tambahan");
+      return;
+    }
+
+    // Validasi wajib: minimal 1 foto
+    if (newServiceData.images.length === 0) {
+      toast.error("Wajib mengunggah minimal 1 foto bukti");
       return;
     }
 
@@ -568,9 +660,38 @@ export default function OrderHistoryPage() {
       return total + (service.price * service.quantity);
     }, 0);
 
-    // Simpan data layanan tambahan
-    const newService = {
-      id: `ADD-${Date.now()}`,
+    // Dapatkan data user
+    const userData = JSON.parse(localStorage.getItem('authData') || '{}');
+    const customerName = userData.user?.name || selectedOrder.customerInfo.name;
+
+    // Buat data permintaan untuk admin
+    const serviceRequest = {
+      id: `SR-${Date.now()}`,
+      orderId: selectedOrder.id,
+      vendorName: selectedOrder.vendorName,
+      customerName: customerName,
+      services: selectedServiceDetails,
+      description: serviceDescription,
+      totalPrice: totalPrice,
+      reason: newServiceData.reason,
+      images: newServiceData.previews, // Simpan sebagai base64 string
+      submittedAt: new Date().toISOString(),
+      status: "pending", // pending, approved, rejected
+      vendorId: selectedOrder.vendorId,
+      orderDetails: {
+        serviceType: selectedOrder.serviceType,
+        serviceDate: selectedOrder.serviceDate,
+        serviceTime: selectedOrder.serviceTime
+      }
+    };
+
+    // Simpan permintaan layanan ke localStorage untuk admin
+    const existingRequests = JSON.parse(localStorage.getItem('additionalServiceRequests') || '[]');
+    localStorage.setItem('additionalServiceRequests', JSON.stringify([...existingRequests, serviceRequest]));
+
+    // Simpan juga di order user dengan status "menunggu konfirmasi admin"
+    const newServiceForUser = {
+      id: serviceRequest.id,
       orderId: selectedOrder.id,
       vendorName: selectedOrder.vendorName,
       services: selectedServiceDetails,
@@ -579,22 +700,18 @@ export default function OrderHistoryPage() {
       reason: newServiceData.reason,
       images: newServiceData.previews,
       submittedAt: new Date().toISOString(),
-      status: "menunggu konfirmasi"
+      status: "menunggu konfirmasi admin",
+      requestId: serviceRequest.id
     };
 
-    // Simpan ke localStorage
-    const existingRequests = JSON.parse(localStorage.getItem('additionalServiceRequests') || '[]');
-    localStorage.setItem('additionalServiceRequests', JSON.stringify([...existingRequests, newService]));
-
-    // Update order dengan layanan tambahan
+    // Update order dengan layanan tambahan (status pending)
     const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
     const updatedOrders = existingOrders.map((order: any) => {
       if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
         const additionalServices = order.additionalServices || [];
         return {
           ...order,
-          additionalServices: [...additionalServices, newService],
-          totalPrice: (order.totalPrice || 0) + totalPrice
+          additionalServices: [...additionalServices, newServiceForUser]
         };
       }
       return order;
@@ -608,15 +725,34 @@ export default function OrderHistoryPage() {
         const additionalServices = order.additionalServices || [];
         return {
           ...order,
-          additionalServices: [...additionalServices, newService],
-          totalPrice: (order.totalPrice || 0) + totalPrice
+          additionalServices: [...additionalServices, newServiceForUser]
         };
       }
       return order;
     }));
 
-    toast.success("Permintaan layanan tambahan berhasil dikirim!");
+    // BUAT NOTIFIKASI UNTUK USER
+    createUserNotification({
+      title: "Permintaan Layanan Tambahan Dikirim",
+      message: `Permintaan layanan tambahan untuk pesanan #${selectedOrder.id} telah dikirim. Menunggu konfirmasi admin.`,
+      type: 'additional_service',
+      orderId: selectedOrder.id
+    });
+
+    // BUAT NOTIFIKASI UNTUK ADMIN
+    createAdminNotification({
+      title: "Permintaan Layanan Tambahan Baru",
+      message: `${customerName} mengajukan permintaan layanan tambahan untuk pesanan #${selectedOrder.id}. Total: Rp ${totalPrice.toLocaleString('id-ID')}`,
+      type: 'additional_service_request',
+      requestId: serviceRequest.id,
+      orderId: selectedOrder.id
+    });
+
+    // Tampilkan modal konfirmasi
     setIsAddServiceModalOpen(false);
+    setShowServiceRequestModal(true);
+
+    // Reset form data
     setNewServiceData({
       selectedServices: [],
       quantities: {},
@@ -624,6 +760,11 @@ export default function OrderHistoryPage() {
       images: [],
       previews: []
     });
+
+    // Dispatch custom event untuk update real-time di admin page
+    window.dispatchEvent(new CustomEvent('additionalServiceRequested', {
+      detail: serviceRequest
+    }));
   };
 
   const handleOpenPaymentModal = (order: any) => {
@@ -806,6 +947,14 @@ export default function OrderHistoryPage() {
         return o;
       }));
 
+      // BUAT NOTIFIKASI UNTUK USER
+      createUserNotification({
+        title: "Pembayaran Berhasil",
+        message: `Pembayaran untuk pesanan #${order.id} telah berhasil. Pesanan Anda sedang diproses.`,
+        type: 'order',
+        orderId: order.id
+      });
+
       setShowSuccessModal(false);
       toast.success("Pembayaran berhasil! Status pesanan telah diperbarui.");
     }, 2000);
@@ -910,6 +1059,15 @@ export default function OrderHistoryPage() {
       setIsCancelling(false);
       setShowCancelModal(false);
       setCancelReason("");
+      
+      // BUAT NOTIFIKASI UNTUK USER
+      createUserNotification({
+        title: "Pesanan Dibatalkan",
+        message: `Pesanan #${selectedOrder.id} telah dibatalkan. Alasan: ${cancelReason}`,
+        type: 'order',
+        orderId: selectedOrder.id
+      });
+      
       toast.success("Pesanan berhasil dibatalkan!");
     }, 1500);
   };
@@ -1121,6 +1279,14 @@ export default function OrderHistoryPage() {
     }));
 
     setShowCompletionModal(false);
+
+    // BUAT NOTIFIKASI UNTUK USER
+    createUserNotification({
+      title: "Pekerjaan Selesai",
+      message: `Pesanan #${selectedOrder.id} telah selesai dikerjakan. ${hasRating ? 'Terima kasih atas ratingnya!' : ''}`,
+      type: 'order',
+      orderId: selectedOrder.id
+    });
 
     if (hasRating) {
       setShowThankYouModal(true);
@@ -1668,19 +1834,17 @@ export default function OrderHistoryPage() {
                                 </h3>
                                 <div className="space-y-4">
                                   {/* Layanan */}
-                                  {order.serviceDetails.services.length > 0 && (
-                                    <div>
-                                      <h4 className="font-medium mb-2">Layanan yang Dipilih</h4>
-                                      <div className="space-y-2">
-                                        {order.serviceDetails.services.map((service: string, idx: number) => (
-                                          <div key={idx} className="flex items-center gap-2">
-                                            <Check className="h-4 w-4 text-[#7CE0A8]" />
-                                            <span>{service}</span>
-                                          </div>
-                                        ))}
-                                      </div>
+                                  <div>
+                                    <h4 className="font-medium mb-2">Layanan yang Dipilih</h4>
+                                    <div className="space-y-2">
+                                      {order.serviceDetails.services.map((service: string, idx: number) => (
+                                        <div key={idx} className="flex items-center gap-2">
+                                          <Check className="h-4 w-4 text-[#7CE0A8]" />
+                                          <span>{service}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  )}
+                                  </div>
 
                                   {/* Info Tambahan */}
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1733,6 +1897,23 @@ export default function OrderHistoryPage() {
                                               </div>
                                               {addService.reason && (
                                                 <p className="text-sm text-gray-600 mt-2">Alasan: {addService.reason}</p>
+                                              )}
+                                              {/* Bukti Foto */}
+                                              {addService.images && addService.images.length > 0 && (
+                                                <div className="mt-3">
+                                                  <p className="text-sm font-medium mb-2">Bukti Foto:</p>
+                                                  <div className="grid grid-cols-3 gap-2">
+                                                    {addService.images.map((image: string, imgIdx: number) => (
+                                                      <div key={imgIdx} className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                                                        <img
+                                                          src={image}
+                                                          alt={`Bukti ${imgIdx + 1}`}
+                                                          className="w-full h-full object-cover"
+                                                        />
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
                                               )}
                                               <p className="text-sm font-medium mt-2">Total: Rp {formatPrice(addService.totalPrice)}</p>
                                             </CardContent>
@@ -1838,6 +2019,353 @@ export default function OrderHistoryPage() {
           </Card>
         )}
       </motion.main>
+
+      {/* Modal Tambah Layanan */}
+      <AnimatePresence>
+        {isAddServiceModalOpen && selectedOrder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setIsAddServiceModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4 z-10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Tambah Layanan Baru</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Pesanan #{selectedOrder.id} • {selectedOrder.vendorName}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsAddServiceModalOpen(false)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
+                <div className="space-y-6">
+                  {/* Pilih Layanan dari Vendor */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">
+                      Pilih Layanan Tambahan *
+                    </Label>
+                    <p className="text-sm text-gray-500 mb-3">
+                      Pilih layanan tambahan yang Anda butuhkan dari vendor ini
+                    </p>
+
+                    {isLoadingServices ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#7CE0A8]" />
+                        <p className="text-sm text-gray-500 mt-2">Memuat layanan...</p>
+                      </div>
+                    ) : vendorServices.length === 0 ? (
+                      <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                        <Package className="h-12 w-12 mx-auto text-gray-300 mb-2" />
+                        <p className="text-gray-500">Tidak ada layanan tersedia dari vendor ini</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {vendorServices.map((service: any) => (
+                          <div key={service.id} className="border rounded-lg p-4">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-start gap-3 flex-1">
+                                <Checkbox
+                                  id={`service-${service.id}`}
+                                  checked={newServiceData.selectedServices.includes(service.id)}
+                                  onCheckedChange={(checked) => 
+                                    handleServiceSelection(service.id, checked as boolean)
+                                  }
+                                  className="mt-1"
+                                />
+                                <div className="flex-1">
+                                  <Label 
+                                    htmlFor={`service-${service.id}`} 
+                                    className="font-medium cursor-pointer"
+                                  >
+                                    {service.name}
+                                  </Label>
+                                  <p className="text-sm text-gray-500 mt-1">
+                                    {service.description}
+                                  </p>
+                                  {service.estimatedTime && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      ⏱️ Estimasi: {service.estimatedTime}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="text-right">
+                                <div className="font-semibold text-[#7CE0A8]">
+                                  Rp {service.price.toLocaleString('id-ID')}
+                                  {service.priceType === 'hourly' && '/jam'}
+                                  {service.priceType === 'unit' && '/unit'}
+                                </div>
+                                
+                                {newServiceData.selectedServices.includes(service.id) && (
+                                  <div className="mt-2">
+                                    <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>
+                                    <Input
+                                      id={`qty-${service.id}`}
+                                      type="number"
+                                      min="1"
+                                      value={newServiceData.quantities[service.id] || 1}
+                                      onChange={(e) => {
+                                        const qty = parseInt(e.target.value) || 1;
+                                        handleQuantityChange(service.id, qty);
+                                      }}
+                                      className="w-20 mt-1"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Ringkasan Layanan yang Dipilih */}
+                    {newServiceData.selectedServices.length > 0 && (
+                      <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <h4 className="font-medium mb-2">Layanan yang Dipilih:</h4>
+                        <div className="space-y-2">
+                          {newServiceData.selectedServices.map(serviceId => {
+                            const service = vendorServices.find((s: any) => s.id === serviceId);
+                            if (!service) return null;
+                            const quantity = newServiceData.quantities[serviceId] || 1;
+                            const total = service.price * quantity;
+                            return (
+                              <div key={serviceId} className="flex justify-between items-center text-sm">
+                                <span>{service.name} ({quantity}x)</span>
+                                <span className="font-medium">Rp {formatPrice(total)}</span>
+                              </div>
+                            );
+                          })}
+                          <Separator />
+                          <div className="flex justify-between items-center font-semibold">
+                            <span>Total</span>
+                            <span className="text-[#7CE0A8]">Rp {formatPrice(calculateNewServiceTotal())}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Alasan - WAJIB */}
+                  <div>
+                    <Label htmlFor="serviceReason" className="text-sm font-medium mb-2 block">
+                      Alasan Permintaan Layanan Tambahan *
+                    </Label>
+                    <Textarea
+                      id="serviceReason"
+                      placeholder="Mengapa Anda membutuhkan layanan tambahan ini?"
+                      rows={3}
+                      value={newServiceData.reason}
+                      onChange={(e) => setNewServiceData(prev => ({
+                        ...prev,
+                        reason: e.target.value
+                      }))}
+                      className="resize-none"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Jelaskan alasan mengapa Anda memerlukan layanan tambahan ini
+                    </p>
+                  </div>
+
+                  {/* Upload Foto - WAJIB */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">
+                      Bukti Foto *
+                      <span className="text-red-500 ml-1">(Wajib)</span>
+                    </Label>
+                    <p className="text-sm text-gray-500 mb-3">
+                      Upload foto untuk mendukung permintaan layanan tambahan (minimal 1 foto, maksimal 5 foto)
+                    </p>
+
+                    {/* Preview Images */}
+                    {newServiceData.previews.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                        {newServiceData.previews.map((preview, index) => (
+                          <div key={index} className="relative group">
+                            <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                              <img
+                                src={preview}
+                                alt={`Preview ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeImage(index)}
+                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                              Foto {index + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Upload Button */}
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg cursor-pointer hover:border-[#7CE0A8] transition-colors bg-gray-50 dark:bg-gray-800">
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Camera className="h-8 w-8 text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          <span className="font-medium text-[#7CE0A8]">Klik untuk upload</span>
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          PNG, JPG, maksimum 5MB
+                        </p>
+                        <p className="text-xs text-red-500 mt-1">
+                          * Minimal 1 foto wajib diunggah
+                        </p>
+                      </div>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageUpload}
+                        required
+                      />
+                    </label>
+                    
+                    {/* Informasi jumlah foto */}
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-xs text-gray-500">
+                        {newServiceData.images.length} foto terunggah (maks: 5)
+                      </span>
+                      {newServiceData.images.length === 0 && (
+                        <span className="text-xs text-red-500">
+                          Wajib mengunggah minimal 1 foto
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Informasi */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <p className="font-medium text-blue-800 dark:text-blue-300 mb-1">
+                          Informasi Penting
+                        </p>
+                        <ul className="space-y-1 text-blue-700 dark:text-blue-400">
+                          <li>• Permintaan layanan tambahan akan dikirim ke admin untuk konfirmasi</li>
+                          <li>• Admin akan meninjau permintaan dan bukti foto yang Anda unggah</li>
+                          <li>• Jika disetujui, layanan akan ditambahkan ke pesanan dan biaya akan diperbarui</li>
+                          <li>• Anda akan menerima notifikasi via aplikasi</li>
+                          <li>• Bukti foto wajib diunggah minimal 1 foto</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t px-6 py-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setIsAddServiceModalOpen(false)}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
+                    onClick={handleSubmitNewService}
+                    disabled={
+                      newServiceData.selectedServices.length === 0 || 
+                      !newServiceData.reason.trim() || 
+                      newServiceData.images.length === 0
+                    }
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Kirim Permintaan ke Admin
+                  </Button>
+                </div>
+                <p className="text-xs text-center text-gray-500 mt-3">
+                  Permintaan akan ditinjau oleh admin. Anda akan menerima notifikasi saat status berubah.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Konfirmasi Permintaan Dikirim */}
+      <AnimatePresence>
+        {showServiceRequestModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                <Check className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Permintaan Dikirim!
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Permintaan layanan tambahan Anda telah berhasil dikirim ke admin.
+                Silakan tunggu konfirmasi dari admin.
+              </p>
+              <div className="space-y-3">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Info className="h-5 w-5 text-blue-600" />
+                    <p className="font-medium text-blue-800">Proses Selanjutnya:</p>
+                  </div>
+                  <ul className="text-sm text-blue-700 text-left space-y-1">
+                    <li>• Admin akan meninjau permintaan Anda</li>
+                    <li>• Bukti foto akan diperiksa</li>
+                    <li>• Anda akan menerima notifikasi saat ada update</li>
+                    <li>• Jika disetujui, layanan akan ditambahkan ke pesanan</li>
+                  </ul>
+                </div>
+                <Button
+                  className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white w-full"
+                  onClick={() => setShowServiceRequestModal(false)}
+                >
+                  Tutup
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal Metode Pembayaran */}
       <AnimatePresence>
@@ -2805,272 +3333,6 @@ export default function OrderHistoryPage() {
                       <span className="text-red-600">Membatalkan pesanan...</span>
                     </div>
                   )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal Tambah Layanan (DIPERBARUI) */}
-      <AnimatePresence>
-        {isAddServiceModalOpen && selectedOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-            onClick={() => setIsAddServiceModalOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4 z-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold">Tambah Layanan Baru</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Pesanan #{selectedOrder.id} • {selectedOrder.vendorName}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsAddServiceModalOpen(false)}
-                    className="h-8 w-8 p-0"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
-                <div className="space-y-6">
-                  {/* Pilih Layanan dari Vendor */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">
-                      Pilih Layanan Tambahan *
-                    </Label>
-                    <p className="text-sm text-gray-500 mb-3">
-                      Pilih layanan tambahan yang Anda butuhkan dari vendor ini
-                    </p>
-
-                    {isLoadingServices ? (
-                      <div className="text-center py-8">
-                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#7CE0A8]" />
-                        <p className="text-sm text-gray-500 mt-2">Memuat layanan...</p>
-                      </div>
-                    ) : vendorServices.length === 0 ? (
-                      <div className="text-center py-8 border-2 border-dashed rounded-lg">
-                        <Package className="h-12 w-12 mx-auto text-gray-300 mb-2" />
-                        <p className="text-gray-500">Tidak ada layanan tersedia dari vendor ini</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {vendorServices.map((service: any) => (
-                          <div key={service.id} className="border rounded-lg p-4">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex items-start gap-3 flex-1">
-                                <Checkbox
-                                  id={`service-${service.id}`}
-                                  checked={newServiceData.selectedServices.includes(service.id)}
-                                  onCheckedChange={(checked) => 
-                                    handleServiceSelection(service.id, checked as boolean)
-                                  }
-                                  className="mt-1"
-                                />
-                                <div className="flex-1">
-                                  <Label 
-                                    htmlFor={`service-${service.id}`} 
-                                    className="font-medium cursor-pointer"
-                                  >
-                                    {service.name}
-                                  </Label>
-                                  <p className="text-sm text-gray-500 mt-1">
-                                    {service.description}
-                                  </p>
-                                  {service.estimatedTime && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      ⏱️ Estimasi: {service.estimatedTime}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              <div className="text-right">
-                                <div className="font-semibold text-[#7CE0A8]">
-                                  Rp {service.price.toLocaleString('id-ID')}
-                                  {service.priceType === 'hourly' && '/jam'}
-                                  {service.priceType === 'unit' && '/unit'}
-                                </div>
-                                
-                                {newServiceData.selectedServices.includes(service.id) && (
-                                  <div className="mt-2">
-                                    <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>
-                                    <Input
-                                      id={`qty-${service.id}`}
-                                      type="number"
-                                      min="1"
-                                      value={newServiceData.quantities[service.id] || 1}
-                                      onChange={(e) => {
-                                        const qty = parseInt(e.target.value) || 1;
-                                        handleQuantityChange(service.id, qty);
-                                      }}
-                                      className="w-20 mt-1"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Ringkasan Layanan yang Dipilih */}
-                    {newServiceData.selectedServices.length > 0 && (
-                      <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <h4 className="font-medium mb-2">Layanan yang Dipilih:</h4>
-                        <div className="space-y-2">
-                          {newServiceData.selectedServices.map(serviceId => {
-                            const service = vendorServices.find((s: any) => s.id === serviceId);
-                            if (!service) return null;
-                            const quantity = newServiceData.quantities[serviceId] || 1;
-                            const total = service.price * quantity;
-                            return (
-                              <div key={serviceId} className="flex justify-between items-center text-sm">
-                                <span>{service.name} ({quantity}x)</span>
-                                <span className="font-medium">Rp {formatPrice(total)}</span>
-                              </div>
-                            );
-                          })}
-                          <Separator />
-                          <div className="flex justify-between items-center font-semibold">
-                            <span>Total</span>
-                            <span className="text-[#7CE0A8]">Rp {formatPrice(calculateNewServiceTotal())}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Alasan */}
-                  <div>
-                    <Label htmlFor="serviceReason" className="text-sm font-medium mb-2 block">
-                      Alasan Permintaan Layanan Tambahan *
-                    </Label>
-                    <Textarea
-                      id="serviceReason"
-                      placeholder="Mengapa Anda membutuhkan layanan tambahan ini?"
-                      rows={3}
-                      value={newServiceData.reason}
-                      onChange={(e) => setNewServiceData(prev => ({
-                        ...prev,
-                        reason: e.target.value
-                      }))}
-                      className="resize-none"
-                    />
-                  </div>
-
-                  {/* Upload Foto */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">
-                      Bukti Foto / Laporan
-                      <span className="text-gray-500 font-normal ml-1">(Opsional)</span>
-                    </Label>
-                    <p className="text-sm text-gray-500 mb-3">
-                      Upload foto untuk mendukung permintaan layanan tambahan
-                    </p>
-
-                    {/* Preview Images */}
-                    {newServiceData.previews.length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                        {newServiceData.previews.map((preview, index) => (
-                          <div key={index} className="relative group">
-                            <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                              <img
-                                src={preview}
-                                alt={`Preview ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeImage(index)}
-                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Upload Button */}
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg cursor-pointer hover:border-[#7CE0A8] transition-colors">
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <Camera className="h-8 w-8 text-gray-400 mb-2" />
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          <span className="font-medium text-[#7CE0A8]">Klik untuk upload</span> atau drag & drop
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          PNG, JPG, GIF maksimum 5MB
-                        </p>
-                      </div>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageUpload}
-                      />
-                    </label>
-                  </div>
-
-                  {/* Informasi */}
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-medium text-blue-800 dark:text-blue-300 mb-1">
-                          Informasi Penting
-                        </p>
-                        <ul className="space-y-1 text-blue-700 dark:text-blue-400">
-                          <li>• Permintaan layanan tambahan akan dikirim ke vendor untuk konfirmasi</li>
-                          <li>• Vendor dapat menolak permintaan jika tidak memungkinkan</li>
-                          <li>• Harga layanan tambahan akan ditentukan berdasarkan pilihan Anda</li>
-                          <li>• Anda akan menerima notifikasi via email/SMS</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t px-6 py-4">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setIsAddServiceModalOpen(false)}
-                  >
-                    Batal
-                  </Button>
-                  <Button
-                    className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
-                    onClick={handleSubmitNewService}
-                    disabled={newServiceData.selectedServices.length === 0 || !newServiceData.reason.trim()}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Kirim Permintaan
-                  </Button>
                 </div>
               </div>
             </motion.div>

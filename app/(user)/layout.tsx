@@ -32,7 +32,12 @@ import {
   CheckCircle,
   Clock,
   PackageCheck,
-  AlertCircle
+  AlertCircle,
+  PlusCircle,
+  FileText,
+  CreditCard,
+  ShoppingBag,
+  MessageSquare
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 
@@ -51,7 +56,8 @@ interface Notification {
   title: string;
   message: string;
   time: string;
-  type: 'order' | 'promo' | 'system' | 'reminder';
+  date: string;
+  type: 'order' | 'promo' | 'system' | 'reminder' | 'additional_service' | 'payment' | 'completion' | 'cancellation';
   read: boolean;
   orderId?: string;
 }
@@ -64,46 +70,31 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      title: "Pesanan Diproses",
-      message: "Pesanan #ORD-2024-001 sedang diproses oleh vendor",
-      time: "10 menit yang lalu",
-      type: "order",
-      read: false,
-      orderId: "ORD-2024-001"
-    },
-    {
-      id: "2",
-      title: "Promo Spesial",
-      message: "Dapatkan diskon 20% untuk pemesanan pertama Anda",
-      time: "1 jam yang lalu",
-      type: "promo",
-      read: false
-    },
-    {
-      id: "3",
-      title: "Pesanan Selesai",
-      message: "Pesanan #ORD-2023-456 telah selesai",
-      time: "2 hari yang lalu",
-      type: "order",
-      read: true,
-      orderId: "ORD-2023-456"
-    },
-    {
-      id: "4",
-      title: "Pengingat Pembayaran",
-      message: "Lakukan pembayaran untuk pesanan #ORD-2024-002",
-      time: "3 hari yang lalu",
-      type: "reminder",
-      read: true,
-      orderId: "ORD-2024-002"
-    }
+    // Initial notifications will be loaded from localStorage
   ]);
   
   const notificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Load notifications from localStorage
+  const loadNotifications = () => {
+    try {
+      const savedNotifications = localStorage.getItem('userNotifications');
+      if (savedNotifications) {
+        const parsedNotifications = JSON.parse(savedNotifications);
+        // Sort by date and time (newest first)
+        const sortedNotifications = parsedNotifications.sort((a: Notification, b: Notification) => {
+          const dateA = new Date(`${a.date} ${a.time}`);
+          const dateB = new Date(`${b.date} ${b.time}`);
+          return dateB.getTime() - dateA.getTime();
+        });
+        setNotifications(sortedNotifications);
+      }
+    } catch (error) {
+      console.error("Error loading notifications:", error);
+    }
+  };
 
   // Calculate unread notifications
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -134,15 +125,38 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     };
 
     checkLoginStatus();
+    loadNotifications();
 
     const handleUserLoggedIn = () => {
       checkLoginStatus();
     };
 
+    // Listen for notification updates
+    const handleNotificationUpdated = (event: CustomEvent) => {
+      if (event.detail.type === 'user') {
+        loadNotifications();
+      }
+    };
+
+    // Listen for additional service updates
+    const handleAdditionalServiceUpdated = (event: CustomEvent) => {
+      loadNotifications();
+    };
+
     window.addEventListener('userLoggedIn', handleUserLoggedIn);
+    window.addEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
+    window.addEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
+
+    // Set up interval to check for new notifications
+    const interval = setInterval(() => {
+      loadNotifications();
+    }, 10000); // Check every 10 seconds
 
     return () => {
+      clearInterval(interval);
       window.removeEventListener('userLoggedIn', handleUserLoggedIn);
+      window.removeEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
+      window.removeEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
     };
   }, []);
 
@@ -283,16 +297,50 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsNotificationOpen(!isNotificationOpen);
     if (!isNotificationOpen) {
       // Mark all as read when opening notifications
-      setNotifications(notifications.map(notif => ({ ...notif, read: true })));
+      markAllAsRead();
     }
+  };
+
+  const markAllAsRead = () => {
+    const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
+    setNotifications(updatedNotifications);
+    localStorage.setItem('userNotifications', JSON.stringify(updatedNotifications));
+  };
+
+  const markAsRead = (notificationId: string) => {
+    const updatedNotifications = notifications.map(notif => 
+      notif.id === notificationId ? { ...notif, read: true } : notif
+    );
+    setNotifications(updatedNotifications);
+    localStorage.setItem('userNotifications', JSON.stringify(updatedNotifications));
+  };
+
+  const deleteNotification = (notificationId: string) => {
+    const updatedNotifications = notifications.filter(notif => notif.id !== notificationId);
+    setNotifications(updatedNotifications);
+    localStorage.setItem('userNotifications', JSON.stringify(updatedNotifications));
+  };
+
+  const deleteAllNotifications = () => {
+    setNotifications([]);
+    localStorage.setItem('userNotifications', JSON.stringify([]));
+    setIsNotificationOpen(false);
   };
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
       case 'order':
-        return <PackageCheck className="w-5 h-5 text-blue-500" />;
+        return <ShoppingBag className="w-5 h-5 text-blue-500" />;
+      case 'payment':
+        return <CreditCard className="w-5 h-5 text-green-500" />;
+      case 'additional_service':
+        return <PlusCircle className="w-5 h-5 text-purple-500" />;
+      case 'completion':
+        return <CheckCircle className="w-5 h-5 text-green-600" />;
+      case 'cancellation':
+        return <AlertCircle className="w-5 h-5 text-red-500" />;
       case 'promo':
-        return <AlertCircle className="w-5 h-5 text-green-500" />;
+        return <AlertCircle className="w-5 h-5 text-amber-500" />;
       case 'reminder':
         return <Clock className="w-5 h-5 text-amber-500" />;
       default:
@@ -300,12 +348,35 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
+  const getNotificationColor = (type: Notification['type']) => {
+    switch (type) {
+      case 'order':
+        return 'bg-blue-50 dark:bg-blue-900/10 border-blue-200';
+      case 'payment':
+        return 'bg-green-50 dark:bg-green-900/10 border-green-200';
+      case 'additional_service':
+        return 'bg-purple-50 dark:bg-purple-900/10 border-purple-200';
+      case 'completion':
+        return 'bg-green-50 dark:bg-green-900/10 border-green-200';
+      case 'cancellation':
+        return 'bg-red-50 dark:bg-red-900/10 border-red-200';
+      case 'promo':
+        return 'bg-amber-50 dark:bg-amber-900/10 border-amber-200';
+      default:
+        return 'bg-gray-50 dark:bg-gray-800 border-gray-200';
+    }
+  };
+
   const handleNotificationClick = (notification: Notification) => {
+    markAsRead(notification.id);
+    
     if (notification.orderId) {
       setIsNotificationOpen(false);
       setIsLoading(true);
       setTimeout(() => {
-        router.push(`/riwayat_pemesanan?order=${notification.orderId}`);
+        router.push(`/riwayat_pemesanan`);
+        // In a real app, you would scroll to or expand the specific order
+        // This could be done with query parameters or state management
       }, 300);
     }
   };
@@ -344,7 +415,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
-                        {unreadCount}
+                        {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
                   </button>
@@ -355,15 +426,25 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       <div className="p-4 border-b border-gray-200 dark:border-neutral-700">
                         <div className="flex items-center justify-between">
                           <h3 className="font-bold text-lg">Notifikasi</h3>
-                          <button
-                            onClick={() => setIsNotificationOpen(false)}
-                            className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {unreadCount > 0 && (
+                              <button
+                                onClick={markAllAsRead}
+                                className="text-xs text-blue-500 hover:text-blue-700"
+                              >
+                                Tandai semua dibaca
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setIsNotificationOpen(false)}
+                              className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {notifications.length} notifikasi
+                          {notifications.length} notifikasi • {unreadCount} belum dibaca
                         </p>
                       </div>
                       
@@ -373,7 +454,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                             {notifications.map((notification) => (
                               <div
                                 key={notification.id}
-                                onClick={() => handleNotificationClick(notification)}
                                 className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
                               >
                                 <div className="flex gap-3">
@@ -381,24 +461,35 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                     {getNotificationIcon(notification.type)}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
                                       <h4 className="font-semibold text-gray-900 dark:text-gray-100">
                                         {notification.title}
                                       </h4>
-                                      {!notification.read && (
-                                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                      )}
+                                      <div className="flex items-center gap-1">
+                                        {!notification.read && (
+                                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteNotification(notification.id);
+                                          }}
+                                          className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded"
+                                        >
+                                          <X className="w-3 h-3 text-gray-500" />
+                                        </button>
+                                      </div>
                                     </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                                       {notification.message}
                                     </p>
-                                    <div className="flex items-center justify-between mt-2">
+                                    <div className="flex items-center justify-between">
                                       <span className="text-xs text-gray-500 dark:text-gray-400">
-                                        {notification.time}
+                                        {notification.date} • {notification.time}
                                       </span>
                                       {notification.orderId && (
                                         <Badge variant="outline" className="text-xs">
-                                          {notification.orderId}
+                                          #{notification.orderId}
                                         </Badge>
                                       )}
                                     </div>
@@ -413,17 +504,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                             <p className="text-gray-500 dark:text-gray-400">
                               Tidak ada notifikasi
                             </p>
+                            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                              Semua notifikasi akan muncul di sini
+                            </p>
                           </div>
                         )}
                       </div>
 
                       <div className="p-4 border-t border-gray-200 dark:border-neutral-700">
                         <button
-                          onClick={() => {
-                            setNotifications([]);
-                            setIsNotificationOpen(false);
-                          }}
-                          className="w-full text-sm text-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 py-2"
+                          onClick={deleteAllNotifications}
+                          className="w-full text-sm text-center text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 py-2"
                         >
                           Hapus Semua Notifikasi
                         </button>
@@ -536,7 +627,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
-                        {unreadCount}
+                        {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
                   </button>
@@ -549,15 +640,25 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                           <div className="p-4 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
                             <div className="flex items-center justify-between">
                               <h3 className="font-bold text-lg">Notifikasi</h3>
-                              <button
-                                onClick={() => setIsNotificationOpen(false)}
-                                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
-                              >
-                                <X className="w-5 h-5" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                {unreadCount > 0 && (
+                                  <button
+                                    onClick={markAllAsRead}
+                                    className="text-xs text-blue-500 hover:text-blue-700"
+                                  >
+                                    Tandai semua dibaca
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setIsNotificationOpen(false)}
+                                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
+                                >
+                                  <X className="w-5 h-5" />
+                                </button>
+                              </div>
                             </div>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                              {notifications.length} notifikasi
+                              {notifications.length} notifikasi • {unreadCount} belum dibaca
                             </p>
                           </div>
                           
@@ -575,24 +676,35 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                         {getNotificationIcon(notification.type)}
                                       </div>
                                       <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center justify-between gap-2 mb-1">
                                           <h4 className="font-semibold text-gray-900 dark:text-gray-100">
                                             {notification.title}
                                           </h4>
-                                          {!notification.read && (
-                                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                          )}
+                                          <div className="flex items-center gap-1">
+                                            {!notification.read && (
+                                              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                            )}
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                deleteNotification(notification.id);
+                                              }}
+                                              className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded"
+                                            >
+                                              <X className="w-3 h-3 text-gray-500" />
+                                            </button>
+                                          </div>
                                         </div>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                                           {notification.message}
                                         </p>
-                                        <div className="flex items-center justify-between mt-2">
+                                        <div className="flex items-center justify-between">
                                           <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            {notification.time}
+                                            {notification.date} • {notification.time}
                                           </span>
                                           {notification.orderId && (
                                             <Badge variant="outline" className="text-xs">
-                                              {notification.orderId}
+                                              #{notification.orderId}
                                             </Badge>
                                           )}
                                         </div>
@@ -607,20 +719,28 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                 <p className="text-gray-500 dark:text-gray-400">
                                   Tidak ada notifikasi
                                 </p>
+                                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                                  Semua notifikasi akan muncul di sini
+                                </p>
                               </div>
                             )}
                           </div>
 
                           <div className="p-4 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
-                            <button
-                              onClick={() => {
-                                setNotifications([]);
-                                setIsNotificationOpen(false);
-                              }}
-                              className="w-full px-4 py-3 text-center text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
-                            >
-                              Hapus Semua Notifikasi
-                            </button>
+                            <div className="space-y-2">
+                              <button
+                                onClick={deleteAllNotifications}
+                                className="w-full px-4 py-3 text-center text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                              >
+                                Hapus Semua Notifikasi
+                              </button>
+                              <button
+                                onClick={() => setIsNotificationOpen(false)}
+                                className="w-full px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded-lg transition-colors"
+                              >
+                                Tutup
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -680,7 +800,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         </div>
                         {unreadCount > 0 && (
                           <span className="flex items-center justify-center w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full">
-                            {unreadCount}
+                            {unreadCount > 9 ? '9+' : unreadCount}
                           </span>
                         )}
                       </button>
