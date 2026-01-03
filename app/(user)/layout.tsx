@@ -1,3 +1,4 @@
+// app/(user)/layout.tsx
 "use client";
 
 import { useEffect, useState, useRef, type ReactNode } from "react";
@@ -44,6 +45,7 @@ import { Badge } from "@/app/components/ui/badge";
 const LANG_STORAGE_KEY = "appLanguage";
 const AUTH_STORAGE_KEY = "authData";
 const TOKEN_STORAGE_KEY = "userToken";
+const NOTIFICATION_STORAGE_KEY = "userNotifications";
 
 interface UserData {
   name: string;
@@ -69,9 +71,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    // Initial notifications will be loaded from localStorage
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   
   const notificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -80,7 +80,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   // Load notifications from localStorage
   const loadNotifications = () => {
     try {
-      const savedNotifications = localStorage.getItem('userNotifications');
+      const savedNotifications = localStorage.getItem(NOTIFICATION_STORAGE_KEY);
       if (savedNotifications) {
         const parsedNotifications = JSON.parse(savedNotifications);
         // Sort by date and time (newest first)
@@ -90,9 +90,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           return dateB.getTime() - dateA.getTime();
         });
         setNotifications(sortedNotifications);
+      } else {
+        setNotifications([]);
       }
     } catch (error) {
       console.error("Error loading notifications:", error);
+      setNotifications([]);
+    }
+  };
+
+  // Save notifications to localStorage
+  const saveNotifications = (newNotifications: Notification[]) => {
+    try {
+      localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(newNotifications));
+    } catch (error) {
+      console.error("Error saving notifications:", error);
     }
   };
 
@@ -147,13 +159,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     window.addEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
     window.addEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
 
-    // Set up interval to check for new notifications
-    const interval = setInterval(() => {
-      loadNotifications();
-    }, 10000); // Check every 10 seconds
-
     return () => {
-      clearInterval(interval);
       window.removeEventListener('userLoggedIn', handleUserLoggedIn);
       window.removeEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
       window.removeEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
@@ -304,7 +310,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const markAllAsRead = () => {
     const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
     setNotifications(updatedNotifications);
-    localStorage.setItem('userNotifications', JSON.stringify(updatedNotifications));
+    saveNotifications(updatedNotifications);
   };
 
   const markAsRead = (notificationId: string) => {
@@ -312,19 +318,30 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       notif.id === notificationId ? { ...notif, read: true } : notif
     );
     setNotifications(updatedNotifications);
-    localStorage.setItem('userNotifications', JSON.stringify(updatedNotifications));
+    saveNotifications(updatedNotifications);
   };
 
-  const deleteNotification = (notificationId: string) => {
+  // PERBAIKAN: Fungsi delete notifikasi dengan stopPropagation yang benar
+  const deleteNotification = (notificationId: string, e: React.MouseEvent) => {
+    // CRITICAL: Stop event dari bubbling ke parent
+    e.stopPropagation();
+    e.preventDefault();
+    
     const updatedNotifications = notifications.filter(notif => notif.id !== notificationId);
     setNotifications(updatedNotifications);
-    localStorage.setItem('userNotifications', JSON.stringify(updatedNotifications));
+    saveNotifications(updatedNotifications);
   };
 
-  const deleteAllNotifications = () => {
+  // PERBAIKAN: Fungsi delete all dengan stopPropagation yang benar
+  const deleteAllNotifications = (e: React.MouseEvent) => {
+    // CRITICAL: Stop event dari bubbling
+    e.stopPropagation();
+    e.preventDefault();
+    
     setNotifications([]);
-    localStorage.setItem('userNotifications', JSON.stringify([]));
-    setIsNotificationOpen(false);
+    saveNotifications([]);
+    // Jangan close notifikasi saat delete all
+    // setIsNotificationOpen(false); // HAPUS INI
   };
 
   const getNotificationIcon = (type: Notification['type']) => {
@@ -375,8 +392,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setTimeout(() => {
         router.push(`/riwayat_pemesanan`);
-        // In a real app, you would scroll to or expand the specific order
-        // This could be done with query parameters or state management
       }, 300);
     }
   };
@@ -429,14 +444,20 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                           <div className="flex items-center gap-2">
                             {unreadCount > 0 && (
                               <button
-                                onClick={markAllAsRead}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markAllAsRead();
+                                }}
                                 className="text-xs text-blue-500 hover:text-blue-700"
                               >
                                 Tandai semua dibaca
                               </button>
                             )}
                             <button
-                              onClick={() => setIsNotificationOpen(false)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsNotificationOpen(false);
+                              }}
                               className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
                             >
                               <X className="w-4 h-4" />
@@ -454,6 +475,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                             {notifications.map((notification) => (
                               <div
                                 key={notification.id}
+                                onClick={() => handleNotificationClick(notification)}
                                 className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
                               >
                                 <div className="flex gap-3">
@@ -470,10 +492,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                                         )}
                                         <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            deleteNotification(notification.id);
-                                          }}
+                                          onClick={(e) => deleteNotification(notification.id, e)}
                                           className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded"
                                         >
                                           <X className="w-3 h-3 text-gray-500" />
@@ -511,14 +530,16 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         )}
                       </div>
 
-                      <div className="p-4 border-t border-gray-200 dark:border-neutral-700">
-                        <button
-                          onClick={deleteAllNotifications}
-                          className="w-full text-sm text-center text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 py-2"
-                        >
-                          Hapus Semua Notifikasi
-                        </button>
-                      </div>
+                      {notifications.length > 0 && (
+                        <div className="p-4 border-t border-gray-200 dark:border-neutral-700">
+                          <button
+                            onClick={(e) => deleteAllNotifications(e)}
+                            className="w-full text-sm text-center text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 py-2"
+                          >
+                            Hapus Semua Notifikasi
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -634,8 +655,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
                   {/* Mobile Notification Panel */}
                   {isNotificationOpen && (
-                    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-[9998]">
-                      <div className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-white dark:bg-neutral-800 shadow-xl overflow-hidden">
+                    <div 
+                      className="fixed inset-0 top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-[9998]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsNotificationOpen(false);
+                      }}
+                    >
+                      <div 
+                        className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-white dark:bg-neutral-800 shadow-xl overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="flex flex-col h-full">
                           <div className="p-4 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
                             <div className="flex items-center justify-between">
@@ -643,14 +673,20 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                               <div className="flex items-center gap-2">
                                 {unreadCount > 0 && (
                                   <button
-                                    onClick={markAllAsRead}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      markAllAsRead();
+                                    }}
                                     className="text-xs text-blue-500 hover:text-blue-700"
                                   >
                                     Tandai semua dibaca
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => setIsNotificationOpen(false)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsNotificationOpen(false);
+                                  }}
                                   className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
                                 >
                                   <X className="w-5 h-5" />
@@ -685,10 +721,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                                             )}
                                             <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                deleteNotification(notification.id);
-                                              }}
+                                              onClick={(e) => deleteNotification(notification.id, e)}
                                               className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded"
                                             >
                                               <X className="w-3 h-3 text-gray-500" />
@@ -728,14 +761,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
                           <div className="p-4 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
                             <div className="space-y-2">
+                              {notifications.length > 0 && (
+                                <button
+                                  onClick={(e) => deleteAllNotifications(e)}
+                                  className="w-full px-4 py-3 text-center text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                                >
+                                  Hapus Semua Notifikasi
+                                </button>
+                              )}
                               <button
-                                onClick={deleteAllNotifications}
-                                className="w-full px-4 py-3 text-center text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
-                              >
-                                Hapus Semua Notifikasi
-                              </button>
-                              <button
-                                onClick={() => setIsNotificationOpen(false)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsNotificationOpen(false);
+                                }}
                                 className="w-full px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded-lg transition-colors"
                               >
                                 Tutup
