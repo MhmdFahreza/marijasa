@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Navbar,
@@ -26,17 +26,34 @@ import {
   User,
   LogOut,
   Package,
-  Store
+  Store,
+  Bell,
+  X,
+  CheckCircle,
+  Clock,
+  PackageCheck,
+  AlertCircle
 } from "lucide-react";
+import { Badge } from "@/app/components/ui/badge";
 
 const LANG_STORAGE_KEY = "appLanguage";
 const AUTH_STORAGE_KEY = "authData";
-const TOKEN_STORAGE_KEY = "userToken"; // ⭐ Key untuk token
+const TOKEN_STORAGE_KEY = "userToken";
 
 interface UserData {
   name: string;
   email: string;
   avatar?: string;
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  type: 'order' | 'promo' | 'system' | 'reminder';
+  read: boolean;
+  orderId?: string;
 }
 
 export default function UserLayout({ children }: { children: ReactNode }) {
@@ -45,8 +62,51 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    {
+      id: "1",
+      title: "Pesanan Diproses",
+      message: "Pesanan #ORD-2024-001 sedang diproses oleh vendor",
+      time: "10 menit yang lalu",
+      type: "order",
+      read: false,
+      orderId: "ORD-2024-001"
+    },
+    {
+      id: "2",
+      title: "Promo Spesial",
+      message: "Dapatkan diskon 20% untuk pemesanan pertama Anda",
+      time: "1 jam yang lalu",
+      type: "promo",
+      read: false
+    },
+    {
+      id: "3",
+      title: "Pesanan Selesai",
+      message: "Pesanan #ORD-2023-456 telah selesai",
+      time: "2 hari yang lalu",
+      type: "order",
+      read: true,
+      orderId: "ORD-2023-456"
+    },
+    {
+      id: "4",
+      title: "Pengingat Pembayaran",
+      message: "Lakukan pembayaran untuk pesanan #ORD-2024-002",
+      time: "3 hari yang lalu",
+      type: "reminder",
+      read: true,
+      orderId: "ORD-2024-002"
+    }
+  ]);
+  
+  const notificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Calculate unread notifications
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -56,7 +116,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setSelectedLanguage(savedLang);
     }
 
-    // ⭐ Function untuk check login status
     const checkLoginStatus = () => {
       const token = window.localStorage.getItem(TOKEN_STORAGE_KEY);
       const authData = window.localStorage.getItem(AUTH_STORAGE_KEY);
@@ -74,10 +133,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       }
     };
 
-    // Check initial login status
     checkLoginStatus();
 
-    // ⭐ Listen untuk event login berhasil dari OTP
     const handleUserLoggedIn = () => {
       checkLoginStatus();
     };
@@ -92,6 +149,23 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setIsLoading(false);
   }, [pathname]);
+
+  // Close notifications when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
+      }
+    };
+
+    if (isNotificationOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isNotificationOpen]);
 
   const handleSelectLanguage = (language: string) => {
     setSelectedLanguage(language);
@@ -149,27 +223,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, 300);
   };
 
-  // ⭐ Fungsi logout yang diperbaiki - hapus semua data terkait auth
   const handleLogout = () => {
-    // Hapus token dan auth data
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     
-    // ⭐ Optional: Hapus data lain yang terkait user jika perlu
-    // localStorage.removeItem('userOrders');
-    // localStorage.removeItem('favoriteVendors');
-    
-    // Update state
     setIsLoggedIn(false);
     setUserData(null);
-    
-    // Tutup mobile menu jika terbuka
     setIsMobileMenuOpen(false);
+    setIsNotificationOpen(false);
     
-    // ⭐ Dispatch event untuk memberitahu komponen lain
     window.dispatchEvent(new Event('userLoggedOut'));
     
-    // Redirect ke home
     setIsLoading(true);
     setTimeout(() => {
       router.push("/");
@@ -215,6 +279,37 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, 300);
   };
 
+  const toggleNotification = () => {
+    setIsNotificationOpen(!isNotificationOpen);
+    if (!isNotificationOpen) {
+      // Mark all as read when opening notifications
+      setNotifications(notifications.map(notif => ({ ...notif, read: true })));
+    }
+  };
+
+  const getNotificationIcon = (type: Notification['type']) => {
+    switch (type) {
+      case 'order':
+        return <PackageCheck className="w-5 h-5 text-blue-500" />;
+      case 'promo':
+        return <AlertCircle className="w-5 h-5 text-green-500" />;
+      case 'reminder':
+        return <Clock className="w-5 h-5 text-amber-500" />;
+      default:
+        return <Bell className="w-5 h-5 text-gray-500" />;
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    if (notification.orderId) {
+      setIsNotificationOpen(false);
+      setIsLoading(true);
+      setTimeout(() => {
+        router.push(`/riwayat_pemesanan?order=${notification.orderId}`);
+      }, 300);
+    }
+  };
+
   const defaultAvatar = "/profile.svg";
 
   return (
@@ -238,6 +333,104 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   selectedLanguage={selectedLanguage}
                   onSelectLanguage={handleSelectLanguage}
                 />
+
+                {/* Desktop Notification Bell */}
+                <div className="relative hidden md:block" ref={notificationRef}>
+                  <button
+                    onClick={toggleNotification}
+                    className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                    aria-label="Notifikasi"
+                  >
+                    <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Desktop Notification Dropdown */}
+                  {isNotificationOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-80 md:w-96 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 z-50">
+                      <div className="p-4 border-b border-gray-200 dark:border-neutral-700">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-lg">Notifikasi</h3>
+                          <button
+                            onClick={() => setIsNotificationOpen(false)}
+                            className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                          {notifications.length} notifikasi
+                        </p>
+                      </div>
+                      
+                      <div className="max-h-96 overflow-y-auto">
+                        {notifications.length > 0 ? (
+                          <div className="divide-y divide-gray-100 dark:divide-neutral-700">
+                            {notifications.map((notification) => (
+                              <div
+                                key={notification.id}
+                                onClick={() => handleNotificationClick(notification)}
+                                className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
+                              >
+                                <div className="flex gap-3">
+                                  <div className="flex-shrink-0 mt-1">
+                                    {getNotificationIcon(notification.type)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                                        {notification.title}
+                                      </h4>
+                                      {!notification.read && (
+                                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                      {notification.message}
+                                    </p>
+                                    <div className="flex items-center justify-between mt-2">
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        {notification.time}
+                                      </span>
+                                      {notification.orderId && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {notification.orderId}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-8 text-center">
+                            <Bell className="w-12 h-12 text-gray-300 dark:text-neutral-600 mx-auto mb-4" />
+                            <p className="text-gray-500 dark:text-gray-400">
+                              Tidak ada notifikasi
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-4 border-t border-gray-200 dark:border-neutral-700">
+                        <button
+                          onClick={() => {
+                            setNotifications([]);
+                            setIsNotificationOpen(false);
+                          }}
+                          className="w-full text-sm text-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 py-2"
+                        >
+                          Hapus Semua Notifikasi
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -331,10 +524,116 @@ export default function UserLayout({ children }: { children: ReactNode }) {
             <div onClick={handleLogoClick} className="cursor-pointer">
               <NavbarLogo />
             </div>
-            <MobileNavToggle
-              isOpen={isMobileMenuOpen}
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            />
+            <div className="flex items-center gap-2">
+              {/* Mobile Notification Bell in Header */}
+              {isLoggedIn && (
+                <div className="relative md:hidden" ref={notificationRef}>
+                  <button
+                    onClick={toggleNotification}
+                    className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                    aria-label="Notifikasi"
+                  >
+                    <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Mobile Notification Panel */}
+                  {isNotificationOpen && (
+                    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-[9998]">
+                      <div className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-white dark:bg-neutral-800 shadow-xl overflow-hidden">
+                        <div className="flex flex-col h-full">
+                          <div className="p-4 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
+                            <div className="flex items-center justify-between">
+                              <h3 className="font-bold text-lg">Notifikasi</h3>
+                              <button
+                                onClick={() => setIsNotificationOpen(false)}
+                                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                              {notifications.length} notifikasi
+                            </p>
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto">
+                            {notifications.length > 0 ? (
+                              <div className="divide-y divide-gray-100 dark:divide-neutral-700">
+                                {notifications.map((notification) => (
+                                  <div
+                                    key={notification.id}
+                                    onClick={() => handleNotificationClick(notification)}
+                                    className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
+                                  >
+                                    <div className="flex gap-3">
+                                      <div className="flex-shrink-0 mt-1">
+                                        {getNotificationIcon(notification.type)}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                                            {notification.title}
+                                          </h4>
+                                          {!notification.read && (
+                                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                          )}
+                                        </div>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                          {notification.message}
+                                        </p>
+                                        <div className="flex items-center justify-between mt-2">
+                                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            {notification.time}
+                                          </span>
+                                          {notification.orderId && (
+                                            <Badge variant="outline" className="text-xs">
+                                              {notification.orderId}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center">
+                                <Bell className="w-16 h-16 text-gray-300 dark:text-neutral-600 mx-auto mb-4" />
+                                <p className="text-gray-500 dark:text-gray-400">
+                                  Tidak ada notifikasi
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="p-4 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
+                            <button
+                              onClick={() => {
+                                setNotifications([]);
+                                setIsNotificationOpen(false);
+                              }}
+                              className="w-full px-4 py-3 text-center text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                            >
+                              Hapus Semua Notifikasi
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <MobileNavToggle
+                isOpen={isMobileMenuOpen}
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              />
+            </div>
           </MobileNavHeader>
 
           <MobileNavMenu
@@ -366,12 +665,33 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   </div>
 
                   <div className="space-y-2">
+                    {/* Tablet Notification Button in Menu */}
+                    <div className="md:hidden">
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          toggleNotification();
+                        }}
+                        className="w-full flex items-center justify-between px-4 py-3 text-left rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Bell className="w-5 h-5" />
+                          <span>Notifikasi</span>
+                        </div>
+                        {unreadCount > 0 && (
+                          <span className="flex items-center justify-center w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
                     <button
                       onClick={handleProfileClick}
                       disabled={pathname === "/profile"}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/profile"
-                        ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
                         }`}
                     >
                       <User className="w-5 h-5" />
@@ -392,8 +712,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       onClick={handleFavoriteVendorsClick}
                       disabled={pathname === "/vendor_favorit"}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/vendor_favorit"
-                        ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
                         }`}
                     >
                       <Heart className="w-5 h-5" />

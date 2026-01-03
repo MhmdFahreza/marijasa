@@ -91,7 +91,7 @@ Jangan pernah memberikan informasi yang tidak disebutkan di atas. Jika ditanya t
 
     // Panggil Groq API
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "groq/compound",
       messages: allMessages,
       temperature: 0.7,
       max_tokens: 1024,

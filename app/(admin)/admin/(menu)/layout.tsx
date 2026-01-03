@@ -9,6 +9,7 @@ import {
   IconUserPlus,
   IconLogout,
   IconChevronDown,
+  IconChartBar, // Icon baru untuk Reports
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, usePathname } from "next/navigation";
@@ -91,6 +92,13 @@ export default function AdminLayout({
       href: "/admin/transaksi",
       icon: (
         <IconFileText className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" />
+      ),
+    },
+    {
+      label: "Reports",
+      href: "/admin/reports",
+      icon: (
+        <IconChartBar className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" /> // Icon diubah
       ),
     },
   ];
