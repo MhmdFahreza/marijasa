@@ -2,7 +2,6 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/app/components/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -20,7 +19,9 @@ function normalizePhone(phone: string): string {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma) as any,
+  // REMOVED: PrismaAdapter - kita handle manual untuk control penuh
+  // adapter: PrismaAdapter(prisma) as any,
+  
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -50,7 +51,6 @@ export const authOptions: NextAuthOptions = {
         let user = null;
 
         if (isEmail) {
-          // Cari berdasarkan email
           user = await prisma.user.findUnique({
             where: { email: identifier.toLowerCase() }
           });
@@ -59,7 +59,6 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Email belum terdaftar. Silakan daftar terlebih dahulu.");
           }
         } else {
-          // Normalisasi nomor telepon
           const normalizedPhone = normalizePhone(identifier);
           
           user = await prisma.user.findFirst({
@@ -71,22 +70,18 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        // Cek apakah user memiliki password (bukan pure OAuth user)
         if (!user.password) {
           throw new Error("Akun ini terdaftar melalui Google. Silakan login dengan Google.");
         }
 
-        // Cek apakah email sudah diverifikasi
         if (!user.email_verified) {
           throw new Error("Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.");
         }
 
-        // Cek apakah akun aktif
         if (!user.is_active) {
           throw new Error("Akun Anda tidak aktif. Silakan hubungi admin.");
         }
 
-        // Verifikasi password
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user.password
@@ -109,6 +104,7 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
+      // Handle Google OAuth
       if (account?.provider === "google") {
         try {
           const userEmail = user.email?.toLowerCase();
@@ -118,32 +114,42 @@ export const authOptions: NextAuthOptions = {
             return "/login?error=NO_EMAIL";
           }
 
+          console.log(`[Google OAuth] Attempting sign in for: ${userEmail}`);
+
           // Cek apakah user sudah terdaftar di database
           const existingUser = await prisma.user.findUnique({
             where: { email: userEmail }
           });
 
           if (!existingUser) {
-            // User belum terdaftar - tolak login Google dan arahkan ke halaman daftar
-            console.log(`Google sign in rejected: Email ${userEmail} not registered`);
+            console.log(`[Google OAuth] User not registered: ${userEmail}`);
             return "/login?error=USER_NOT_REGISTERED";
           }
 
           // Cek apakah akun aktif
           if (!existingUser.is_active) {
-            console.log(`Google sign in rejected: Account ${userEmail} is inactive`);
+            console.log(`[Google OAuth] Account inactive: ${userEmail}`);
             return "/login?error=ACCOUNT_INACTIVE";
           }
 
-          // User sudah terdaftar - update email_verified jika belum
+          // Update email_verified jika belum
           if (!existingUser.email_verified) {
             await prisma.user.update({
               where: { email: userEmail },
               data: { email_verified: true }
             });
+            console.log(`[Google OAuth] Email verified for: ${userEmail}`);
           }
 
-          // Cek apakah account Google sudah ter-link
+          // Update avatar dari Google jika user belum punya avatar
+          if (!existingUser.avatar && user.image) {
+            await prisma.user.update({
+              where: { email: userEmail },
+              data: { avatar: user.image }
+            });
+          }
+
+          // Cek dan link Google account jika belum ada
           const existingAccount = await prisma.account.findFirst({
             where: {
               user_id: existingUser.user_id,
@@ -151,35 +157,50 @@ export const authOptions: NextAuthOptions = {
             }
           });
 
-          // Jika belum ada account Google yang ter-link, buat baru
-          if (!existingAccount) {
-            await prisma.account.create({
-              data: {
-                user_id: existingUser.user_id,
-                type: account.type,
-                provider: account.provider,
-                provider_account_id: account.providerAccountId,
-                access_token: account.access_token,
-                refresh_token: account.refresh_token,
-                expires_at: account.expires_at,
-                token_type: account.token_type,
-                scope: account.scope,
-                id_token: account.id_token,
-                session_state: account.session_state as string | null
+          if (!existingAccount && account.providerAccountId) {
+            // Cek apakah providerAccountId sudah dipakai user lain
+            const accountWithSameProviderId = await prisma.account.findFirst({
+              where: {
+                provider: "google",
+                provider_account_id: account.providerAccountId
               }
             });
-            console.log(`Google account linked for user: ${userEmail}`);
+
+            if (!accountWithSameProviderId) {
+              await prisma.account.create({
+                data: {
+                  user_id: existingUser.user_id,
+                  type: account.type || "oauth",
+                  provider: account.provider,
+                  provider_account_id: account.providerAccountId,
+                  access_token: account.access_token || null,
+                  refresh_token: account.refresh_token || null,
+                  expires_at: account.expires_at || null,
+                  token_type: account.token_type || null,
+                  scope: account.scope || null,
+                  id_token: account.id_token || null,
+                  session_state: typeof account.session_state === 'string' ? account.session_state : null
+                }
+              });
+              console.log(`[Google OAuth] Account linked for: ${userEmail}`);
+            }
           }
 
+          console.log(`[Google OAuth] Sign in successful for: ${userEmail}`);
           return true;
+
         } catch (error) {
-          console.error("Error during Google sign in:", error);
+          console.error("[Google OAuth] Error during sign in:", error);
           return "/login?error=GOOGLE_SIGNIN_ERROR";
         }
       }
+      
+      // Untuk credentials provider
       return true;
     },
-    async jwt({ token, user, account }) {
+
+    async jwt({ token, user, account, trigger }) {
+      // Initial sign in
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
@@ -188,20 +209,26 @@ export const authOptions: NextAuthOptions = {
       
       // Untuk Google OAuth, ambil data user dari database
       if (account?.provider === "google" && token.email) {
-        const dbUser = await prisma.user.findUnique({
-          where: { email: token.email.toLowerCase() }
-        });
-        if (dbUser) {
-          token.id = dbUser.user_id;
-          token.role = dbUser.role;
-          token.phone = dbUser.phone;
-          token.name = dbUser.name;
-          token.picture = dbUser.avatar || "/profile.svg";
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email.toLowerCase() }
+          });
+          
+          if (dbUser) {
+            token.id = dbUser.user_id;
+            token.role = dbUser.role;
+            token.phone = dbUser.phone;
+            token.name = dbUser.name;
+            token.picture = dbUser.avatar || token.picture || "/profile.svg";
+          }
+        } catch (error) {
+          console.error("[JWT Callback] Error fetching user:", error);
         }
       }
       
       return token;
     },
+
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
@@ -212,27 +239,29 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
+
     async redirect({ url, baseUrl }) {
-      // Handle berbagai error dari Google OAuth
-      if (url.includes("error=USER_NOT_REGISTERED")) {
-        return `${baseUrl}/login?error=USER_NOT_REGISTERED`;
-      }
-      if (url.includes("error=ACCOUNT_INACTIVE")) {
-        return `${baseUrl}/login?error=ACCOUNT_INACTIVE`;
-      }
-      if (url.includes("error=NO_EMAIL")) {
-        return `${baseUrl}/login?error=NO_EMAIL`;
-      }
-      if (url.includes("error=GOOGLE_SIGNIN_ERROR")) {
-        return `${baseUrl}/login?error=GOOGLE_SIGNIN_ERROR`;
+      // Handle error redirects
+      if (url.includes("error=")) {
+        // Jika URL sudah mengandung error parameter, redirect ke login dengan error
+        const urlObj = new URL(url, baseUrl);
+        const error = urlObj.searchParams.get("error");
+        if (error) {
+          return `${baseUrl}/login?error=${error}`;
+        }
       }
       
-      // Jika sudah di baseUrl, return baseUrl
-      if (url.startsWith(baseUrl)) return url;
+      // Jika URL dimulai dengan baseUrl, allow redirect
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
       
       // Jika relative URL
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
       
+      // Default ke baseUrl
       return baseUrl;
     }
   },

@@ -41,6 +41,7 @@ import {
   MessageSquare
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
+import { useSession, signOut } from "next-auth/react"; // Import useSession dan signOut
 
 const LANG_STORAGE_KEY = "appLanguage";
 const AUTH_STORAGE_KEY = "authData";
@@ -48,9 +49,12 @@ const TOKEN_STORAGE_KEY = "userToken";
 const NOTIFICATION_STORAGE_KEY = "userNotifications";
 
 interface UserData {
+  id: string;
   name: string;
   email: string;
   avatar?: string;
+  phone?: string;
+  role?: string;
 }
 
 interface Notification {
@@ -77,6 +81,9 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
+  
+  // Gunakan useSession untuk mendapatkan session dari NextAuth
+  const { data: session, status } = useSession();
 
   // Load notifications from localStorage
   const loadNotifications = () => {
@@ -100,7 +107,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  // Save notifications to localStorage - PERBAIKAN: Fungsi yang lebih reliable
+  // Save notifications to localStorage
   const saveNotifications = (newNotifications: Notification[]) => {
     try {
       localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(newNotifications));
@@ -116,6 +123,69 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   // Calculate unread notifications
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Effect untuk sinkronisasi session NextAuth dengan state lokal
+  useEffect(() => {
+    if (status === "loading") return;
+    
+    if (session?.user) {
+      // User sudah login via NextAuth (Google OAuth atau Credentials)
+      const userFromSession = {
+        id: session.user.id || "",
+        name: session.user.name || "",
+        email: session.user.email || "",
+        avatar: session.user.image || "/profile.svg",
+        phone: (session.user as any).phone || "",
+        role: (session.user as any).role || "user"
+      };
+      
+      setIsLoggedIn(true);
+      setUserData(userFromSession);
+      
+      // Simpan ke localStorage untuk konsistensi dengan sistem yang ada
+      if (typeof window !== 'undefined') {
+        const authData = {
+          isLoggedIn: true,
+          user: userFromSession,
+          loginTime: new Date().toISOString(),
+          viaNextAuth: true
+        };
+        
+        localStorage.setItem("authData", JSON.stringify(authData));
+        localStorage.setItem("user", JSON.stringify(userFromSession));
+        
+        // Untuk login Google, gunakan token khusus
+        if (!localStorage.getItem("userToken")) {
+          localStorage.setItem("userToken", "google-oauth-token");
+        }
+      }
+    } else {
+      // Cek localStorage untuk login biasa (credentials)
+      const checkLocalStorageLogin = () => {
+        const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+        const authData = localStorage.getItem(AUTH_STORAGE_KEY);
+        
+        if (token && authData) {
+          try {
+            const parsedAuth = JSON.parse(authData);
+            setIsLoggedIn(true);
+            setUserData(parsedAuth.user);
+          } catch (error) {
+            console.error("Error parsing auth data:", error);
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            setIsLoggedIn(false);
+            setUserData(null);
+          }
+        } else {
+          setIsLoggedIn(false);
+          setUserData(null);
+        }
+      };
+      
+      checkLocalStorageLogin();
+    }
+  }, [session, status]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -124,29 +194,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       setSelectedLanguage(savedLang);
     }
 
-    const checkLoginStatus = () => {
-      const token = window.localStorage.getItem(TOKEN_STORAGE_KEY);
-      const authData = window.localStorage.getItem(AUTH_STORAGE_KEY);
-      
-      if (token && authData) {
-        try {
-          const parsedAuth = JSON.parse(authData);
-          setIsLoggedIn(true);
-          setUserData(parsedAuth.user);
-        } catch (error) {
-          console.error("Error parsing auth data:", error);
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          localStorage.removeItem(TOKEN_STORAGE_KEY);
-        }
-      }
-    };
-
-    checkLoginStatus();
     loadNotifications();
-
-    const handleUserLoggedIn = () => {
-      checkLoginStatus();
-    };
 
     // Listen for notification updates
     const handleNotificationUpdated = (event: CustomEvent) => {
@@ -160,12 +208,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       loadNotifications();
     };
 
-    window.addEventListener('userLoggedIn', handleUserLoggedIn);
     window.addEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
     window.addEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
 
     return () => {
-      window.removeEventListener('userLoggedIn', handleUserLoggedIn);
       window.removeEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
       window.removeEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
     };
@@ -175,7 +221,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, [pathname]);
 
-  // Close notifications when clicking outside - PERBAIKAN: Handling yang lebih baik
+  // Close notifications when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -257,20 +303,32 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, 300);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Logout dari NextAuth jika login via Google/NextAuth
+    if (session) {
+      await signOut({ redirect: false });
+    }
+    
+    // Hapus semua data dari localStorage
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem("user");
+    localStorage.removeItem("userToken");
     
+    // Reset state
     setIsLoggedIn(false);
     setUserData(null);
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
     
+    // Dispatch event untuk memberi tahu komponen lain
     window.dispatchEvent(new Event('userLoggedOut'));
     
+    // Redirect ke halaman utama
     setIsLoading(true);
     setTimeout(() => {
       router.push("/");
+      router.refresh(); // Refresh untuk update session
     }, 300);
   };
 
@@ -338,7 +396,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     saveNotifications(updatedNotifications);
   };
 
-  // PERBAIKAN: Fungsi delete notifikasi yang benar
   const deleteNotification = (notificationId: string, e: React.MouseEvent) => {
     // Prevent event bubbling
     e.stopPropagation();
@@ -352,11 +409,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     
     // Save to localStorage
     localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(updatedNotifications));
-    
-    console.log(`Notification ${notificationId} deleted. Remaining: ${updatedNotifications.length}`);
   };
 
-  // PERBAIKAN: Fungsi delete all notifications yang benar
   const deleteAllNotifications = (e: React.MouseEvent) => {
     // Prevent event bubbling
     e.stopPropagation();
@@ -367,8 +421,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     
     // Save empty array to localStorage
     localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify([]));
-    
-    console.log("All notifications deleted");
   };
 
   const getNotificationIcon = (type: Notification['type']) => {
@@ -424,6 +476,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const defaultAvatar = "/profile.svg";
+
+  // Tampilkan loading jika status session masih loading
+  if (status === "loading") {
+    return (
+      <div className="relative w-full min-h-screen">
+        <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
+          <LoaderTwo />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full min-h-screen">
