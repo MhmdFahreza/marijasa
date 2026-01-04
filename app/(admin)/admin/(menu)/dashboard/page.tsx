@@ -20,7 +20,7 @@ export default function DashboardPage() {
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold mb-2">Dashboard Admin</h1>
+        <h1 className="text-2xl font-bold mb-2">Dashboard Admins</h1>
         <p className="text-neutral-600 dark:text-neutral-400">
           Selamat datang kembali, {adminInfo?.name || 'Administrator'}! ({adminInfo?.email || 'admin@gmail.com'})
         </p>
