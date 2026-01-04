@@ -1,21 +1,12 @@
 "use client"
 
 import { LoginForm } from "@/app/components/ui/login-form"
-import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Suspense } from "react"
 
-export default function Page() {
+function LoginContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [googleError, setGoogleError] = useState<string | null>(null)
-
-  useEffect(() => {
-    // Check for Google OAuth error
-    const error = searchParams?.get("error")
-    if (error === "USER_NOT_REGISTERED") {
-      setGoogleError("Akun Google Anda belum terdaftar. Silakan daftar terlebih dahulu.")
-    }
-  }, [searchParams])
 
   useEffect(() => {
     window.history.replaceState(null, "", window.location.href)
@@ -34,19 +25,28 @@ export default function Page() {
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        {googleError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
-            {googleError}
-            <button 
-              onClick={() => setGoogleError(null)}
-              className="ml-2 text-red-500 hover:text-red-700"
-            >
-              ✕
-            </button>
-          </div>
-        )}
         <LoginForm userType="user" />
       </div>
     </div>
+  )
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+        <div className="w-full max-w-sm">
+          <div className="animate-pulse">
+            <div className="h-8 bg-neutral-200 rounded w-3/4 mb-4"></div>
+            <div className="h-4 bg-neutral-200 rounded w-full mb-8"></div>
+            <div className="h-10 bg-neutral-200 rounded w-full mb-4"></div>
+            <div className="h-10 bg-neutral-200 rounded w-full mb-4"></div>
+            <div className="h-10 bg-neutral-200 rounded w-full"></div>
+          </div>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }
