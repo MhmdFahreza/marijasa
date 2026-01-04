@@ -195,19 +195,19 @@ export function LoginForm({
       return
     }
     
-    // Untuk user dan admin
+    // Untuk user dan admin - LANGSUNG LOGIN TANPA OTP
     setIsLoading(true)
     
     try {
-      // PERBAIKAN: Untuk admin, simpan token langsung
+      // Simulasi API call
+      await new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({ success: true, token: "dummy-token" })
+        }, 1000)
+      })
+      
       if (userType === "admin") {
-        // Simulasi API call
-        await new Promise((resolve) => {
-          setTimeout(() => {
-            resolve({ success: true, token: "dummy-token" })
-          }, 1000)
-        })
-        
+        // Simpan token dan data admin
         if (typeof window !== 'undefined') {
           localStorage.setItem('adminToken', 'dummy-token')
           localStorage.setItem('adminUser', JSON.stringify({ 
@@ -233,33 +233,44 @@ export function LoginForm({
           router.refresh()
         }, 1000)
       } else {
-        // PERBAIKAN: Untuk user biasa, JANGAN simpan token dulu
-        // Hanya simpan pendingAuth untuk verifikasi di halaman OTP
-        
-        // Simulasi API call
-        await new Promise((resolve) => {
-          setTimeout(() => {
-            resolve({ success: true, token: "dummy-token" })
-          }, 1000)
-        })
-        
+        // USER BIASA - LANGSUNG LOGIN TANPA OTP
+        const userData = {
+          name: "User",
+          email: email,
+          avatar: "/profile.svg"
+        };
+
+        const authData = {
+          isLoggedIn: true,
+          user: userData,
+          loginTime: new Date().toISOString()
+        };
+
+        // Simpan token dan data user langsung
         if (typeof window !== 'undefined') {
-          // Simpan data sementara untuk diverifikasi di OTP
-          const pendingAuth = {
-            email,
-            timestamp: new Date().toISOString(),
-            verified: false
-          }
-          localStorage.setItem('pendingAuth', JSON.stringify(pendingAuth))
+          localStorage.setItem("userToken", "dummy-token");
+          localStorage.setItem("user", JSON.stringify(userData));
+          localStorage.setItem("authData", JSON.stringify(authData));
           
-          // HAPUS token lama jika ada
-          localStorage.removeItem('userToken')
-          localStorage.removeItem('user')
-          localStorage.removeItem('authData')
+          // Hapus pendingAuth jika ada (dari proses sebelumnya)
+          localStorage.removeItem('pendingAuth');
         }
         
-        // Untuk user biasa, langsung redirect ke OTP tanpa loading overlay
-        router.push(`/login/otp?email=${encodeURIComponent(email)}&type=${userType}`)
+        // Jika ada callback onSuccess (untuk modal), panggil
+        if (onSuccess) {
+          onSuccess(email)
+          setIsLoading(false)
+          return
+        }
+        
+        // Tampilkan loader redirect untuk user
+        setShowRedirectLoader(true)
+        
+        // Tunggu sebentar untuk menampilkan loader redirect
+        setTimeout(() => {
+          router.push("/")
+          router.refresh()
+        }, 1000)
       }
       
     } catch (error) {
@@ -293,7 +304,7 @@ export function LoginForm({
     }
     return {
       title: "Login Berhasil!",
-      message: "Mengarahkan..."
+      message: "Mengarahkan ke halaman utama..."
     }
   }
 
@@ -397,7 +408,7 @@ export function LoginForm({
                     {isLoading ? (
                       <>
                         <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        {userType === "user" ? "Mengirim kode OTP..." : "Memproses..."}
+                        Memproses...
                       </>
                     ) : showRedirectLoader ? "Mengalihkan..." : "Login"}
                   </Button>

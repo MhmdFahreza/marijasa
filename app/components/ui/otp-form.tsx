@@ -24,12 +24,13 @@ import {
 import { cn } from "../lib/utils"
 
 interface OTPFormProps {
-  type?: "login" | "register"
+  type?: "register"
   email?: string
+  name?: string
   [key: string]: any
 }
 
-export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
+export function OTPForm({ type = "register", email, name, ...props }: OTPFormProps) {
   const [otp, setOtp] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
@@ -38,60 +39,61 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
   const searchParams = useSearchParams()
 
   const emailFromParams = searchParams?.get("email") || email
+  const nameFromParams = searchParams?.get("name") || name
 
   useEffect(() => {
     setIsMounted(true)
     
-    // PERBAIKAN: Cek apakah ada pendingAuth yang valid
+    // Cek apakah ada pendingRegistration yang valid
     if (typeof window !== 'undefined') {
-      const pendingAuth = localStorage.getItem('pendingAuth')
+      const pendingRegistration = localStorage.getItem('pendingRegistration')
       
-      if (!pendingAuth) {
-        // Jika tidak ada pendingAuth, redirect ke login
-        router.replace('/login')
+      if (!pendingRegistration) {
+        // Jika tidak ada pendingRegistration, redirect ke register
+        router.replace('/register')
         return
       }
       
       try {
-        const authData = JSON.parse(pendingAuth)
+        const regData = JSON.parse(pendingRegistration)
         
         // Cek apakah email sesuai
-        if (authData.email !== emailFromParams) {
-          localStorage.removeItem('pendingAuth')
-          router.replace('/login')
+        if (regData.email !== emailFromParams) {
+          localStorage.removeItem('pendingRegistration')
+          router.replace('/register')
           return
         }
         
-        // Cek apakah sudah expired (5 menit)
-        const timestamp = new Date(authData.timestamp).getTime()
+        // Cek apakah sudah expired (10 menit untuk registrasi)
+        const timestamp = new Date(regData.timestamp).getTime()
         const now = new Date().getTime()
-        const fiveMinutes = 5 * 60 * 1000
+        const tenMinutes = 10 * 60 * 1000
         
-        if (now - timestamp > fiveMinutes) {
-          localStorage.removeItem('pendingAuth')
-          router.replace('/login')
+        if (now - timestamp > tenMinutes) {
+          localStorage.removeItem('pendingRegistration')
+          router.replace('/register')
           return
         }
       } catch (error) {
-        console.error('Error parsing pendingAuth:', error)
-        localStorage.removeItem('pendingAuth')
-        router.replace('/login')
+        console.error('Error parsing pendingRegistration:', error)
+        localStorage.removeItem('pendingRegistration')
+        router.replace('/register')
       }
     }
   }, [emailFromParams, router])
 
-  // PERBAIKAN: Tangani browser back button
+  // Tangani browser back button
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
       e.preventDefault()
       
-      // Hapus pendingAuth saat user menekan back browser
+      // Hapus pendingRegistration saat user menekan back browser
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('pendingAuth')
+        localStorage.removeItem('pendingRegistration')
       }
       
-      // Redirect ke halaman utama
-      router.replace('/')
+      // Redirect ke halaman register
+      router.replace('/register')
     }
 
     // Tambahkan entry ke history agar back button bisa di-handle
@@ -114,27 +116,39 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
     setTimeout(() => {
       setIsLoading(false)
       if (otp === "123456") {
-        // PERBAIKAN: OTP berhasil - BARU simpan token dan user data
+        // OTP berhasil - Simpan token dan user data untuk registrasi baru
+        
+        // Ambil data dari pendingRegistration
+        let registrationData = null
+        if (typeof window !== 'undefined') {
+          const pendingReg = localStorage.getItem('pendingRegistration')
+          if (pendingReg) {
+            registrationData = JSON.parse(pendingReg)
+          }
+        }
+        
         const userData = {
-          name: "User",
+          name: registrationData?.name || nameFromParams || "User Baru",
           email: emailFromParams,
+          phone: registrationData?.phone || "",
           avatar: "/profile.svg"
         };
 
         const authData = {
           isLoggedIn: true,
           user: userData,
-          loginTime: new Date().toISOString()
+          loginTime: new Date().toISOString(),
+          registeredAt: new Date().toISOString()
         };
 
-        // PERBAIKAN: Simpan ke localStorage HANYA setelah OTP berhasil
+        // Simpan ke localStorage setelah OTP berhasil
         if (typeof window !== 'undefined') {
           localStorage.setItem("userToken", "dummy-token");
           localStorage.setItem("user", JSON.stringify(userData));
           localStorage.setItem("authData", JSON.stringify(authData));
           
-          // Hapus pendingAuth setelah berhasil
-          localStorage.removeItem('pendingAuth');
+          // Hapus pendingRegistration setelah berhasil
+          localStorage.removeItem('pendingRegistration');
         }
 
         // Redirect ke halaman utama setelah verifikasi berhasil
@@ -150,8 +164,8 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
     return (
       <Card {...props}>
         <CardHeader>
-          <CardTitle>Enter verification code</CardTitle>
-          <CardDescription>We sent a 6-digit code to your email.</CardDescription>
+          <CardTitle>Verifikasi Email</CardTitle>
+          <CardDescription>Kami mengirim kode 6 digit ke email Anda.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -184,20 +198,20 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
     alert("OTP telah dikirim ulang! Gunakan 123456")
   }
 
-  const handleBackToLogin = () => {
-    // PERBAIKAN: Hapus pendingAuth saat kembali ke login
+  const handleBackToRegister = () => {
+    // Hapus pendingRegistration saat kembali ke register
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('pendingAuth')
+      localStorage.removeItem('pendingRegistration')
     }
-    router.replace('/login')
+    router.replace('/register')
   }
 
   return (
     <Card {...props}>
       <CardHeader>
-        <CardTitle>Enter verification code</CardTitle>
+        <CardTitle>Verifikasi Email</CardTitle>
         <CardDescription>
-          We sent a 6-digit code to {emailFromParams || 'your email'}.
+          Kami mengirim kode 6 digit ke {emailFromParams || 'email Anda'}.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -209,7 +223,7 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="otp">Verification code</FieldLabel>
+              <FieldLabel htmlFor="otp">Kode Verifikasi</FieldLabel>
               <InputOTP
                 maxLength={6}
                 id="otp"
@@ -228,7 +242,7 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
                 </InputOTPGroup>
               </InputOTP>
               <FieldDescription>
-                Enter the 6-digit code sent to your email.
+                Masukkan kode 6 digit yang dikirim ke email Anda.
               </FieldDescription>
             </Field>
             <FieldGroup>
@@ -242,26 +256,26 @@ export function OTPForm({ type = "login", email, ...props }: OTPFormProps) {
                   "transition-colors duration-200"
                 )}
               >
-                {isLoading ? "Verifying..." : "Verify"}
+                {isLoading ? "Memverifikasi..." : "Verifikasi"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleBackToLogin}
+                onClick={handleBackToRegister}
                 disabled={isLoading}
                 className="w-full mt-2"
               >
-                Back to Login
+                Kembali ke Daftar
               </Button>
               <FieldDescription className="text-center">
-                Didn&apos;t receive the code?{" "}
+                Tidak menerima kode?{" "}
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={isLoading}
                   className="text-foreground font-medium hover:underline focus:outline-none focus:underline disabled:opacity-50"
                 >
-                  Resend
+                  Kirim Ulang
                 </button>
               </FieldDescription>
             </FieldGroup>
