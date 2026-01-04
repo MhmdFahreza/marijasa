@@ -22,6 +22,7 @@ import {
   InputOTPSlot,
 } from "@/app/components/ui/input-otp"
 import { cn } from "../lib/utils"
+import { CheckCircle2 } from "lucide-react"
 
 interface OTPFormProps {
   type?: "register"
@@ -30,11 +31,61 @@ interface OTPFormProps {
   [key: string]: any
 }
 
+// Success Modal Component
+function SuccessModal({ 
+  isOpen, 
+  onClose, 
+  message 
+}: { 
+  isOpen: boolean
+  onClose: () => void
+  message: string 
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-neutral-800 rounded-2xl p-8 max-w-sm w-full shadow-xl animate-in fade-in zoom-in duration-300">
+        <div className="flex flex-col items-center text-center">
+          {/* Success Icon */}
+          <div className="w-20 h-20 bg-[#7CE0A8]/20 rounded-full flex items-center justify-center mb-4">
+            <CheckCircle2 className="w-12 h-12 text-[#7CE0A8]" />
+          </div>
+          
+          {/* Title */}
+          <h2 className="text-xl font-semibold text-neutral-800 dark:text-white mb-2">
+            Selamat!
+          </h2>
+          
+          {/* Message */}
+          <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+            {message}
+          </p>
+          
+          {/* Button */}
+          <Button
+            onClick={onClose}
+            className={cn(
+              "w-full bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
+              "focus:ring-[#7CE0A8] focus:ring-offset-2",
+              "transition-colors duration-200"
+            )}
+          >
+            Lanjutkan
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function OTPForm({ type = "register", email, name, ...props }: OTPFormProps) {
   const [otp, setOtp] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [countdown, setCountdown] = useState(0)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -107,56 +158,92 @@ export function OTPForm({ type = "register", email, name, ...props }: OTPFormPro
     }
   }, [router])
 
+  // Countdown timer for resend OTP
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [countdown])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
 
-    // Simulasi proses verifikasi OTP
-    setTimeout(() => {
-      setIsLoading(false)
-      if (otp === "123456") {
-        // OTP berhasil - Simpan token dan user data untuk registrasi baru
-        
-        // Ambil data dari pendingRegistration
-        let registrationData = null
-        if (typeof window !== 'undefined') {
-          const pendingReg = localStorage.getItem('pendingRegistration')
-          if (pendingReg) {
-            registrationData = JSON.parse(pendingReg)
-          }
+    try {
+      // Ambil data dari pendingRegistration
+      let registrationData = null
+      if (typeof window !== 'undefined') {
+        const pendingReg = localStorage.getItem('pendingRegistration')
+        if (pendingReg) {
+          registrationData = JSON.parse(pendingReg)
         }
-        
-        const userData = {
-          name: registrationData?.name || nameFromParams || "User Baru",
-          email: emailFromParams,
-          phone: registrationData?.phone || "",
-          avatar: "/profile.svg"
-        };
-
-        const authData = {
-          isLoggedIn: true,
-          user: userData,
-          loginTime: new Date().toISOString(),
-          registeredAt: new Date().toISOString()
-        };
-
-        // Simpan ke localStorage setelah OTP berhasil
-        if (typeof window !== 'undefined') {
-          localStorage.setItem("userToken", "dummy-token");
-          localStorage.setItem("user", JSON.stringify(userData));
-          localStorage.setItem("authData", JSON.stringify(authData));
-          
-          // Hapus pendingRegistration setelah berhasil
-          localStorage.removeItem('pendingRegistration');
-        }
-
-        // Redirect ke halaman utama setelah verifikasi berhasil
-        router.replace("/")
-      } else {
-        setError("Kode OTP salah. Coba lagi dengan 123456")
       }
-    }, 1000)
+
+      // API call untuk verifikasi OTP
+      const response = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: emailFromParams,
+          code: otp,
+          type: 'register'
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.message || "Kode OTP salah")
+        setIsLoading(false)
+        return
+      }
+
+      // OTP berhasil - Simpan token dan user data
+      const userData = {
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        phone: data.user.phone,
+        avatar: data.user.avatar || "/profile.svg"
+      };
+
+      const authData = {
+        isLoggedIn: true,
+        user: userData,
+        loginTime: new Date().toISOString(),
+        registeredAt: new Date().toISOString()
+      };
+
+      // Simpan ke localStorage setelah OTP berhasil
+      if (typeof window !== 'undefined') {
+        localStorage.setItem("userToken", data.token || "user-token");
+        localStorage.setItem("user", JSON.stringify(userData));
+        localStorage.setItem("authData", JSON.stringify(authData));
+        
+        // Hapus pendingRegistration setelah berhasil
+        localStorage.removeItem('pendingRegistration');
+      }
+
+      setIsLoading(false)
+      
+      // Tampilkan success modal
+      setShowSuccessModal(true)
+
+    } catch (error) {
+      console.error("OTP verification error:", error)
+      setError("Terjadi kesalahan saat verifikasi. Silakan coba lagi.")
+      setIsLoading(false)
+    }
+  }
+
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false)
+    // Redirect ke halaman utama setelah modal ditutup
+    router.replace("/")
   }
 
   // Tampilkan skeleton atau loading state selama belum mounted
@@ -191,11 +278,52 @@ export function OTPForm({ type = "register", email, name, ...props }: OTPFormPro
     )
   }
 
-  const handleResend = () => {
-    // Simulasi kirim ulang OTP
-    setOtp("")
+  const handleResend = async () => {
+    if (countdown > 0) return
+    
     setError(null)
-    alert("OTP telah dikirim ulang! Gunakan 123456")
+    setOtp("")
+    
+    try {
+      // API call untuk kirim ulang OTP
+      const response = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: emailFromParams,
+          type: 'register'
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.message || "Gagal mengirim ulang OTP")
+        return
+      }
+
+      // Set countdown 60 detik
+      setCountdown(60)
+      
+      // Update timestamp di pendingRegistration
+      if (typeof window !== 'undefined') {
+        const pendingReg = localStorage.getItem('pendingRegistration')
+        if (pendingReg) {
+          const regData = JSON.parse(pendingReg)
+          regData.timestamp = new Date().toISOString()
+          regData.otpId = data.otpId
+          localStorage.setItem('pendingRegistration', JSON.stringify(regData))
+        }
+      }
+      
+      alert("OTP telah dikirim ulang! Gunakan kode: 123456 (dummy)")
+      
+    } catch (error) {
+      console.error("Resend OTP error:", error)
+      setError("Gagal mengirim ulang OTP. Silakan coba lagi.")
+    }
   }
 
   const handleBackToRegister = () => {
@@ -207,81 +335,107 @@ export function OTPForm({ type = "register", email, name, ...props }: OTPFormPro
   }
 
   return (
-    <Card {...props}>
-      <CardHeader>
-        <CardTitle>Verifikasi Email</CardTitle>
-        <CardDescription>
-          Kami mengirim kode 6 digit ke {emailFromParams || 'email Anda'}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
-            {error}
+    <>
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={handleSuccessModalClose}
+        message="Anda berhasil melakukan register akun"
+      />
+      
+      <Card {...props}>
+        <CardHeader>
+          <CardTitle>Verifikasi Email</CardTitle>
+          <CardDescription>
+            Kami mengirim kode 6 digit ke {emailFromParams || 'email Anda'}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+              {error}
+            </div>
+          )}
+          
+          {/* Info box untuk dummy OTP */}
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm">
+            <strong>Demo Mode:</strong> Gunakan kode OTP <code className="bg-blue-100 px-1 rounded">123456</code>
           </div>
-        )}
-        <form onSubmit={handleSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="otp">Kode Verifikasi</FieldLabel>
-              <InputOTP
-                maxLength={6}
-                id="otp"
-                required
-                value={otp}
-                onChange={(value) => setOtp(value)}
-                suppressHydrationWarning
-              >
-                <InputOTPGroup className="gap-2.5 *:data-[slot=input-otp-slot]:rounded-md *:data-[slot=input-otp-slot]:border">
-                  <InputOTPSlot index={0} />
-                  <InputOTPSlot index={1} />
-                  <InputOTPSlot index={2} />
-                  <InputOTPSlot index={3} />
-                  <InputOTPSlot index={4} />
-                  <InputOTPSlot index={5} />
-                </InputOTPGroup>
-              </InputOTP>
-              <FieldDescription>
-                Masukkan kode 6 digit yang dikirim ke email Anda.
-              </FieldDescription>
-            </Field>
+          
+          <form onSubmit={handleSubmit}>
             <FieldGroup>
-              <Button
-                type="submit"
-                disabled={isLoading || otp.length !== 6}
-                className={cn(
-                  "w-full",
-                  "bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
-                  "focus:ring-[#7CE0A8] focus:ring-offset-2",
-                  "transition-colors duration-200"
-                )}
-              >
-                {isLoading ? "Memverifikasi..." : "Verifikasi"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleBackToRegister}
-                disabled={isLoading}
-                className="w-full mt-2"
-              >
-                Kembali ke Daftar
-              </Button>
-              <FieldDescription className="text-center">
-                Tidak menerima kode?{" "}
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={isLoading}
-                  className="text-foreground font-medium hover:underline focus:outline-none focus:underline disabled:opacity-50"
+              <Field>
+                <FieldLabel htmlFor="otp">Kode Verifikasi</FieldLabel>
+                <InputOTP
+                  maxLength={6}
+                  id="otp"
+                  required
+                  value={otp}
+                  onChange={(value) => setOtp(value)}
+                  suppressHydrationWarning
                 >
-                  Kirim Ulang
-                </button>
-              </FieldDescription>
+                  <InputOTPGroup className="gap-2.5 *:data-[slot=input-otp-slot]:rounded-md *:data-[slot=input-otp-slot]:border">
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+                <FieldDescription>
+                  Masukkan kode 6 digit yang dikirim ke email Anda.
+                </FieldDescription>
+              </Field>
+              <FieldGroup>
+                <Button
+                  type="submit"
+                  disabled={isLoading || otp.length !== 6}
+                  className={cn(
+                    "w-full",
+                    "bg-[#7CE0A8] hover:bg-[#6bcb96] text-white",
+                    "focus:ring-[#7CE0A8] focus:ring-offset-2",
+                    "transition-colors duration-200",
+                    "flex items-center justify-center gap-2"
+                  )}
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Memverifikasi...
+                    </>
+                  ) : "Verifikasi"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleBackToRegister}
+                  disabled={isLoading}
+                  className="w-full mt-2"
+                >
+                  Kembali ke Daftar
+                </Button>
+                <FieldDescription className="text-center">
+                  Tidak menerima kode?{" "}
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={isLoading || countdown > 0}
+                    className={cn(
+                      "font-medium hover:underline focus:outline-none focus:underline",
+                      countdown > 0 
+                        ? "text-neutral-400 cursor-not-allowed" 
+                        : "text-foreground"
+                    )}
+                  >
+                    {countdown > 0 ? `Kirim Ulang (${countdown}s)` : "Kirim Ulang"}
+                  </button>
+                </FieldDescription>
+              </FieldGroup>
             </FieldGroup>
-          </FieldGroup>
-        </form>
-      </CardContent>
-    </Card>
+          </form>
+        </CardContent>
+      </Card>
+    </>
   )
 }

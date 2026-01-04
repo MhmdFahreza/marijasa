@@ -8,17 +8,16 @@ export default function Page() {
   const router = useRouter()
 
   useEffect(() => {
+    // Cegah user balik ke halaman register lewat tombol back setelah sampai sini
     window.history.replaceState(null, "", window.location.href)
     window.history.pushState(null, "", window.location.href)
+
     const handlePopState = () => {
       router.replace("/")
     }
 
     window.addEventListener("popstate", handlePopState)
-
-    return () => {
-      window.removeEventListener("popstate", handlePopState)
-    }
+    return () => window.removeEventListener("popstate", handlePopState)
   }, [router])
 
   return (

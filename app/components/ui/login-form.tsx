@@ -37,7 +37,7 @@ export function LoginForm({
   onRegisterClick,
   ...props
 }: LoginFormProps) {
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("") // Email atau Nomor Telepon
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [showRedirectLoader, setShowRedirectLoader] = useState(false)
@@ -48,7 +48,7 @@ export function LoginForm({
   const userConfig = {
     user: {
       title: "Login ke Akun Anda",
-      description: "Masukkan email Anda untuk login ke akun",
+      description: "Masukkan email atau nomor telepon untuk login ke akun",
       registerLink: "/register",
       registerText: "Daftar",
     },
@@ -74,17 +74,58 @@ export function LoginForm({
     return emailRegex.test(email)
   }
 
+  // Validasi nomor telepon format (Indonesia)
+  const validatePhone = (phone: string) => {
+    const phoneRegex = /^(\+62|62|0)8[1-9][0-9]{7,11}$/
+    return phoneRegex.test(phone.replace(/[\s-]/g, ''))
+  }
+
+  // Normalisasi nomor telepon ke format +62
+  const normalizePhone = (phone: string): string => {
+    let cleaned = phone.replace(/[\s-]/g, '')
+    if (cleaned.startsWith('08')) {
+      cleaned = '+62' + cleaned.substring(1)
+    } else if (cleaned.startsWith('62')) {
+      cleaned = '+' + cleaned
+    } else if (!cleaned.startsWith('+62')) {
+      cleaned = '+62' + cleaned
+    }
+    return cleaned
+  }
+
+  // Deteksi apakah input adalah email atau nomor telepon
+  const isEmailInput = (input: string): boolean => {
+    return input.includes('@')
+  }
+
   // Handler untuk Google Sign In
   const handleGoogleSignIn = async () => {
     try {
       setIsLoading(true)
       setError(null)
       
-      // Panggil signIn dengan redirect: true untuk auto redirect
-      await signIn("google", {
+      // Panggil signIn dengan redirect: false untuk handle error
+      const result = await signIn("google", {
         callbackUrl: "/",
-        redirect: true
+        redirect: false
       })
+      
+      if (result?.error) {
+        // Cek apakah error karena user belum terdaftar
+        if (result.error === "USER_NOT_REGISTERED") {
+          setError("Akun Google Anda belum terdaftar. Silakan daftar terlebih dahulu.")
+        } else {
+          setError("Terjadi kesalahan saat login dengan Google. Silakan coba lagi.")
+        }
+        setIsLoading(false)
+        return
+      }
+      
+      if (result?.ok) {
+        setShowRedirectLoader(true)
+        router.push("/")
+        router.refresh()
+      }
       
     } catch (error) {
       console.error("Google sign in error:", error)
@@ -97,10 +138,21 @@ export function LoginForm({
     e.preventDefault()
     setError(null)
     
-    // Validasi email format
-    if (!validateEmail(email)) {
-      setError("Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)")
-      return
+    const trimmedIdentifier = identifier.trim()
+    
+    // Validasi input - bisa email atau nomor telepon
+    const isEmail = isEmailInput(trimmedIdentifier)
+    
+    if (isEmail) {
+      if (!validateEmail(trimmedIdentifier)) {
+        setError("Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)")
+        return
+      }
+    } else {
+      if (!validatePhone(trimmedIdentifier)) {
+        setError("Format nomor telepon tidak valid. Gunakan format Indonesia (contoh: 081234567890)")
+        return
+      }
     }
     
     if (password.length < 8) {
@@ -115,7 +167,7 @@ export function LoginForm({
       ]
       
       const isValid = dummyAdminCredentials.some(
-        cred => cred.email === email && cred.password === password
+        cred => cred.email === trimmedIdentifier && cred.password === password
       )
       
       if (!isValid) {
@@ -126,7 +178,7 @@ export function LoginForm({
     
     // Validasi khusus untuk mitra - cek dari dataVendor
     if (userType === "mitra") {
-      const vendor = validateVendorLogin(email, password)
+      const vendor = validateVendorLogin(trimmedIdentifier, password)
       
       if (!vendor) {
         setError("Email atau password mitra salah. Pastikan Anda menggunakan kredensial yang benar.")
@@ -172,7 +224,7 @@ export function LoginForm({
         
         // Jika ada callback onSuccess (untuk modal), panggil
         if (onSuccess) {
-          onSuccess(email)
+          onSuccess(trimmedIdentifier)
           setIsLoading(false)
           return
         }
@@ -195,83 +247,74 @@ export function LoginForm({
       return
     }
     
-    // Untuk user dan admin - LANGSUNG LOGIN TANPA OTP
+    // Untuk user - login via API dengan database check
     setIsLoading(true)
     
     try {
-      // Simulasi API call
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({ success: true, token: "dummy-token" })
-        }, 1000)
+      // Normalisasi identifier
+      let normalizedIdentifier = trimmedIdentifier
+      if (!isEmail) {
+        normalizedIdentifier = normalizePhone(trimmedIdentifier)
+      }
+      
+      // API call untuk login
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          identifier: normalizedIdentifier.toLowerCase(),
+          password: password,
+          isEmail: isEmail
+        })
       })
       
-      if (userType === "admin") {
-        // Simpan token dan data admin
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('adminToken', 'dummy-token')
-          localStorage.setItem('adminUser', JSON.stringify({ 
-            email,
-            name: "Administrator",
-            role: "admin"
-          }))
-        }
-        
-        // Jika ada callback onSuccess (untuk modal), panggil
-        if (onSuccess) {
-          onSuccess(email)
-          setIsLoading(false)
-          return
-        }
-        
-        // Tampilkan loader redirect untuk admin
-        setShowRedirectLoader(true)
-        
-        // Tunggu sebentar untuk menampilkan loader redirect
-        setTimeout(() => {
-          router.push("/admin/dashboard")
-          router.refresh()
-        }, 1000)
-      } else {
-        // USER BIASA - LANGSUNG LOGIN TANPA OTP
-        const userData = {
-          name: "User",
-          email: email,
-          avatar: "/profile.svg"
-        };
-
-        const authData = {
-          isLoggedIn: true,
-          user: userData,
-          loginTime: new Date().toISOString()
-        };
-
-        // Simpan token dan data user langsung
-        if (typeof window !== 'undefined') {
-          localStorage.setItem("userToken", "dummy-token");
-          localStorage.setItem("user", JSON.stringify(userData));
-          localStorage.setItem("authData", JSON.stringify(authData));
-          
-          // Hapus pendingAuth jika ada (dari proses sebelumnya)
-          localStorage.removeItem('pendingAuth');
-        }
-        
-        // Jika ada callback onSuccess (untuk modal), panggil
-        if (onSuccess) {
-          onSuccess(email)
-          setIsLoading(false)
-          return
-        }
-        
-        // Tampilkan loader redirect untuk user
-        setShowRedirectLoader(true)
-        
-        // Tunggu sebentar untuk menampilkan loader redirect
-        setTimeout(() => {
-          router.push("/")
-          router.refresh()
-        }, 1000)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        setError(data.message || "Terjadi kesalahan saat login")
+        setIsLoading(false)
+        return
       }
+      
+      // Login berhasil
+      const userData = {
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        phone: data.user.phone,
+        avatar: data.user.avatar || "/profile.svg"
+      };
+
+      const authData = {
+        isLoggedIn: true,
+        user: userData,
+        loginTime: new Date().toISOString()
+      };
+
+      // Simpan token dan data user
+      if (typeof window !== 'undefined') {
+        localStorage.setItem("userToken", data.token || "user-token");
+        localStorage.setItem("user", JSON.stringify(userData));
+        localStorage.setItem("authData", JSON.stringify(authData));
+      }
+      
+      // Jika ada callback onSuccess (untuk modal), panggil
+      if (onSuccess) {
+        onSuccess(data.user.email)
+        setIsLoading(false)
+        return
+      }
+      
+      // Tampilkan loader redirect untuk user
+      setShowRedirectLoader(true)
+      
+      // Tunggu sebentar untuk menampilkan loader redirect
+      setTimeout(() => {
+        router.push("/")
+        router.refresh()
+      }, 1000)
       
     } catch (error) {
       console.error("Login error:", error)
@@ -346,23 +389,30 @@ export function LoginForm({
             <form onSubmit={handleSubmit}>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="email">Email</FieldLabel>
+                  <FieldLabel htmlFor="identifier">
+                    {userType === "user" ? "Email atau Nomor Telepon" : "Email"}
+                  </FieldLabel>
                   <Input
-                    id="email"
-                    type="email"
+                    id="identifier"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     placeholder={
                       userType === "admin" 
                         ? "admin@gmail.com" 
                         : userType === "mitra"
                         ? "mitra@marijasa.com"
-                        : "masukkan email"
+                        : "Email atau 081234567890"
                     }
                     autoComplete="email"
                     disabled={isLoading || showRedirectLoader}
                   />
+                  {userType === "user" && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Gunakan email atau nomor telepon yang terdaftar
+                    </p>
+                  )}
                   {userType === "mitra" && (
                     <p className="text-xs text-neutral-500 mt-1">
                       Gunakan email yang terdaftar sebagai mitra
