@@ -17,7 +17,7 @@ function InputOTP({
     <OTPInput
       data-slot="input-otp"
       containerClassName={cn(
-        "flex items-center gap-3 has-disabled:opacity-50 transition-opacity duration-200",
+        "flex items-center gap-1.5 sm:gap-2 md:gap-3 has-disabled:opacity-50 transition-opacity duration-200",
         containerClassName
       )}
       className={cn("disabled:cursor-not-allowed", className)}
@@ -51,8 +51,9 @@ function InputOTPSlot({
       data-slot="input-otp-slot"
       data-active={isActive}
       className={cn(
-        // Base styles
-        "relative flex h-14 w-12 items-center justify-center text-lg font-semibold",
+        // Base styles - Responsive sizing
+        "relative flex h-10 w-8 sm:h-12 sm:w-10 md:h-14 md:w-12 items-center justify-center",
+        "text-base sm:text-lg md:text-xl font-semibold",
         // Border & background
         "border-2 border-neutral-300 dark:border-neutral-600 rounded-lg",
         "bg-white dark:bg-neutral-800",
@@ -61,8 +62,8 @@ function InputOTPSlot({
         // Active state dengan warna custom #7CE0A8
         "data-[active=true]:border-[#7CE0A8] dark:data-[active=true]:border-[#7CE0A8]",
         "data-[active=true]:bg-[#7CE0A8]/5 dark:data-[active=true]:bg-[#7CE0A8]/10",
-        "data-[active=true]:ring-2 data-[active=true]:ring-[#7CE0A8]/30",
-        "data-[active=true]:shadow-md",
+        "data-[active=true]:ring-1 sm:data-[active=true]:ring-2 data-[active=true]:ring-[#7CE0A8]/30",
+        "data-[active=true]:shadow-sm sm:data-[active=true]:shadow-md",
         // Filled state
         "has-[input:not(:placeholder-shown)]:border-[#7CE0A8] dark:has-[input:not(:placeholder-shown)]:border-[#7CE0A8]",
         "has-[input:not(:placeholder-shown)]:bg-[#7CE0A8]/5 dark:has-[input:not(:placeholder-shown)]:bg-[#7CE0A8]/10",
@@ -77,7 +78,7 @@ function InputOTPSlot({
       {char}
       {hasFakeCaret && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="animate-caret-blink h-6 w-0.5 bg-[#7CE0A8] dark:bg-[#7CE0A8] duration-1000" />
+          <div className="animate-caret-blink h-4 sm:h-5 md:h-6 w-0.5 bg-[#7CE0A8] dark:bg-[#7CE0A8] duration-1000" />
         </div>
       )}
     </div>
@@ -92,7 +93,7 @@ function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
       className="text-neutral-400 dark:text-neutral-600"
       {...props}
     >
-      <MinusIcon className="w-4 h-4" />
+      <MinusIcon className="w-3 h-3 sm:w-4 sm:h-4" />
     </div>
   )
 }

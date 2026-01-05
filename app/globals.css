@@ -126,6 +126,13 @@
   body {
     @apply bg-background text-foreground font-sans;
   }
+  
+  /* Fix untuk iOS input zoom */
+  @media screen and (max-width: 768px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 @keyframes scroll {
@@ -146,6 +153,7 @@
   }
 }
 
+/* Responsive fixes for mobile */
 @media (max-width: 768px) {
   [data-radix-select-content],
   [data-radix-popper-content] {
@@ -153,13 +161,42 @@
     max-height: 50vh !important;
   }
   
-  input, select, textarea {
-    font-size: 16px !important;
+  /* Better touch targets for mobile */
+  button, 
+  a, 
+  input[type="submit"],
+  input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Improve readability on small screens */
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Prevent overflow on small screens */
+  .break-words-mobile {
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 }
 
+/* Safe area support for devices with notches */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 20px) !important;
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 20px) !important;
+}
+
+.safe-area-left {
+  padding-left: env(safe-area-inset-left, 20px) !important;
+}
+
+.safe-area-right {
+  padding-right: env(safe-area-inset-right, 20px) !important;
 }
 
 /* Waveform animation */
@@ -217,8 +254,7 @@
   transition: width 0.1s linear;
 }
 
-/* Tambahkan bagian ini ke globals.css Anda yang sudah ada */
-
+/* Animation keyframes */
 @keyframes float {
   0%, 100% {
     transform: translateY(0px) translateX(0px);
@@ -294,4 +330,33 @@
 
 .animate-caret-blink {
   animation: caret-blink 1.25s steps(10, start) infinite;
+}
+
+/* Responsive text sizes */
+.text-responsive {
+  font-size: clamp(0.875rem, 2vw, 1rem);
+}
+
+.text-responsive-lg {
+  font-size: clamp(1rem, 3vw, 1.5rem);
+}
+
+.text-responsive-xl {
+  font-size: clamp(1.25rem, 4vw, 2rem);
+}
+
+/* Better mobile scrolling */
+.mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Hide scrollbar but keep functionality */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
