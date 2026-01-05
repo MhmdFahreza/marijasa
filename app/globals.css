@@ -136,6 +136,18 @@
 }
 
 /* ================================
+   CUSTOM BREAKPOINT - xs (extra small)
+   ================================ */
+@media (min-width: 375px) {
+  .xs\:w-32 { width: 8rem; }
+  .xs\:h-36 { height: 9rem; }
+  .xs\:w-36 { width: 9rem; }
+  .xs\:h-40 { height: 10rem; }
+  .xs\:text-2xl { font-size: 1.5rem; line-height: 2rem; }
+  .xs\:text-xs { font-size: 0.75rem; line-height: 1rem; }
+}
+
+/* ================================
    CHARACTER ANIMATIONS
    ================================ */
 
@@ -145,12 +157,19 @@
     transform: translateY(0px);
   }
   50% {
-    transform: translateY(-15px);
+    transform: translateY(-10px);
   }
 }
 
 .animate-float-slow {
   animation: float-slow 4s ease-in-out infinite;
+}
+
+/* Reduced motion on mobile for better performance */
+@media (max-width: 640px) {
+  .animate-float-slow {
+    animation: float-slow 5s ease-in-out infinite;
+  }
 }
 
 /* Gentle bounce for body */
@@ -159,12 +178,12 @@
     transform: translateY(0) scaleY(1);
   }
   50% {
-    transform: translateY(-3px) scaleY(1.02);
+    transform: translateY(-2px) scaleY(1.01);
   }
 }
 
 .animate-bounce-gentle {
-  animation: bounce-gentle 2s ease-in-out infinite;
+  animation: bounce-gentle 2.5s ease-in-out infinite;
 }
 
 /* Wave animation for arm */
@@ -173,10 +192,10 @@
     transform: rotate(0deg);
   }
   25% {
-    transform: rotate(-20deg);
+    transform: rotate(-15deg);
   }
   75% {
-    transform: rotate(20deg);
+    transform: rotate(15deg);
   }
 }
 
@@ -190,7 +209,7 @@
     transform: rotate(0deg);
   }
   50% {
-    transform: rotate(3deg);
+    transform: rotate(2deg);
   }
 }
 
@@ -204,10 +223,10 @@
     transform: translateY(0) rotate(0deg);
   }
   25% {
-    transform: translateY(-2px) rotate(-2deg);
+    transform: translateY(-1px) rotate(-1deg);
   }
   75% {
-    transform: translateY(-2px) rotate(2deg);
+    transform: translateY(-1px) rotate(1deg);
   }
 }
 
@@ -221,10 +240,10 @@
     transform: translateY(0) rotate(0deg);
   }
   33% {
-    transform: translateY(-5px) rotate(-3deg);
+    transform: translateY(-3px) rotate(-2deg);
   }
   66% {
-    transform: translateY(-3px) rotate(3deg);
+    transform: translateY(-2px) rotate(2deg);
   }
 }
 
@@ -238,7 +257,7 @@
     transform: rotate(0deg) scale(1);
   }
   50% {
-    transform: rotate(180deg) scale(1.1);
+    transform: rotate(180deg) scale(1.05);
   }
   100% {
     transform: rotate(360deg) scale(1);
@@ -246,7 +265,7 @@
 }
 
 .animate-star-spin {
-  animation: star-spin 5s linear infinite;
+  animation: star-spin 6s linear infinite;
   transform-origin: center;
 }
 
@@ -256,26 +275,12 @@
     transform: translateY(0) rotate(0deg);
   }
   50% {
-    transform: translateY(-5px) rotate(5deg);
+    transform: translateY(-3px) rotate(3deg);
   }
 }
 
 .animate-float-card {
   animation: float-card 2s ease-in-out infinite;
-}
-
-/* Smile animation */
-@keyframes smile {
-  0%, 100% {
-    d: path("M 125 220 Q 150 245, 175 220");
-  }
-  50% {
-    d: path("M 125 220 Q 150 255, 175 220");
-  }
-}
-
-.animate-smile {
-  animation: smile 3s ease-in-out infinite;
 }
 
 /* ================================
@@ -287,13 +292,13 @@
     transform: translate(0, 0) rotate(0deg);
   }
   25% {
-    transform: translate(10px, -15px) rotate(10deg);
+    transform: translate(5px, -8px) rotate(5deg);
   }
   50% {
-    transform: translate(5px, -25px) rotate(-5deg);
+    transform: translate(3px, -15px) rotate(-3deg);
   }
   75% {
-    transform: translate(-5px, -10px) rotate(5deg);
+    transform: translate(-3px, -6px) rotate(3deg);
   }
 }
 
@@ -306,10 +311,10 @@
     transform: translate(0, 0) rotate(0deg);
   }
   33% {
-    transform: translate(-15px, 10px) rotate(-15deg);
+    transform: translate(-8px, 5px) rotate(-8deg);
   }
   66% {
-    transform: translate(10px, -10px) rotate(10deg);
+    transform: translate(5px, -5px) rotate(5deg);
   }
 }
 
@@ -322,7 +327,7 @@
     transform: translate(0, 0) scale(1);
   }
   50% {
-    transform: translate(15px, -20px) scale(1.1);
+    transform: translate(8px, -10px) scale(1.05);
   }
 }
 
@@ -335,10 +340,10 @@
     transform: translate(0, 0) rotate(0deg);
   }
   25% {
-    transform: translate(-10px, -10px) rotate(-10deg);
+    transform: translate(-5px, -5px) rotate(-5deg);
   }
   75% {
-    transform: translate(10px, 10px) rotate(10deg);
+    transform: translate(5px, 5px) rotate(5deg);
   }
 }
 
@@ -353,21 +358,35 @@
     opacity: 0.3;
   }
   25% {
-    transform: translate(20px, -30px) scale(1.1);
-    opacity: 0.5;
-  }
-  50% {
-    transform: translate(-10px, -50px) scale(0.9);
+    transform: translate(15px, -20px) scale(1.05);
     opacity: 0.4;
   }
+  50% {
+    transform: translate(-8px, -35px) scale(0.95);
+    opacity: 0.35;
+  }
   75% {
-    transform: translate(30px, -20px) scale(1.05);
-    opacity: 0.6;
+    transform: translate(20px, -15px) scale(1.02);
+    opacity: 0.45;
   }
 }
 
 .animate-float-random {
   animation: float-random 15s ease-in-out infinite;
+}
+
+/* Reduced animation on mobile */
+@media (max-width: 640px) {
+  .animate-float-random {
+    animation: float-random 20s ease-in-out infinite;
+  }
+  
+  .animate-float-decoration-1,
+  .animate-float-decoration-2,
+  .animate-float-decoration-3,
+  .animate-float-decoration-4 {
+    animation-duration: 8s;
+  }
 }
 
 /* ================================
@@ -380,10 +399,10 @@
     transform: rotate(0deg);
   }
   25% {
-    transform: rotate(3deg);
+    transform: rotate(2deg);
   }
   75% {
-    transform: rotate(-3deg);
+    transform: rotate(-2deg);
   }
 }
 
@@ -398,12 +417,26 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-10px);
+    transform: translateY(-8px);
   }
 }
 
 .animate-bounce-slow {
   animation: bounce-slow 3s ease-in-out infinite;
+}
+
+/* Pulse slow */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
 }
 
 /* ================================
@@ -428,7 +461,11 @@
   }
 }
 
-/* Responsive fixes for mobile */
+/* ================================
+   RESPONSIVE FIXES
+   ================================ */
+
+/* Mobile touch targets and input zoom fix */
 @media (max-width: 768px) {
   [data-radix-select-content],
   [data-radix-popper-content] {
@@ -473,6 +510,10 @@
 .safe-area-right {
   padding-right: env(safe-area-inset-right, 20px) !important;
 }
+
+/* ================================
+   VOICE MESSAGE STYLES
+   ================================ */
 
 /* Waveform animation */
 @keyframes waveformPulse {
@@ -529,33 +570,27 @@
   transition: width 0.1s linear;
 }
 
-/* Animation keyframes */
+/* ================================
+   UTILITY ANIMATIONS
+   ================================ */
+
 @keyframes float {
   0%, 100% {
     transform: translateY(0px) translateX(0px);
   }
   25% {
-    transform: translateY(-20px) translateX(10px);
+    transform: translateY(-15px) translateX(8px);
   }
   50% {
-    transform: translateY(-40px) translateX(-10px);
+    transform: translateY(-30px) translateX(-8px);
   }
   75% {
-    transform: translateY(-20px) translateX(5px);
+    transform: translateY(-15px) translateX(4px);
   }
 }
 
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.animate-pulse-slow {
-  animation: pulse-slow 3s ease-in-out infinite;
+.animate-float {
+  animation: float 6s ease-in-out infinite;
 }
 
 @keyframes slide-in-from-top-2 {
@@ -598,16 +633,14 @@
   }
 }
 
-/* Utility classes */
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
 .animate-caret-blink {
   animation: caret-blink 1.25s steps(10, start) infinite;
 }
 
-/* Responsive text sizes */
+/* ================================
+   RESPONSIVE TEXT SIZES
+   ================================ */
+
 .text-responsive {
   font-size: clamp(0.875rem, 2vw, 1rem);
 }
@@ -619,6 +652,10 @@
 .text-responsive-xl {
   font-size: clamp(1.25rem, 4vw, 2rem);
 }
+
+/* ================================
+   SCROLLING UTILITIES
+   ================================ */
 
 /* Better mobile scrolling */
 .mobile-scroll {
@@ -636,7 +673,10 @@
   display: none;
 }
 
-/* Animated background specific styles */
+/* ================================
+   ANIMATED BACKGROUND STYLES
+   ================================ */
+
 .animated-bg-container {
   position: fixed;
   inset: 0;
@@ -647,11 +687,14 @@
 /* Smooth transitions for dark mode */
 @media (prefers-color-scheme: dark) {
   canvas {
-    filter: brightness(0.9) contrast(1.1);
+    filter: brightness(0.95) contrast(1.05);
   }
 }
 
-/* Enhanced animations */
+/* ================================
+   ENHANCED BACKGROUND ANIMATIONS
+   ================================ */
+
 @keyframes float-up {
   0% {
     transform: translateY(0px) translateX(0px);
@@ -675,8 +718,8 @@
     filter: blur(40px);
   }
   50% {
-    opacity: 0.6;
-    filter: blur(60px);
+    opacity: 0.5;
+    filter: blur(50px);
   }
 }
 
@@ -685,14 +728,13 @@
     transform: rotate(0deg) scale(1);
   }
   50% {
-    transform: rotate(180deg) scale(1.1);
+    transform: rotate(180deg) scale(1.05);
   }
   100% {
     transform: rotate(360deg) scale(1);
   }
 }
 
-/* Apply animations to elements */
 .animate-blob {
   animation: blob-rotate 15s ease-in-out infinite;
 }
@@ -701,7 +743,10 @@
   animation: glow-pulse 4s ease-in-out infinite;
 }
 
-/* Responsive canvas handling */
+/* ================================
+   CANVAS PERFORMANCE OPTIMIZATION
+   ================================ */
+
 @media (max-width: 640px) {
   canvas {
     max-width: 100%;
@@ -709,103 +754,21 @@
   }
 }
 
-/* Performance optimization for smaller devices */
 @media (max-width: 768px) {
   canvas {
-    image-rendering: pixelated;
-  }
-  
-  /* Reduce animations on mobile for better performance */
-  .animate-float-random {
-    animation-duration: 20s;
+    image-rendering: optimizeSpeed;
   }
 }
 
-/* ================================
-   SPARKLE & SHINE EFFECTS
-   ================================ */
-
-@keyframes sparkle {
-  0%, 100% {
-    opacity: 0;
-    transform: scale(0);
+/* Reduce motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.animate-sparkle {
-  animation: sparkle 2s ease-in-out infinite;
-}
-
-@keyframes shine {
-  0% {
-    transform: translateX(-100%) rotate(45deg);
-  }
-  100% {
-    transform: translateX(100%) rotate(45deg);
-  }
-}
-
-.animate-shine {
-  animation: shine 3s ease-in-out infinite;
-}
-
-/* ================================
-   GRADIENT ANIMATIONS
-   ================================ */
-
-@keyframes gradient-shift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 8s ease infinite;
-}
-
-/* ================================
-   HOVER EFFECTS
-   ================================ */
-
-.hover-lift {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.hover-lift:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 40px rgba(124, 224, 168, 0.2);
-}
-
-.hover-glow {
-  transition: box-shadow 0.3s ease;
-}
-
-.hover-glow:hover {
-  box-shadow: 0 0 30px rgba(124, 224, 168, 0.4);
-}
-
-/* ================================
-   3D TRANSFORM EFFECTS
-   ================================ */
-
-.perspective-1000 {
-  perspective: 1000px;
-}
-
-.preserve-3d {
-  transform-style: preserve-3d;
-}
-
-.backface-hidden {
-  backface-visibility: hidden;
 }
 
 /* ================================
@@ -824,6 +787,27 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ================================
+   HOVER EFFECTS
+   ================================ */
+
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 30px rgba(124, 224, 168, 0.15);
+}
+
+.hover-glow {
+  transition: box-shadow 0.3s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 25px rgba(124, 224, 168, 0.3);
 }
 
 /* ================================
