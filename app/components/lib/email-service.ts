@@ -1,13 +1,21 @@
 // app/components/lib/email-service.ts
 
-// Email sender configuration
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@yourdomain.com";
+// PENTING: Untuk Resend, FROM_EMAIL harus dari domain yang terverifikasi
+// Opsi 1: Gunakan domain testing Resend (hanya bisa kirim ke email akun Resend Anda)
+// Opsi 2: Verifikasi domain sendiri di Resend dashboard
+
 const APP_NAME = "MariJasa";
+
+// Gunakan domain testing Resend jika tidak ada custom domain
+// CATATAN: "onboarding@resend.dev" hanya bisa kirim ke email akun Resend Anda sendiri
+const DEFAULT_FROM_EMAIL = "onboarding@resend.dev";
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL;
 
 interface SendOTPEmailResult {
   success: boolean;
   error?: string;
   messageId?: string;
+  devOtp?: string; // Untuk development
 }
 
 export async function sendOTPEmail(
@@ -20,24 +28,29 @@ export async function sendOTPEmail(
 
   // Check if Resend API key is configured
   if (!process.env.RESEND_API_KEY) {
-    // Fallback: log OTP to console in development
-    console.log("========================================");
-    console.log(`[EMAIL SERVICE] Resend API not configured`);
-    console.log(`[EMAIL SERVICE] OTP for ${email}: ${otp}`);
-    console.log(`[EMAIL SERVICE] Type: ${type}`);
-    console.log("========================================");
+    console.log("\n========================================");
+    console.log(`📧 [EMAIL - NO API KEY]`);
+    console.log(`   To: ${email}`);
+    console.log(`   OTP: ${otp}`);
+    console.log(`   Type: ${type}`);
+    console.log("   ⚠️  Set RESEND_API_KEY di .env untuk kirim email sungguhan");
+    console.log("========================================\n");
     
-    // Return success untuk development
     return { 
       success: true, 
-      messageId: `dev-${Date.now()}`,
+      messageId: `dev-no-key-${Date.now()}`,
+      devOtp: otp,
     };
   }
 
   try {
-    // Dynamic import Resend hanya jika API key tersedia
+    // Dynamic import Resend
     const { Resend } = await import("resend");
     const resend = new Resend(process.env.RESEND_API_KEY);
+
+    console.log(`\n📧 [EMAIL] Sending OTP to: ${email}`);
+    console.log(`   From: ${FROM_EMAIL}`);
+    console.log(`   Subject: ${subject}`);
 
     const { data, error } = await resend.emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
@@ -47,24 +60,48 @@ export async function sendOTPEmail(
     });
 
     if (error) {
-      console.error("Resend error:", error);
+      console.error("❌ Resend error:", error);
+      
+      // Jika error karena domain tidak verified, tampilkan petunjuk
+      if (error.message?.includes("domain") || error.message?.includes("verify")) {
+        console.log("\n⚠️  PENTING: Email gagal karena domain belum diverifikasi!");
+        console.log("   Solusi:");
+        console.log("   1. Gunakan RESEND_FROM_EMAIL='onboarding@resend.dev' (hanya untuk testing)");
+        console.log("   2. Atau verifikasi domain Anda di https://resend.com/domains\n");
+      }
+      
+      // Fallback: return OTP di console untuk development
+      if (process.env.NODE_ENV === "development") {
+        console.log(`\n🔑 [FALLBACK] OTP untuk ${email}: ${otp}\n`);
+        return { 
+          success: true, 
+          messageId: `fallback-${Date.now()}`,
+          devOtp: otp,
+        };
+      }
+      
       return { success: false, error: error.message };
     }
 
-    console.log(`[Email] OTP sent to ${email}, messageId: ${data?.id}`);
+    console.log(`✅ [EMAIL] Sent successfully! Message ID: ${data?.id}\n`);
     return { success: true, messageId: data?.id };
-  } catch (error) {
-    console.error("Email sending error:", error);
     
-    // Fallback untuk development jika Resend gagal
+  } catch (error: any) {
+    console.error("❌ Email sending error:", error);
+    
+    // Fallback untuk development
     if (process.env.NODE_ENV === "development") {
-      console.log("========================================");
-      console.log(`[EMAIL SERVICE - FALLBACK] OTP for ${email}: ${otp}`);
-      console.log("========================================");
-      return { success: true, messageId: `fallback-${Date.now()}` };
+      console.log("\n========================================");
+      console.log(`🔑 [FALLBACK] OTP untuk ${email}: ${otp}`);
+      console.log("========================================\n");
+      return { 
+        success: true, 
+        messageId: `fallback-${Date.now()}`,
+        devOtp: otp,
+      };
     }
     
-    return { success: false, error: "Gagal mengirim email" };
+    return { success: false, error: error.message || "Gagal mengirim email" };
   }
 }
 

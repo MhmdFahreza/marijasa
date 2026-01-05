@@ -82,6 +82,28 @@ interface OTPMeta {
   email: string;
 }
 
+// Helper function to parse data from Redis or memory
+// Upstash Redis bisa return object langsung atau string tergantung bagaimana disimpan
+function parseStoredData<T>(data: unknown): T | null {
+  if (!data) return null;
+  
+  // Jika sudah object, langsung return
+  if (typeof data === 'object') {
+    return data as T;
+  }
+  
+  // Jika string, coba parse JSON
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data) as T;
+    } catch {
+      return null;
+    }
+  }
+  
+  return null;
+}
+
 // Store OTP (Redis atau Memory)
 export async function storeOTP(
   email: string,
@@ -96,7 +118,7 @@ export async function storeOTP(
 
   try {
     // Check cooldown
-    let cooldown: string | null = null;
+    let cooldown: unknown = null;
     let remainingSeconds = 0;
 
     if (isRedisAvailable() && redis) {
@@ -131,11 +153,9 @@ export async function storeOTP(
       createdAt: Date.now(),
     };
 
-    const otpDataStr = JSON.stringify(otpData);
-
     if (isRedisAvailable() && redis) {
-      // Store OTP with TTL
-      await redis.set(otpKey, otpDataStr, { ex: OTP_TTL });
+      // Store OTP with TTL - Upstash akan menyimpan sebagai object
+      await redis.set(otpKey, otpData, { ex: OTP_TTL });
 
       // Set cooldown
       await redis.set(cooldownKey, "1", { ex: COOLDOWN_SECONDS });
@@ -144,18 +164,22 @@ export async function storeOTP(
       await redis.del(attemptsKey);
 
       // Update metadata
-      const existingMetaStr = await redis.get(metaKey);
-      const meta: OTPMeta = existingMetaStr
-        ? (JSON.parse(existingMetaStr as string) as OTPMeta)
-        : { totalSent: 0, lastSentAt: 0, email: normalizedEmail };
+      const existingMeta = await redis.get(metaKey);
+      const meta: OTPMeta = parseStoredData<OTPMeta>(existingMeta) || { 
+        totalSent: 0, 
+        lastSentAt: 0, 
+        email: normalizedEmail 
+      };
 
       meta.totalSent += 1;
       meta.lastSentAt = Date.now();
 
-      await redis.set(metaKey, JSON.stringify(meta), { ex: META_TTL });
+      await redis.set(metaKey, meta, { ex: META_TTL });
+      
+      console.log(`[OTP] Stored in Redis for ${normalizedEmail}`);
     } else {
       // Fallback to memory store
-      memorySet(otpKey, otpDataStr, OTP_TTL);
+      memorySet(otpKey, JSON.stringify(otpData), OTP_TTL);
       memorySet(cooldownKey, "1", COOLDOWN_SECONDS);
       memoryDel(attemptsKey);
 
@@ -169,7 +193,7 @@ export async function storeOTP(
 
       memorySet(metaKey, JSON.stringify(meta), META_TTL);
 
-      console.log(`[OTP] Using in-memory storage (Redis not available)`);
+      console.log(`[OTP] Stored in memory for ${normalizedEmail} (Redis not available)`);
     }
 
     return { success: true };
@@ -199,7 +223,11 @@ export async function verifyOTP(
 
     if (isRedisAvailable() && redis) {
       const currentAttempts = await redis.get(attemptsKey);
-      attempts = currentAttempts ? parseInt(currentAttempts as string) : 0;
+      if (currentAttempts) {
+        attempts = typeof currentAttempts === 'number' 
+          ? currentAttempts 
+          : parseInt(String(currentAttempts)) || 0;
+      }
     } else {
       const currentAttempts = memoryGet(attemptsKey);
       attempts = currentAttempts ? parseInt(currentAttempts) : 0;
@@ -214,23 +242,26 @@ export async function verifyOTP(
     }
 
     // Get OTP data
-    let otpDataStr: string | null = null;
+    let otpData: OTPData | null = null;
 
     if (isRedisAvailable() && redis) {
-      otpDataStr = await redis.get(otpKey) as string | null;
+      const storedData = await redis.get(otpKey);
+      console.log(`[OTP] Retrieved from Redis:`, typeof storedData, storedData);
+      otpData = parseStoredData<OTPData>(storedData);
     } else {
-      otpDataStr = memoryGet(otpKey);
+      const storedDataStr = memoryGet(otpKey);
+      if (storedDataStr) {
+        otpData = JSON.parse(storedDataStr);
+      }
     }
 
-    if (!otpDataStr) {
+    if (!otpData) {
       return {
         success: false,
         error: "Kode OTP tidak ditemukan atau sudah kadaluarsa. Silakan minta kode baru.",
         remainingAttempts: MAX_ATTEMPTS - attempts - 1,
       };
     }
-
-    const otpData: OTPData = JSON.parse(otpDataStr);
 
     // Verify OTP hash
     const inputHash = hashOTP(otp, otpData.salt);
@@ -260,6 +291,7 @@ export async function verifyOTP(
       memoryDel(attemptsKey);
     }
 
+    console.log(`[OTP] Verification successful for ${normalizedEmail}`);
     return { success: true };
   } catch (error) {
     console.error("Error verifying OTP:", error);
@@ -309,7 +341,11 @@ export async function getRemainingAttempts(
 
     if (isRedisAvailable() && redis) {
       const currentAttempts = await redis.get(attemptsKey);
-      attempts = currentAttempts ? parseInt(currentAttempts as string) : 0;
+      if (currentAttempts) {
+        attempts = typeof currentAttempts === 'number' 
+          ? currentAttempts 
+          : parseInt(String(currentAttempts)) || 0;
+      }
     } else {
       const currentAttempts = memoryGet(attemptsKey);
       attempts = currentAttempts ? parseInt(currentAttempts) : 0;
@@ -342,6 +378,7 @@ export async function clearOTPData(
       memoryDel(cooldownKey);
       memoryDel(attemptsKey);
     }
+    console.log(`[OTP] Cleared OTP data for ${normalizedEmail}`);
   } catch (error) {
     console.error("Error clearing OTP data:", error);
   }
