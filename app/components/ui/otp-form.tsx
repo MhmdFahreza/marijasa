@@ -1,7 +1,7 @@
 // app/components/ui/otp-form.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -11,12 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/app/components/ui/card";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/app/components/ui/field";
+import { FieldDescription, FieldLabel } from "@/app/components/ui/field";
 import {
   InputOTP,
   InputOTPGroup,
@@ -33,7 +28,6 @@ interface OTPFormProps {
   [key: string]: any;
 }
 
-// Success Modal Component
 function SuccessModal({
   isOpen,
   onClose,
@@ -49,22 +43,18 @@ function SuccessModal({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-neutral-900 rounded-2xl p-6 md:p-8 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in duration-300 mx-4">
         <div className="flex flex-col items-center text-center">
-          {/* Success Icon */}
           <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-full flex items-center justify-center mb-4 md:mb-6">
             <CheckCircle2 className="w-10 h-10 md:w-12 md:h-12 text-emerald-500" />
           </div>
 
-          {/* Title */}
           <h2 className="text-xl md:text-2xl font-bold text-neutral-900 dark:text-white mb-3">
             Verifikasi Berhasil!
           </h2>
 
-          {/* Message */}
-          <p className="text-neutral-600 dark:text-neutral-400 mb-6 md:mb-8 text-sm md:text-sm leading-relaxed">
+          <p className="text-neutral-600 dark:text-neutral-400 mb-6 md:mb-8 text-sm leading-relaxed">
             {message}
           </p>
 
-          {/* Button */}
           <Button
             onClick={onClose}
             className={cn(
@@ -81,12 +71,7 @@ function SuccessModal({
   );
 }
 
-export function OTPForm({
-  type = "register",
-  email,
-  name,
-  ...props
-}: OTPFormProps) {
+export function OTPForm({ type = "register", email, name, ...props }: OTPFormProps) {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -95,22 +80,25 @@ export function OTPForm({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [countdown, setCountdown] = useState(60);
   const [remainingAttempts, setRemainingAttempts] = useState(5);
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
 
   const emailFromParams = searchParams?.get("email") || email;
-  const nameFromParams = searchParams?.get("name") || name;
+
+  const backPath =
+    type === "reset_password" ? "/forget-password" : "/register";
 
   // Initialize and validate
   useEffect(() => {
     setIsMounted(true);
 
     if (!emailFromParams) {
-      router.replace("/register");
+      router.replace(backPath);
       return;
     }
-  }, [emailFromParams, router]);
+  }, [emailFromParams, router, backPath]);
 
   // Countdown timer for resend OTP
   useEffect(() => {
@@ -124,7 +112,7 @@ export function OTPForm({
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
       e.preventDefault();
-      router.replace("/register");
+      router.replace(backPath);
     };
 
     window.history.pushState(null, "", window.location.href);
@@ -133,7 +121,7 @@ export function OTPForm({
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [router]);
+  }, [router, backPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,9 +142,7 @@ export function OTPForm({
     try {
       const response = await fetch("/api/auth/verify-otp", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           email: emailFromParams,
@@ -171,21 +157,30 @@ export function OTPForm({
         if (data.remainingAttempts !== undefined) {
           setRemainingAttempts(data.remainingAttempts);
         }
-
         setError(data.message || "Kode OTP salah");
         setOtp("");
         setIsLoading(false);
         return;
       }
 
+      // Jika register -> login otomatis (kode kamu sudah support data.user)
       if (data.user) {
         login(data.user);
       }
 
       setIsLoading(false);
+
+      // INI YANG KAMU MINTA:
+      // reset_password sukses -> langsung masuk /change-password
+      if (type === "reset_password") {
+        router.replace("/change-password");
+        return;
+      }
+
+      // selain reset_password -> tampilkan modal sukses
       setShowSuccessModal(true);
-    } catch (error) {
-      console.error("OTP verification error:", error);
+    } catch (err) {
+      console.error("OTP verification error:", err);
       setError("Terjadi kesalahan saat verifikasi. Silakan coba lagi.");
       setIsLoading(false);
     }
@@ -201,9 +196,7 @@ export function OTPForm({
     try {
       const response = await fetch("/api/auth/resend-otp", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: emailFromParams,
           type: type,
@@ -226,8 +219,8 @@ export function OTPForm({
       setCountdown(60);
       setRemainingAttempts(data.remainingAttempts || 5);
       setIsResending(false);
-    } catch (error) {
-      console.error("Resend OTP error:", error);
+    } catch (err) {
+      console.error("Resend OTP error:", err);
       setError("Gagal mengirim ulang OTP. Silakan coba lagi.");
       setIsResending(false);
     }
@@ -235,11 +228,13 @@ export function OTPForm({
 
   const handleSuccessModalClose = () => {
     setShowSuccessModal(false);
+
+    // register biasanya masuk homepage, kamu bisa ubah sesuai kebutuhan
     router.replace("/");
   };
 
-  const handleBackToRegister = () => {
-    router.replace("/register");
+  const handleBack = () => {
+    router.replace(backPath);
   };
 
   // Loading skeleton
@@ -247,9 +242,9 @@ export function OTPForm({
     return (
       <Card {...props} className="border-0 shadow-xl mx-4">
         <CardHeader className="bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-900 px-4 py-6 md:px-6 md:py-8">
-          <CardTitle className="text-lg md:text-xl">Verifikasi Email</CardTitle>
+          <CardTitle className="text-lg md:text-xl">Verifikasi</CardTitle>
           <CardDescription className="text-xs md:text-sm">
-            Kami mengirim kode 6 digit ke email Anda.
+            Memuat halaman verifikasi...
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6">
@@ -278,16 +273,19 @@ export function OTPForm({
 
   return (
     <>
-      {/* Success Modal */}
+      {/* Modal hanya untuk register/login (reset_password redirect langsung) */}
       <SuccessModal
         isOpen={showSuccessModal}
         onClose={handleSuccessModalClose}
-        message="Anda berhasil melakukan register akun. Selamat datang!"
+        message={
+          type === "register"
+            ? "Anda berhasil melakukan register akun. Selamat datang!"
+            : "Verifikasi berhasil."
+        }
       />
 
       <div className="w-full max-w-md mx-auto px-3 sm:px-4">
         <Card {...props} className="border-0 shadow-xl overflow-hidden">
-          {/* Header with gradient */}
           <CardHeader className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-neutral-800 dark:to-neutral-900 px-4 py-6 md:px-6 md:py-8 border-b border-emerald-100 dark:border-neutral-700">
             <div className="flex items-start justify-between gap-3 md:gap-4">
               <div className="flex-1 min-w-0">
@@ -308,7 +306,6 @@ export function OTPForm({
           </CardHeader>
 
           <CardContent className="p-4 md:p-6 space-y-4 md:space-y-6">
-            {/* Info Box */}
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 md:p-4 flex items-start gap-2 md:gap-3">
               <Clock className="w-4 h-4 md:w-5 md:h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
               <div className="space-y-1 min-w-0">
@@ -316,12 +313,11 @@ export function OTPForm({
                   Kode OTP berlaku selama 5 menit
                 </p>
                 <p className="text-blue-700 dark:text-blue-400 text-xs leading-relaxed">
-                  Jika tidak menemukan email, silakan periksa folder spam atau folder promosi.
+                  Jika tidak menemukan email, periksa folder spam atau promosi.
                 </p>
               </div>
             </div>
 
-            {/* Error Message */}
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 md:p-4 flex items-start gap-2 md:gap-3 animate-in slide-in-from-top-2 duration-300">
                 <AlertCircle className="w-4 h-4 md:w-5 md:h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
@@ -346,20 +342,16 @@ export function OTPForm({
               </div>
             )}
 
-            {/* Attempts Warning */}
             {remainingAttempts <= 2 && remainingAttempts > 0 && !error && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 md:p-4 flex items-center gap-2 md:gap-3 animate-in slide-in-from-top-2 duration-300">
                 <AlertCircle className="w-4 h-4 md:w-5 md:h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                 <span className="text-amber-700 dark:text-amber-300 text-xs md:text-sm font-medium">
-                  Sisa percobaan:{" "}
-                  <span className="font-bold">{remainingAttempts}</span>
+                  Sisa percobaan: <span className="font-bold">{remainingAttempts}</span>
                 </span>
               </div>
             )}
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
-              {/* OTP Input */}
               <div className="space-y-2 md:space-y-3">
                 <FieldLabel className="text-sm md:text-base font-semibold text-neutral-900 dark:text-white">
                   Kode Verifikasi
@@ -393,7 +385,6 @@ export function OTPForm({
                 </FieldDescription>
               </div>
 
-              {/* Submit Button */}
               <Button
                 type="submit"
                 disabled={isLoading || otp.length !== 6 || remainingAttempts <= 0}
@@ -416,7 +407,6 @@ export function OTPForm({
                 )}
               </Button>
 
-              {/* Resend OTP */}
               <div className="space-y-2 md:space-y-3 text-center">
                 <p className="text-xs md:text-sm text-neutral-600 dark:text-neutral-400">
                   Tidak menerima kode?{" "}
@@ -440,11 +430,10 @@ export function OTPForm({
                 </p>
               </div>
 
-              {/* Back Button */}
               <Button
                 type="button"
                 variant="ghost"
-                onClick={handleBackToRegister}
+                onClick={handleBack}
                 disabled={isLoading}
                 className={cn(
                   "w-full h-10 md:h-11 text-sm md:text-base font-medium rounded-lg",
@@ -455,7 +444,7 @@ export function OTPForm({
                 )}
               >
                 <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" />
-                <span>Kembali ke Daftar</span>
+                <span>Kembali</span>
               </Button>
             </form>
           </CardContent>

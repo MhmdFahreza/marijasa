@@ -447,7 +447,6 @@ export function LoginForm({
       {showRedirectLoader && (
         <div className="fixed inset-0 bg-gradient-to-br from-white/95 to-white/90 dark:from-neutral-900/95 dark:to-neutral-900/90 z-50 flex flex-col items-center justify-center gap-6 backdrop-blur-sm">
           <div className="text-center">
-            <div className="text-5xl mb-4">✓</div>
             <h2 className="text-2xl font-bold bg-gradient-to-r from-[#7CE0A8] to-[#5AB894] bg-clip-text text-transparent mb-2">
               {loaderText.title}
             </h2>
@@ -567,7 +566,7 @@ export function LoginForm({
                     </FieldLabel>
                     {userType !== "admin" && userType !== "mitra" && (
                       <a
-                        href="#"
+                        href="/forget-password"
                         className="inline-block text-xs sm:text-sm text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline transition-colors font-medium"
                       >
                         Lupa password?
