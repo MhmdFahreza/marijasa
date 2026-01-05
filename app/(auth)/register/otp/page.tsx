@@ -1,142 +1,103 @@
-"use client"
+// app/register/otp/page.tsx
+"use client";
 
-import { Suspense } from "react"
-import { OTPForm } from "@/app/components/ui/otp-form"
+import { Suspense } from "react";
+import { OTPForm } from "@/app/components/ui/otp-form";
+
+function OTPBackground() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {/* Soft blobs */}
+      <div className="absolute -top-28 -left-28 h-80 w-80 rounded-full bg-[#7CE0A8]/35 blur-3xl" />
+      <div className="absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-teal-300/25 blur-3xl" />
+
+      {/* Subtle dots pattern */}
+      <svg className="absolute inset-0 h-full w-full opacity-[0.18] dark:opacity-[0.08]" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="otpDots" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.6" fill="#7CE0A8" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#otpDots)" />
+      </svg>
+
+      {/* Abstract "canvas stroke" */}
+      <svg
+        className="absolute -top-6 right-6 h-40 w-40 opacity-40 dark:opacity-20"
+        viewBox="0 0 200 200"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M36,92 C44,48 86,26 124,36 C160,46 175,82 162,118 C150,150 114,172 78,162 C44,152 28,128 36,92 Z"
+          fill="#7CE0A8"
+          fillOpacity="0.35"
+        />
+        <circle cx="145" cy="58" r="10" fill="#0ea5a4" fillOpacity="0.25" />
+      </svg>
+
+      {/* Small mascot-like icon (minimal, not childish) */}
+      <svg
+        className="absolute bottom-6 left-6 h-24 w-24 opacity-50 dark:opacity-25"
+        viewBox="0 0 120 120"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect x="22" y="30" width="76" height="64" rx="18" fill="#7CE0A8" fillOpacity="0.25" />
+        <rect x="30" y="40" width="60" height="40" rx="14" fill="#ffffff" fillOpacity="0.55" />
+        <circle cx="48" cy="60" r="6" fill="#0f172a" fillOpacity="0.55" />
+        <circle cx="72" cy="60" r="6" fill="#0f172a" fillOpacity="0.55" />
+        <path d="M50 74 C56 80, 64 80, 70 74" stroke="#0f172a" strokeOpacity="0.45" strokeWidth="4" fill="none" strokeLinecap="round"/>
+        <circle cx="60" cy="24" r="8" fill="#7CE0A8" fillOpacity="0.35" />
+        <path d="M60 24 L60 34" stroke="#7CE0A8" strokeOpacity="0.55" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+}
 
 function OTPPageContent() {
   return (
-    <div className="relative min-h-svh w-full overflow-hidden">
-      {/* Background dengan gradient dan elemen dekoratif */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white via-emerald-50 to-teal-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-emerald-950">
-        {/* Elemen dekoratif 1 - Lingkaran besar di kiri atas */}
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-gradient-to-br from-emerald-200/30 to-teal-200/20 rounded-full blur-3xl opacity-60 dark:from-emerald-900/20 dark:to-teal-900/10"></div>
+    <div
+      className={[
+        "relative min-h-svh w-full overflow-hidden",
+        "bg-gradient-to-br from-[#7CE0A8]/20 via-white to-teal-50",
+        "dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900",
+      ].join(" ")}
+    >
+      <OTPBackground />
 
-        {/* Elemen dekoratif 2 - Lingkaran di kanan bawah */}
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-gradient-to-tl from-teal-200/30 to-emerald-200/20 rounded-full blur-3xl opacity-60 dark:from-teal-900/20 dark:to-emerald-900/10"></div>
-
-        {/* Elemen dekoratif 3 - Lingkaran kecil di tengah */}
-        <div className="absolute top-1/3 left-1/4 w-64 h-64 bg-gradient-to-br from-teal-100/20 to-transparent rounded-full blur-3xl opacity-40 dark:from-teal-900/10 dark:to-transparent"></div>
-
-        {/* Grid pattern subtle */}
-        <div 
-          className="absolute inset-0 opacity-5 dark:opacity-10"
-          style={{
-            backgroundImage: `linear-gradient(90deg, #7CE0A8 1px, transparent 1px), linear-gradient(#7CE0A8 1px, transparent 1px)`,
-            backgroundSize: '50px 50px'
-          }}
-        ></div>
-
-        {/* Animated lines - elemen 1 */}
-        <svg 
-          className="absolute top-20 right-20 w-40 h-40 opacity-10 dark:opacity-5"
-          viewBox="0 0 200 200"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path 
-            d="M50 50 Q100 50 150 100 T150 150" 
-            stroke="#7CE0A8" 
-            strokeWidth="2"
-            className="animate-pulse"
-          />
-          <circle cx="50" cy="50" r="3" fill="#7CE0A8" />
-          <circle cx="150" cy="150" r="3" fill="#7CE0A8" />
-        </svg>
-
-        {/* Animated lines - elemen 2 */}
-        <svg 
-          className="absolute bottom-20 left-20 w-40 h-40 opacity-10 dark:opacity-5"
-          viewBox="0 0 200 200"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path 
-            d="M150 50 Q100 100 50 150" 
-            stroke="#7CE0A8" 
-            strokeWidth="2"
-            className="animate-pulse"
-            style={{ animationDelay: '0.5s' }}
-          />
-          <circle cx="150" cy="50" r="3" fill="#7CE0A8" />
-          <circle cx="50" cy="150" r="3" fill="#7CE0A8" />
-        </svg>
-
-        {/* Floating dots - decorative elements */}
-        <div className="absolute top-1/4 right-1/4 w-2 h-2 bg-teal-400 rounded-full opacity-20 animate-float" style={{ animationDelay: '0s', animation: 'float 6s ease-in-out infinite' }}></div>
-        <div className="absolute top-3/4 left-1/3 w-3 h-3 bg-emerald-400 rounded-full opacity-15 animate-float" style={{ animationDelay: '2s', animation: 'float 6s ease-in-out infinite' }}></div>
-        <div className="absolute top-1/2 right-1/3 w-2.5 h-2.5 bg-teal-300 rounded-full opacity-10 animate-float" style={{ animationDelay: '4s', animation: 'float 6s ease-in-out infinite' }}></div>
-      </div>
-
-      {/* Content Container - dengan z-index lebih tinggi dari background */}
+      {/* Foreground */}
       <div className="relative z-10 flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-md">
           <OTPForm type="register" />
         </div>
       </div>
-
-      {/* CSS untuk animasi floating */}
-      <style>{`
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0px) translateX(0px);
-          }
-          25% {
-            transform: translateY(-20px) translateX(10px);
-          }
-          50% {
-            transform: translateY(-40px) translateX(-10px);
-          }
-          75% {
-            transform: translateY(-20px) translateX(5px);
-          }
-        }
-
-        @keyframes pulse-slow {
-          0%, 100% {
-            opacity: 0.5;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
-  )
+  );
 }
 
 export default function Page() {
   return (
-    <Suspense fallback={
-      <div className="relative min-h-svh w-full overflow-hidden">
-        {/* Background untuk loading state */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white via-emerald-50 to-teal-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-emerald-950">
-          <div className="absolute -top-40 -left-40 w-96 h-96 bg-gradient-to-br from-emerald-200/30 to-teal-200/20 rounded-full blur-3xl opacity-60 dark:from-emerald-900/20 dark:to-teal-900/10"></div>
-          <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-gradient-to-tl from-teal-200/30 to-emerald-200/20 rounded-full blur-3xl opacity-60 dark:from-teal-900/20 dark:to-emerald-900/10"></div>
-        </div>
-
-        {/* Loading skeleton */}
-        <div className="relative z-10 flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-          <div className="w-full max-w-sm">
-            <div className="animate-pulse">
-              <div className="bg-white dark:bg-neutral-800 rounded-xl p-8 space-y-6">
-                <div className="space-y-2">
-                  <div className="h-8 bg-gray-200 dark:bg-neutral-700 rounded w-3/4"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-neutral-700 rounded w-full"></div>
-                </div>
-                <div className="flex gap-2 justify-center">
+    <Suspense
+      fallback={
+        <div className="relative min-h-svh w-full overflow-hidden bg-gradient-to-br from-[#7CE0A8]/20 via-white to-teal-50 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900">
+          <OTPBackground />
+          <div className="relative z-10 flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+            <div className="w-full max-w-md">
+              <div className="animate-pulse rounded-2xl bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md p-6 shadow-xl ring-1 ring-black/5 dark:ring-white/5">
+                <div className="h-8 bg-gray-200 dark:bg-neutral-700 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-200 dark:bg-neutral-700 rounded w-full mb-8"></div>
+                <div className="flex gap-2 mb-4 justify-center">
                   {[...Array(6)].map((_, i) => (
-                    <div key={i} className="h-14 w-12 bg-gray-200 dark:bg-neutral-700 rounded-lg"></div>
+                    <div key={i} className="h-14 w-12 bg-gray-200 dark:bg-neutral-700 rounded"></div>
                   ))}
                 </div>
                 <div className="h-10 bg-gray-200 dark:bg-neutral-700 rounded w-full"></div>
-                <div className="h-4 bg-gray-200 dark:bg-neutral-700 rounded w-full"></div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <OTPPageContent />
     </Suspense>
-  )
+  );
 }
