@@ -1,139 +1,145 @@
 // app/api/auth/verify-otp/route.ts
-import { NextRequest, NextResponse } from "next/server"
-import prisma from "@/app/components/lib/prisma"
-import { randomBytes } from "crypto"
-import { OTPType } from "@/app/generated/prisma"
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/components/lib/prisma";
+import { verifyOTP, clearOTPData, getRemainingAttempts } from "@/app/components/lib/otp-service";
+import jwt from "jsonwebtoken";
 
-// Generate simple token (dalam production gunakan JWT)
-function generateToken(): string {
-  return randomBytes(32).toString('hex')
+export const runtime = "nodejs";
+
+// JWT Configuration
+const JWT_SECRET = process.env.NEXTAUTH_SECRET || "your-jwt-secret-key";
+const JWT_EXPIRES_IN = "30d"; // 30 days
+
+interface JWTPayload {
+  userId: string;
+  email: string;
+  role: string;
+  iat?: number;
+  exp?: number;
+}
+
+function generateJWT(payload: Omit<JWTPayload, "iat" | "exp">): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, code, type } = body
+    const body = await request.json();
+    const { email, code, type } = body;
 
-    // Validasi input
+    // Validation
     if (!email || !code || !type) {
       return NextResponse.json(
         { message: "Email, kode OTP, dan tipe harus diisi" },
         { status: 400 }
-      )
+      );
     }
 
-    // Validasi kode OTP format (6 digit)
+    // Validate OTP format (6 digits)
     if (!/^\d{6}$/.test(code)) {
       return NextResponse.json(
         { message: "Kode OTP harus 6 digit angka" },
         { status: 400 }
-      )
+      );
     }
 
-    // Mapping type string ke enum
-    const otpType = type === "register" ? OTPType.REGISTER : 
-                    type === "login" ? OTPType.LOGIN : 
-                    OTPType.RESET_PASSWORD
+    const normalizedEmail = email.toLowerCase();
 
-    // Cari OTP record
-    const otpRecord = await prisma.oTPCode.findFirst({
-      where: {
-        email: email.toLowerCase(),
-        type: otpType,
-        verified: false
-      },
-      orderBy: {
-        created_at: 'desc'
-      }
-    })
-
-    if (!otpRecord) {
+    // Check remaining attempts first
+    const remainingAttempts = await getRemainingAttempts(normalizedEmail, type);
+    if (remainingAttempts <= 0) {
       return NextResponse.json(
-        { message: "Kode OTP tidak ditemukan atau sudah digunakan. Silakan minta kode baru." },
-        { status: 404 }
-      )
+        { 
+          message: "Terlalu banyak percobaan. Silakan minta kode OTP baru.",
+          remainingAttempts: 0
+        },
+        { status: 429 }
+      );
     }
 
-    // Cek apakah OTP sudah expired
-    if (new Date() > otpRecord.expires_at) {
-      return NextResponse.json(
-        { message: "Kode OTP sudah kadaluarsa. Silakan minta kode baru." },
-        { status: 410 }
-      )
-    }
+    // Verify OTP from Redis
+    const verifyResult = await verifyOTP(normalizedEmail, code, type);
 
-    // Verifikasi kode OTP
-    if (otpRecord.code !== code) {
+    if (!verifyResult.success) {
       return NextResponse.json(
-        { message: "Kode OTP salah. Silakan coba lagi." },
+        { 
+          message: verifyResult.error,
+          remainingAttempts: verifyResult.remainingAttempts
+        },
         { status: 401 }
-      )
+      );
     }
 
-    // Update OTP sebagai verified
-    await prisma.oTPCode.update({
-      where: { otp_id: otpRecord.otp_id },
-      data: { verified: true }
-    })
-
-    // Jika tipe register, update user email_verified
+    // OTP verified successfully
     if (type === "register") {
+      // Find the pending user
       const user = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() }
-      })
+        where: { email: normalizedEmail },
+      });
 
       if (!user) {
         return NextResponse.json(
-          { message: "User tidak ditemukan" },
+          { message: "User tidak ditemukan. Silakan daftar ulang." },
           { status: 404 }
-        )
+        );
       }
 
-      // Update email verified status
-      await prisma.user.update({
+      // Update email_verified to true
+      const updatedUser = await prisma.user.update({
         where: { user_id: user.user_id },
-        data: { email_verified: true }
-      })
+        data: { email_verified: true },
+      });
 
-      // Generate token
-      const token = generateToken()
+      // Clear OTP data from Redis
+      await clearOTPData(normalizedEmail, "register");
 
-      // Hapus semua OTP untuk email ini
-      await prisma.oTPCode.deleteMany({
-        where: {
-          email: email.toLowerCase(),
-          type: OTPType.REGISTER
-        }
-      })
+      // Generate JWT for auto-login
+      const token = generateJWT({
+        userId: updatedUser.user_id,
+        email: updatedUser.email,
+        role: updatedUser.role,
+      });
 
-      return NextResponse.json(
+      // Create response with HTTP-only cookie
+      const response = NextResponse.json(
         {
+          success: true,
           message: "Verifikasi berhasil! Akun Anda sudah aktif.",
           token: token,
           user: {
-            id: user.user_id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            avatar: user.avatar || "/profile.svg",
-            role: user.role
-          }
+            id: updatedUser.user_id,
+            name: updatedUser.name,
+            email: updatedUser.email,
+            phone: updatedUser.phone,
+            avatar: updatedUser.avatar || "/profile.svg",
+            role: updatedUser.role,
+          },
         },
         { status: 200 }
-      )
+      );
+
+      // Set HTTP-only cookie for token
+      response.cookies.set("auth-token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        path: "/",
+      });
+
+      return response;
     }
 
-    // Untuk tipe lain (login, reset_password)
+    // For other types (login, reset_password)
     return NextResponse.json(
-      { message: "Verifikasi berhasil" },
+      { success: true, message: "Verifikasi berhasil" },
       { status: 200 }
-    )
-
+    );
   } catch (error) {
-    console.error("OTP verification error:", error)
+    console.error("OTP verification error:", error);
     return NextResponse.json(
       { message: "Terjadi kesalahan server. Silakan coba lagi." },
       { status: 500 }
-    )
+    );
   }
 }

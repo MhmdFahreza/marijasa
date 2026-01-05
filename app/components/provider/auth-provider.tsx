@@ -1,16 +1,18 @@
-"use client"
+// app/components/providers/auth-provider.tsx
+"use client";
 
-import { SessionProvider } from "next-auth/react"
-import { ReactNode } from "react"
+import { SessionProvider } from "next-auth/react";
+import { AuthProvider } from "@/app/components/contexts/AuthContext";
+import { ReactNode } from "react";
 
-interface AuthProviderProps {
-  children: ReactNode
+interface ProvidersProps {
+  children: ReactNode;
 }
 
-export default function AuthProvider({ children }: AuthProviderProps) {
+export default function Providers({ children }: ProvidersProps) {
   return (
     <SessionProvider refetchInterval={0} refetchOnWindowFocus={true}>
-      {children}
+      <AuthProvider>{children}</AuthProvider>
     </SessionProvider>
-  )
+  );
 }

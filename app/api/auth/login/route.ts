@@ -1,57 +1,61 @@
 // app/api/auth/login/route.ts
-import { NextRequest, NextResponse } from "next/server"
-import prisma from "@/app/components/lib/prisma"
-import bcrypt from "bcryptjs"
-import { randomBytes } from "crypto"
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/components/lib/prisma";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
-// Generate simple token (dalam production gunakan JWT)
-function generateToken(): string {
-  return randomBytes(32).toString('hex')
+export const runtime = "nodejs";
+
+// JWT Configuration
+const JWT_SECRET = process.env.NEXTAUTH_SECRET || "your-jwt-secret-key";
+const JWT_EXPIRES_IN = "30d"; // 30 days
+
+interface JWTPayload {
+  userId: string;
+  email: string;
+  role: string;
+  iat?: number;
+  exp?: number;
 }
 
-// Normalisasi nomor telepon ke format +62
+function generateJWT(payload: Omit<JWTPayload, "iat" | "exp">): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+
+// Normalize phone number to +62 format
 function normalizePhone(phone: string): string {
-  let cleaned = phone.replace(/[\s-]/g, '')
-  if (cleaned.startsWith('08')) {
-    cleaned = '+62' + cleaned.substring(1)
-  } else if (cleaned.startsWith('62')) {
-    cleaned = '+' + cleaned
-  } else if (!cleaned.startsWith('+62')) {
-    cleaned = '+62' + cleaned
+  let cleaned = phone.replace(/[\s-]/g, "");
+  if (cleaned.startsWith("08")) {
+    cleaned = "+62" + cleaned.substring(1);
+  } else if (cleaned.startsWith("62")) {
+    cleaned = "+" + cleaned;
+  } else if (!cleaned.startsWith("+62")) {
+    cleaned = "+62" + cleaned;
   }
-  return cleaned
+  return cleaned;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { identifier, password, isEmail } = body
+    const body = await request.json();
+    const { identifier, password, isEmail } = body;
 
-    // Validasi input
+    // Validation
     if (!identifier || !password) {
       return NextResponse.json(
         { message: "Email/Nomor telepon dan password harus diisi" },
         { status: 400 }
-      )
+      );
     }
 
-    // Validasi password length
-    if (password.length < 8) {
-      return NextResponse.json(
-        { message: "Password minimal 8 karakter" },
-        { status: 400 }
-      )
-    }
-
-    let user = null
+    let user = null;
 
     if (isEmail) {
-      // Cari user berdasarkan email
+      // Find by email
       user = await prisma.user.findUnique({
-        where: { email: identifier.toLowerCase().trim() }
-      })
+        where: { email: identifier.toLowerCase() },
+      });
 
-      // Jika user tidak ditemukan dengan email
       if (!user) {
         return NextResponse.json(
           { 
@@ -59,18 +63,15 @@ export async function POST(request: NextRequest) {
             errorType: "EMAIL_NOT_REGISTERED"
           },
           { status: 404 }
-        )
+        );
       }
     } else {
-      // Normalisasi nomor telepon
-      const normalizedPhone = normalizePhone(identifier)
-      
-      // Cari user berdasarkan nomor telepon
+      // Find by phone
+      const normalizedPhone = normalizePhone(identifier);
       user = await prisma.user.findFirst({
-        where: { phone: normalizedPhone }
-      })
+        where: { phone: normalizedPhone },
+      });
 
-      // Jika user tidak ditemukan dengan nomor telepon
       if (!user) {
         return NextResponse.json(
           { 
@@ -78,11 +79,11 @@ export async function POST(request: NextRequest) {
             errorType: "PHONE_NOT_REGISTERED"
           },
           { status: 404 }
-        )
+        );
       }
     }
 
-    // Cek apakah user memiliki password (bukan pure OAuth user)
+    // Check if account is Google OAuth only (no password)
     if (!user.password) {
       return NextResponse.json(
         { 
@@ -90,10 +91,10 @@ export async function POST(request: NextRequest) {
           errorType: "GOOGLE_ACCOUNT"
         },
         { status: 400 }
-      )
+      );
     }
 
-    // Cek apakah email sudah diverifikasi
+    // Check if email is verified
     if (!user.email_verified) {
       return NextResponse.json(
         { 
@@ -101,10 +102,10 @@ export async function POST(request: NextRequest) {
           errorType: "EMAIL_NOT_VERIFIED"
         },
         { status: 403 }
-      )
+      );
     }
 
-    // Cek apakah akun aktif
+    // Check if account is active
     if (!user.is_active) {
       return NextResponse.json(
         { 
@@ -112,12 +113,11 @@ export async function POST(request: NextRequest) {
           errorType: "ACCOUNT_INACTIVE"
         },
         { status: 403 }
-      )
+      );
     }
 
-    // Verifikasi password
-    const isPasswordValid = await bcrypt.compare(password, user.password)
-    
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return NextResponse.json(
         { 
@@ -125,15 +125,20 @@ export async function POST(request: NextRequest) {
           errorType: "INVALID_PASSWORD"
         },
         { status: 401 }
-      )
+      );
     }
 
-    // Generate token
-    const token = generateToken()
+    // Generate JWT
+    const token = generateJWT({
+      userId: user.user_id,
+      email: user.email,
+      role: user.role,
+    });
 
-    // Return user data (tanpa password)
-    return NextResponse.json(
+    // Create response with HTTP-only cookie
+    const response = NextResponse.json(
       {
+        success: true,
         message: "Login berhasil",
         token: token,
         user: {
@@ -142,20 +147,27 @@ export async function POST(request: NextRequest) {
           email: user.email,
           phone: user.phone,
           avatar: user.avatar || "/profile.svg",
-          role: user.role
-        }
+          role: user.role,
+        },
       },
       { status: 200 }
-    )
+    );
 
+    // Set HTTP-only cookie for token
+    response.cookies.set("auth-token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: "/",
+    });
+
+    return response;
   } catch (error) {
-    console.error("Login error:", error)
+    console.error("Login error:", error);
     return NextResponse.json(
-      { 
-        message: "Terjadi kesalahan server. Silakan coba lagi.",
-        errorType: "SERVER_ERROR"
-      },
+      { message: "Terjadi kesalahan server. Silakan coba lagi." },
       { status: 500 }
-    )
+    );
   }
 }

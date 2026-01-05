@@ -1,112 +1,98 @@
 // app/api/auth/resend-otp/route.ts
-import { NextRequest, NextResponse } from "next/server"
-import prisma from "@/app/components/lib/prisma"
-import { OTPType } from "@/app/generated/prisma"
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/components/lib/prisma";
+import { generateOTP, storeOTP, checkCooldown, getRemainingAttempts } from "@/app/components/lib/otp-service";
+import { sendOTPEmail } from "@/app/components/lib/email-service";
 
-// Generate 6 digit OTP code
-function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString()
-}
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, type } = body
+    const body = await request.json();
+    const { email, type } = body;
 
-    // Validasi input
+    // Validation
     if (!email || !type) {
       return NextResponse.json(
         { message: "Email dan tipe harus diisi" },
         { status: 400 }
-      )
+      );
     }
 
-    // Mapping type string ke enum
-    const otpType = type === "register" ? OTPType.REGISTER : 
-                    type === "login" ? OTPType.LOGIN : 
-                    OTPType.RESET_PASSWORD
+    const normalizedEmail = email.toLowerCase();
+    const otpType = type as "register" | "login" | "reset_password";
 
-    // Cari user berdasarkan email
+    // Check cooldown
+    const cooldownStatus = await checkCooldown(normalizedEmail, otpType);
+    if (cooldownStatus.onCooldown) {
+      return NextResponse.json(
+        { 
+          message: `Tunggu ${cooldownStatus.remainingSeconds} detik sebelum meminta kode baru`,
+          cooldownRemaining: cooldownStatus.remainingSeconds
+        },
+        { status: 429 }
+      );
+    }
+
+    // Find user
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() }
-    })
+      where: { email: normalizedEmail },
+    });
 
     if (!user) {
       return NextResponse.json(
         { message: "Email tidak ditemukan" },
         { status: 404 }
-      )
+      );
     }
 
-    // Cek rate limiting - tidak boleh request OTP lebih dari 1x per menit
-    const recentOTP = await prisma.oTPCode.findFirst({
-      where: {
-        email: email.toLowerCase(),
-        type: otpType,
-        created_at: {
-          gte: new Date(Date.now() - 60 * 1000) // 1 menit yang lalu
-        }
-      }
-    })
-
-    if (recentOTP) {
-      const waitTime = Math.ceil((60 * 1000 - (Date.now() - recentOTP.created_at.getTime())) / 1000)
+    // For register type, check if already verified
+    if (type === "register" && user.email_verified) {
       return NextResponse.json(
-        { message: `Tunggu ${waitTime} detik sebelum meminta kode baru` },
-        { status: 429 }
-      )
+        { message: "Email sudah diverifikasi. Silakan login." },
+        { status: 400 }
+      );
     }
 
-    // Generate OTP code baru (dummy: 123456 untuk testing)
-    const otpCode = process.env.NODE_ENV === "development" ? "123456" : generateOTP()
-    
-    // Simpan OTP ke database
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000) // 10 menit
-    
-    // Hapus OTP lama yang belum terverifikasi
-    await prisma.oTPCode.deleteMany({
-      where: {
-        email: email.toLowerCase(),
-        type: otpType,
-        verified: false
-      }
-    })
+    // Generate new OTP
+    const otpCode = generateOTP();
 
-    // Buat OTP baru
-    const otpRecord = await prisma.oTPCode.create({
-      data: {
-        user_id: user.user_id,
-        email: email.toLowerCase(),
-        code: otpCode,
-        type: otpType,
-        expires_at: otpExpiry,
-        verified: false
-      }
-    })
-
-    // TODO: Kirim email OTP (implementasi email service)
-    // await sendOTPEmail(email, otpCode)
-    
-    // Untuk development, log OTP
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[DEV] Resent OTP for ${email}: ${otpCode}`)
+    // Store OTP in Redis
+    const storeResult = await storeOTP(normalizedEmail, otpCode, otpType);
+    if (!storeResult.success) {
+      return NextResponse.json(
+        { message: storeResult.error || "Gagal menyimpan OTP" },
+        { status: 500 }
+      );
     }
+
+    // Send OTP via email
+    const emailResult = await sendOTPEmail(normalizedEmail, otpCode, otpType);
+    if (!emailResult.success) {
+      return NextResponse.json(
+        { message: "Gagal mengirim email verifikasi. Silakan coba lagi." },
+        { status: 500 }
+      );
+    }
+
+    // Get remaining attempts for info
+    const remainingAttempts = await getRemainingAttempts(normalizedEmail, otpType);
+
+    console.log(`[Resend OTP] New OTP sent to ${normalizedEmail}`);
 
     return NextResponse.json(
       { 
+        success: true,
         message: "Kode OTP baru telah dikirim ke email Anda",
-        otpId: otpRecord.otp_id,
-        // Hanya untuk development
-        ...(process.env.NODE_ENV === "development" && { devOtp: otpCode })
+        remainingAttempts: remainingAttempts
       },
       { status: 200 }
-    )
-
+    );
   } catch (error) {
-    console.error("Resend OTP error:", error)
+    console.error("Resend OTP error:", error);
     return NextResponse.json(
       { message: "Terjadi kesalahan server. Silakan coba lagi." },
       { status: 500 }
-    )
+    );
   }
 }

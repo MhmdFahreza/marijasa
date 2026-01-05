@@ -38,24 +38,12 @@ import {
   FileText,
   CreditCard,
   ShoppingBag,
-  MessageSquare
+  MessageSquare,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
-import { useSession, signOut } from "next-auth/react"; // Import useSession dan signOut
+import { useAuth } from "@/app/components/contexts/AuthContext";
 
 const LANG_STORAGE_KEY = "appLanguage";
-const AUTH_STORAGE_KEY = "authData";
-const TOKEN_STORAGE_KEY = "userToken";
-const NOTIFICATION_STORAGE_KEY = "userNotifications";
-
-interface UserData {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-  phone?: string;
-  role?: string;
-}
 
 interface Notification {
   id: string;
@@ -63,7 +51,15 @@ interface Notification {
   message: string;
   time: string;
   date: string;
-  type: 'order' | 'promo' | 'system' | 'reminder' | 'additional_service' | 'payment' | 'completion' | 'cancellation';
+  type:
+    | "order"
+    | "promo"
+    | "system"
+    | "reminder"
+    | "additional_service"
+    | "payment"
+    | "completion"
+    | "cancellation";
   read: boolean;
   orderId?: string;
 }
@@ -72,120 +68,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("id");
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userData, setUserData] = useState<UserData | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  
+
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
-  
-  // Gunakan useSession untuk mendapatkan session dari NextAuth
-  const { data: session, status } = useSession();
 
-  // Load notifications from localStorage
-  const loadNotifications = () => {
-    try {
-      const savedNotifications = localStorage.getItem(NOTIFICATION_STORAGE_KEY);
-      if (savedNotifications) {
-        const parsedNotifications = JSON.parse(savedNotifications);
-        // Sort by date and time (newest first)
-        const sortedNotifications = parsedNotifications.sort((a: Notification, b: Notification) => {
-          const dateA = new Date(`${a.date} ${a.time}`);
-          const dateB = new Date(`${b.date} ${b.time}`);
-          return dateB.getTime() - dateA.getTime();
-        });
-        setNotifications(sortedNotifications);
-      } else {
-        setNotifications([]);
-      }
-    } catch (error) {
-      console.error("Error loading notifications:", error);
-      setNotifications([]);
-    }
-  };
-
-  // Save notifications to localStorage
-  const saveNotifications = (newNotifications: Notification[]) => {
-    try {
-      localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(newNotifications));
-      // Dispatch event untuk sinkronisasi antar komponen
-      window.dispatchEvent(new CustomEvent('notificationUpdated', { 
-        detail: { type: 'user', action: 'save' }
-      }));
-    } catch (error) {
-      console.error("Error saving notifications:", error);
-    }
-  };
+  // Use AuthContext instead of localStorage
+  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
 
   // Calculate unread notifications
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Effect untuk sinkronisasi session NextAuth dengan state lokal
-  useEffect(() => {
-    if (status === "loading") return;
-    
-    if (session?.user) {
-      // User sudah login via NextAuth (Google OAuth atau Credentials)
-      const userFromSession = {
-        id: session.user.id || "",
-        name: session.user.name || "",
-        email: session.user.email || "",
-        avatar: session.user.image || "/profile.svg",
-        phone: (session.user as any).phone || "",
-        role: (session.user as any).role || "user"
-      };
-      
-      setIsLoggedIn(true);
-      setUserData(userFromSession);
-      
-      // Simpan ke localStorage untuk konsistensi dengan sistem yang ada
-      if (typeof window !== 'undefined') {
-        const authData = {
-          isLoggedIn: true,
-          user: userFromSession,
-          loginTime: new Date().toISOString(),
-          viaNextAuth: true
-        };
-        
-        localStorage.setItem("authData", JSON.stringify(authData));
-        localStorage.setItem("user", JSON.stringify(userFromSession));
-        
-        // Untuk login Google, gunakan token khusus
-        if (!localStorage.getItem("userToken")) {
-          localStorage.setItem("userToken", "google-oauth-token");
-        }
-      }
-    } else {
-      // Cek localStorage untuk login biasa (credentials)
-      const checkLocalStorageLogin = () => {
-        const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-        const authData = localStorage.getItem(AUTH_STORAGE_KEY);
-        
-        if (token && authData) {
-          try {
-            const parsedAuth = JSON.parse(authData);
-            setIsLoggedIn(true);
-            setUserData(parsedAuth.user);
-          } catch (error) {
-            console.error("Error parsing auth data:", error);
-            localStorage.removeItem(AUTH_STORAGE_KEY);
-            localStorage.removeItem(TOKEN_STORAGE_KEY);
-            setIsLoggedIn(false);
-            setUserData(null);
-          }
-        } else {
-          setIsLoggedIn(false);
-          setUserData(null);
-        }
-      };
-      
-      checkLocalStorageLogin();
-    }
-  }, [session, status]);
-
+  // Load language preference
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -193,28 +90,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     if (savedLang) {
       setSelectedLanguage(savedLang);
     }
-
-    loadNotifications();
-
-    // Listen for notification updates
-    const handleNotificationUpdated = (event: CustomEvent) => {
-      if (event.detail.type === 'user') {
-        loadNotifications();
-      }
-    };
-
-    // Listen for additional service updates
-    const handleAdditionalServiceUpdated = (event: CustomEvent) => {
-      loadNotifications();
-    };
-
-    window.addEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
-    window.addEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
-
-    return () => {
-      window.removeEventListener('notificationUpdated', handleNotificationUpdated as EventListener);
-      window.removeEventListener('additionalServiceUpdated', handleAdditionalServiceUpdated as EventListener);
-    };
   }, []);
 
   useEffect(() => {
@@ -225,25 +100,26 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      
-      // Check if click is outside both desktop and mobile notification refs
-      const isOutsideDesktop = notificationRef.current && !notificationRef.current.contains(target);
-      const isOutsideMobile = mobileNotificationRef.current && !mobileNotificationRef.current.contains(target);
-      
+
+      const isOutsideDesktop =
+        notificationRef.current && !notificationRef.current.contains(target);
+      const isOutsideMobile =
+        mobileNotificationRef.current &&
+        !mobileNotificationRef.current.contains(target);
+
       if (isOutsideDesktop && isOutsideMobile) {
         setIsNotificationOpen(false);
       }
     };
 
     if (isNotificationOpen) {
-      // Use setTimeout to avoid immediate trigger
       setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener("mousedown", handleClickOutside);
       }, 0);
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isNotificationOpen]);
 
@@ -262,32 +138,16 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   const handleLoginClick = () => {
     setIsLoading(true);
-
-    const connection = (navigator as any).connection ||
-      (navigator as any).mozConnection ||
-      (navigator as any).webkitConnection;
-
-    const networkSpeed = connection ? connection.effectiveType : "4g";
-    const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
-
     setTimeout(() => {
       router.push("/login");
-    }, delay);
+    }, 300);
   };
 
   const handleRegisterClick = () => {
     setIsLoading(true);
-
-    const connection = (navigator as any).connection ||
-      (navigator as any).mozConnection ||
-      (navigator as any).webkitConnection;
-
-    const networkSpeed = connection ? connection.effectiveType : "4g";
-    const delay = networkSpeed === "2g" || networkSpeed === "slow-2g" ? 3000 : 500;
-
     setTimeout(() => {
       router.push("/register");
-    }, delay);
+    }, 300);
   };
 
   const handleLogoClick = () => {
@@ -304,31 +164,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = async () => {
-    // Logout dari NextAuth jika login via Google/NextAuth
-    if (session) {
-      await signOut({ redirect: false });
-    }
-    
-    // Hapus semua data dari localStorage
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    localStorage.removeItem("user");
-    localStorage.removeItem("userToken");
-    
-    // Reset state
-    setIsLoggedIn(false);
-    setUserData(null);
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
-    
-    // Dispatch event untuk memberi tahu komponen lain
-    window.dispatchEvent(new Event('userLoggedOut'));
-    
-    // Redirect ke halaman utama
+
+    // Call logout from AuthContext
+    await logout();
+
+    // Redirect to home
     setIsLoading(true);
     setTimeout(() => {
       router.push("/");
-      router.refresh(); // Refresh untuk update session
+      router.refresh();
     }, 300);
   };
 
@@ -375,97 +221,67 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     const newState = !isNotificationOpen;
     setIsNotificationOpen(newState);
     if (newState) {
-      // Mark all as read when opening notifications
       markAllAsRead();
     }
   };
 
   const markAllAsRead = () => {
     if (notifications.length === 0) return;
-    
-    const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
+
+    const updatedNotifications = notifications.map((notif) => ({
+      ...notif,
+      read: true,
+    }));
     setNotifications(updatedNotifications);
-    saveNotifications(updatedNotifications);
   };
 
   const markAsRead = (notificationId: string) => {
-    const updatedNotifications = notifications.map(notif => 
+    const updatedNotifications = notifications.map((notif) =>
       notif.id === notificationId ? { ...notif, read: true } : notif
     );
     setNotifications(updatedNotifications);
-    saveNotifications(updatedNotifications);
   };
 
   const deleteNotification = (notificationId: string, e: React.MouseEvent) => {
-    // Prevent event bubbling
     e.stopPropagation();
     e.preventDefault();
-    
-    // Filter out the notification to delete
-    const updatedNotifications = notifications.filter(notif => notif.id !== notificationId);
-    
-    // Update state
+
+    const updatedNotifications = notifications.filter(
+      (notif) => notif.id !== notificationId
+    );
     setNotifications(updatedNotifications);
-    
-    // Save to localStorage
-    localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(updatedNotifications));
   };
 
   const deleteAllNotifications = (e: React.MouseEvent) => {
-    // Prevent event bubbling
     e.stopPropagation();
     e.preventDefault();
-    
-    // Clear all notifications
     setNotifications([]);
-    
-    // Save empty array to localStorage
-    localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify([]));
   };
 
-  const getNotificationIcon = (type: Notification['type']) => {
+  const getNotificationIcon = (type: Notification["type"]) => {
     switch (type) {
-      case 'order':
+      case "order":
         return <ShoppingBag className="w-5 h-5 text-blue-500" />;
-      case 'payment':
+      case "payment":
         return <CreditCard className="w-5 h-5 text-green-500" />;
-      case 'additional_service':
+      case "additional_service":
         return <PlusCircle className="w-5 h-5 text-purple-500" />;
-      case 'completion':
+      case "completion":
         return <CheckCircle className="w-5 h-5 text-green-600" />;
-      case 'cancellation':
+      case "cancellation":
         return <AlertCircle className="w-5 h-5 text-red-500" />;
-      case 'promo':
+      case "promo":
         return <AlertCircle className="w-5 h-5 text-amber-500" />;
-      case 'reminder':
+      case "reminder":
         return <Clock className="w-5 h-5 text-amber-500" />;
       default:
         return <Bell className="w-5 h-5 text-gray-500" />;
     }
   };
 
-  const getNotificationColor = (type: Notification['type']) => {
-    switch (type) {
-      case 'order':
-        return 'bg-blue-50 dark:bg-blue-900/10 border-blue-200';
-      case 'payment':
-        return 'bg-green-50 dark:bg-green-900/10 border-green-200';
-      case 'additional_service':
-        return 'bg-purple-50 dark:bg-purple-900/10 border-purple-200';
-      case 'completion':
-        return 'bg-green-50 dark:bg-green-900/10 border-green-200';
-      case 'cancellation':
-        return 'bg-red-50 dark:bg-red-900/10 border-red-200';
-      case 'promo':
-        return 'bg-amber-50 dark:bg-amber-900/10 border-amber-200';
-      default:
-        return 'bg-gray-50 dark:bg-gray-800 border-gray-200';
-    }
-  };
-
   const handleNotificationClick = (notification: Notification) => {
     markAsRead(notification.id);
-    
+
     if (notification.orderId) {
       setIsNotificationOpen(false);
       setIsLoading(true);
@@ -477,8 +293,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   const defaultAvatar = "/profile.svg";
 
-  // Tampilkan loading jika status session masih loading
-  if (status === "loading") {
+  // Show loading while checking auth
+  if (authLoading) {
     return (
       <div className="relative w-full min-h-screen">
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
@@ -503,7 +319,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-4">
-            {isLoggedIn ? (
+            {isAuthenticated && user ? (
               <div className="flex items-center gap-4">
                 <LanguageSelector
                   selectedLanguage={selectedLanguage}
@@ -520,7 +336,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
-                        {unreadCount > 9 ? '9+' : unreadCount}
+                        {unreadCount > 9 ? "9+" : unreadCount}
                       </span>
                     )}
                   </button>
@@ -555,18 +371,25 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                           </div>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {notifications.length} notifikasi • {unreadCount} belum dibaca
+                          {notifications.length} notifikasi • {unreadCount} belum
+                          dibaca
                         </p>
                       </div>
-                      
+
                       <div className="max-h-96 overflow-y-auto">
                         {notifications.length > 0 ? (
                           <div className="divide-y divide-gray-100 dark:divide-neutral-700">
                             {notifications.map((notification) => (
                               <div
                                 key={notification.id}
-                                onClick={() => handleNotificationClick(notification)}
-                                className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
+                                onClick={() =>
+                                  handleNotificationClick(notification)
+                                }
+                                className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${
+                                  !notification.read
+                                    ? "bg-blue-50 dark:bg-blue-900/10"
+                                    : ""
+                                }`}
                               >
                                 <div className="flex gap-3">
                                   <div className="flex-shrink-0 mt-1">
@@ -582,7 +405,9 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                                         )}
                                         <button
-                                          onClick={(e) => deleteNotification(notification.id, e)}
+                                          onClick={(e) =>
+                                            deleteNotification(notification.id, e)
+                                          }
                                           className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded transition-colors"
                                           title="Hapus notifikasi"
                                         >
@@ -598,7 +423,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                         {notification.date} • {notification.time}
                                       </span>
                                       {notification.orderId && (
-                                        <Badge variant="outline" className="text-xs">
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs"
+                                        >
                                           #{notification.orderId}
                                         </Badge>
                                       )}
@@ -640,8 +468,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <button className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors">
                       <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                         <img
-                          src={userData?.avatar || defaultAvatar}
-                          alt={userData?.name || "User"}
+                          src={user?.avatar || defaultAvatar}
+                          alt={user?.name || "User"}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.currentTarget.src = defaultAvatar;
@@ -649,7 +477,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         />
                       </div>
                       <span className="hidden md:inline text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {userData?.name?.split(" ")[0] || "User"}
+                        {user?.name?.split(" ")[0] || "User"}
                       </span>
                     </button>
                   </DropdownMenuTrigger>
@@ -660,7 +488,13 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       disabled={pathname === "/profile"}
                     >
                       <User className="w-4 h-4" />
-                      <span className={pathname === "/profile" ? "font-semibold text-[#7CE0A8]" : ""}>
+                      <span
+                        className={
+                          pathname === "/profile"
+                            ? "font-semibold text-[#7CE0A8]"
+                            : ""
+                        }
+                      >
                         Profil Saya
                       </span>
                     </DropdownMenuItem>
@@ -670,7 +504,13 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       disabled={pathname === "/riwayat_pemesanan"}
                     >
                       <Package className="w-4 h-4" />
-                      <span className={pathname === "/riwayat_pemesanan" ? "font-semibold text-[#7CE0A8]" : ""}>
+                      <span
+                        className={
+                          pathname === "/riwayat_pemesanan"
+                            ? "font-semibold text-[#7CE0A8]"
+                            : ""
+                        }
+                      >
                         Riwayat Pesanan
                       </span>
                     </DropdownMenuItem>
@@ -680,7 +520,13 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       disabled={pathname === "/vendor_favorit"}
                     >
                       <Heart className="w-4 h-4" />
-                      <span className={pathname === "/vendor_favorit" ? "font-semibold text-[#7CE0A8]" : ""}>
+                      <span
+                        className={
+                          pathname === "/vendor_favorit"
+                            ? "font-semibold text-[#7CE0A8]"
+                            : ""
+                        }
+                      >
                         Vendor Favorit
                       </span>
                     </DropdownMenuItem>
@@ -728,8 +574,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               <NavbarLogo />
             </div>
             <div className="flex items-center gap-2">
-              {/* Mobile Notification Bell in Header */}
-              {isLoggedIn && (
+              {/* Mobile Notification Bell */}
+              {isAuthenticated && user && (
                 <div className="relative md:hidden" ref={mobileNotificationRef}>
                   <button
                     onClick={(e) => {
@@ -742,143 +588,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
-                        {unreadCount > 9 ? '9+' : unreadCount}
+                        {unreadCount > 9 ? "9+" : unreadCount}
                       </span>
                     )}
                   </button>
-
-                  {/* Mobile Notification Panel */}
-                  {isNotificationOpen && (
-                    <div 
-                      className="fixed inset-0 top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-[9998]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsNotificationOpen(false);
-                      }}
-                    >
-                      <div 
-                        className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-white dark:bg-neutral-800 shadow-xl overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex flex-col h-full">
-                          <div className="p-4 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-bold text-lg">Notifikasi</h3>
-                              <div className="flex items-center gap-2">
-                                {unreadCount > 0 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      markAllAsRead();
-                                    }}
-                                    className="text-xs text-blue-500 hover:text-blue-700"
-                                  >
-                                    Tandai semua dibaca
-                                  </button>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsNotificationOpen(false);
-                                  }}
-                                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
-                                >
-                                  <X className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                              {notifications.length} notifikasi • {unreadCount} belum dibaca
-                            </p>
-                          </div>
-                          
-                          <div className="flex-1 overflow-y-auto">
-                            {notifications.length > 0 ? (
-                              <div className="divide-y divide-gray-100 dark:divide-neutral-700">
-                                {notifications.map((notification) => (
-                                  <div
-                                    key={notification.id}
-                                    onClick={() => handleNotificationClick(notification)}
-                                    className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
-                                  >
-                                    <div className="flex gap-3">
-                                      <div className="flex-shrink-0 mt-1">
-                                        {getNotificationIcon(notification.type)}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-2 mb-1">
-                                          <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                                            {notification.title}
-                                          </h4>
-                                          <div className="flex items-center gap-1">
-                                            {!notification.read && (
-                                              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                            )}
-                                            <button
-                                              onClick={(e) => deleteNotification(notification.id, e)}
-                                              className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded transition-colors"
-                                              title="Hapus notifikasi"
-                                            >
-                                              <X className="w-3 h-3 text-gray-500" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                                          {notification.message}
-                                        </p>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            {notification.date} • {notification.time}
-                                          </span>
-                                          {notification.orderId && (
-                                            <Badge variant="outline" className="text-xs">
-                                              #{notification.orderId}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="p-8 text-center">
-                                <Bell className="w-16 h-16 text-gray-300 dark:text-neutral-600 mx-auto mb-4" />
-                                <p className="text-gray-500 dark:text-gray-400">
-                                  Tidak ada notifikasi
-                                </p>
-                                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-                                  Semua notifikasi akan muncul di sini
-                                </p>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="p-4 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
-                            <div className="space-y-2">
-                              {notifications.length > 0 && (
-                                <button
-                                  onClick={(e) => deleteAllNotifications(e)}
-                                  className="w-full px-4 py-3 text-center text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
-                                >
-                                  Hapus Semua Notifikasi
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsNotificationOpen(false);
-                                }}
-                                className="w-full px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-600 rounded-lg transition-colors"
-                              >
-                                Tutup
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -894,13 +607,13 @@ export default function UserLayout({ children }: { children: ReactNode }) {
             onClose={() => setIsMobileMenuOpen(false)}
           >
             <div className="w-full">
-              {isLoggedIn ? (
+              {isAuthenticated && user ? (
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-neutral-800">
                     <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                       <img
-                        src={userData?.avatar || defaultAvatar}
-                        alt={userData?.name || "User"}
+                        src={user?.avatar || defaultAvatar}
+                        alt={user?.name || "User"}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           e.currentTarget.src = defaultAvatar;
@@ -909,45 +622,23 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {userData?.name || "User"}
+                        {user?.name || "User"}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {userData?.email || ""}
+                        {user?.email || ""}
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    {/* Tablet Notification Button in Menu */}
-                    <div className="md:hidden">
-                      <button
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          setTimeout(() => {
-                            toggleNotification();
-                          }, 100);
-                        }}
-                        className="w-full flex items-center justify-between px-4 py-3 text-left rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Bell className="w-5 h-5" />
-                          <span>Notifikasi</span>
-                        </div>
-                        {unreadCount > 0 && (
-                          <span className="flex items-center justify-center w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full">
-                            {unreadCount > 9 ? '9+' : unreadCount}
-                          </span>
-                        )}
-                      </button>
-                    </div>
-
                     <button
                       onClick={handleProfileClick}
                       disabled={pathname === "/profile"}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/profile"
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                        pathname === "/profile"
                           ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
-                        }`}
+                      }`}
                     >
                       <User className="w-5 h-5" />
                       <span>Profil Saya</span>
@@ -955,10 +646,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <button
                       onClick={handleOrderHistoryClick}
                       disabled={pathname === "/riwayat_pemesanan"}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/riwayat_pemesanan"
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                        pathname === "/riwayat_pemesanan"
                           ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
-                        }`}
+                      }`}
                     >
                       <Package className="w-5 h-5" />
                       <span>Riwayat Pesanan</span>
@@ -966,10 +658,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <button
                       onClick={handleFavoriteVendorsClick}
                       disabled={pathname === "/vendor_favorit"}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${pathname === "/vendor_favorit"
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                        pathname === "/vendor_favorit"
                           ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
-                        }`}
+                      }`}
                     >
                       <Heart className="w-5 h-5" />
                       <span>Vendor Favorit</span>
