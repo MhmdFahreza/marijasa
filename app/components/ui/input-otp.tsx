@@ -17,7 +17,7 @@ function InputOTP({
     <OTPInput
       data-slot="input-otp"
       containerClassName={cn(
-        "flex items-center gap-2 has-disabled:opacity-50",
+        "flex items-center gap-3 has-disabled:opacity-50 transition-opacity duration-200",
         containerClassName
       )}
       className={cn("disabled:cursor-not-allowed", className)}
@@ -30,7 +30,7 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-group"
-      className={cn("flex items-center", className)}
+      className={cn("flex items-center justify-center", className)}
       {...props}
     />
   )
@@ -51,7 +51,25 @@ function InputOTPSlot({
       data-slot="input-otp-slot"
       data-active={isActive}
       className={cn(
-        "data-[active=true]:border-[#7CE0A8] data-[active=true]:ring-[#7CE0A8]/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive dark:bg-input/30 border-input relative flex h-9 w-9 items-center justify-center border-y border-r text-sm shadow-xs transition-all outline-none first:rounded-l-md first:border-l last:rounded-r-md data-[active=true]:z-10 data-[active=true]:ring-[3px]",
+        // Base styles
+        "relative flex h-14 w-12 items-center justify-center text-lg font-semibold",
+        // Border & background
+        "border-2 border-neutral-300 dark:border-neutral-600 rounded-lg",
+        "bg-white dark:bg-neutral-800",
+        // Transitions
+        "transition-all duration-200 outline-none",
+        // Active state dengan warna custom #7CE0A8
+        "data-[active=true]:border-[#7CE0A8] dark:data-[active=true]:border-[#7CE0A8]",
+        "data-[active=true]:bg-[#7CE0A8]/5 dark:data-[active=true]:bg-[#7CE0A8]/10",
+        "data-[active=true]:ring-2 data-[active=true]:ring-[#7CE0A8]/30",
+        "data-[active=true]:shadow-md",
+        // Filled state
+        "has-[input:not(:placeholder-shown)]:border-[#7CE0A8] dark:has-[input:not(:placeholder-shown)]:border-[#7CE0A8]",
+        "has-[input:not(:placeholder-shown)]:bg-[#7CE0A8]/5 dark:has-[input:not(:placeholder-shown)]:bg-[#7CE0A8]/10",
+        // Text color
+        "text-neutral-900 dark:text-white",
+        // Disabled state
+        "disabled:opacity-50 disabled:cursor-not-allowed",
         className
       )}
       {...props}
@@ -59,7 +77,7 @@ function InputOTPSlot({
       {char}
       {hasFakeCaret && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="animate-caret-blink bg-foreground h-4 w-px duration-1000" />
+          <div className="animate-caret-blink h-6 w-0.5 bg-[#7CE0A8] dark:bg-[#7CE0A8] duration-1000" />
         </div>
       )}
     </div>
@@ -68,8 +86,13 @@ function InputOTPSlot({
 
 function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
-    <div data-slot="input-otp-separator" role="separator" {...props}>
-      <MinusIcon />
+    <div 
+      data-slot="input-otp-separator" 
+      role="separator"
+      className="text-neutral-400 dark:text-neutral-600"
+      {...props}
+    >
+      <MinusIcon className="w-4 h-4" />
     </div>
   )
 }
