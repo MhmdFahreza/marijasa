@@ -526,8 +526,8 @@ export function LoginForm({
                         userType === "admin"
                           ? "admin@gmail.com"
                           : userType === "mitra"
-                          ? "mitra@marijasa.com"
-                          : "Email atau 081234567890"
+                            ? "mitra@marijasa.com"
+                            : "Email atau 081234567890"
                       }
                       autoComplete="email"
                       disabled={isLoading || isGoogleLoading || showRedirectLoader}
@@ -722,10 +722,16 @@ export function LoginForm({
           </CardContent>
         </Card>
 
-        {/* Security Info Footer */}
-        <div className="text-center text-xs text-neutral-500 dark:text-neutral-500 flex items-center justify-center gap-2">
-          <span>🔒</span>
-          <p>Data Anda dilindungi dengan enkripsi tingkat enterprise</p>
+        {/* Security Info Footer - Minimal */}
+        <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="flex flex-col xs:flex-row items-center justify-center gap-2 text-center">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs">🔒</span>
+              <p className="text-[11px] xs:text-xs text-neutral-600 dark:text-neutral-400">
+                Data Anda dilindungi dengan enkripsi tingkat enterprise
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </>

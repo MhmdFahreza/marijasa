@@ -1,52 +1,77 @@
-"use client"
+"use client";
 
-import { LoginForm } from "@/app/components/ui/login-form"
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Suspense } from "react"
+import { LoginForm } from "@/app/components/ui/login-form";
+import { AnimatedBackground } from "@/app/components/ui/animated-background";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Suspense } from "react";
 
 function LoginContent() {
-  const router = useRouter()
+  const router = useRouter();
 
   useEffect(() => {
-    window.history.replaceState(null, "", window.location.href)
-    window.history.pushState(null, "", window.location.href)
+    window.history.replaceState(null, "", window.location.href);
+    window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
-      router.replace("/")
-    }
+      router.replace("/");
+    };
 
-    window.addEventListener("popstate", handlePopState)
+    window.addEventListener("popstate", handlePopState);
 
     return () => {
-      window.removeEventListener("popstate", handlePopState)
-    }
-  }, [router])
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [router]);
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <LoginForm userType="user" />
+    <>
+      <AnimatedBackground variant="login" />
+
+      <div className="relative z-10 flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+        <div className="w-full max-w-sm">
+          {/* Decorative element above form */}
+          <div className="mb-8 text-center">
+            <div className="inline-block">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-[#7CE0A8] to-[#5AB894] rounded-2xl blur-xl opacity-30 animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+
+          <LoginForm userType="user" />
+
+          {/* Decorative bottom element */}
+          <div className="mt-8 text-center">
+            <p className="text-xs text-neutral-500 dark:text-neutral-500 flex items-center justify-center gap-2">
+              <span className="w-8 h-px bg-gradient-to-r from-transparent to-[#7CE0A8]"></span>
+              <span>Aman & Terenkripsi</span>
+              <span className="w-8 h-px bg-gradient-to-l from-transparent to-[#7CE0A8]"></span>
+            </p>
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    </>
+  );
 }
 
 export default function Page() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-        <div className="w-full max-w-sm">
-          <div className="animate-pulse">
-            <div className="h-8 bg-neutral-200 rounded w-3/4 mb-4"></div>
-            <div className="h-4 bg-neutral-200 rounded w-full mb-8"></div>
-            <div className="h-10 bg-neutral-200 rounded w-full mb-4"></div>
-            <div className="h-10 bg-neutral-200 rounded w-full mb-4"></div>
-            <div className="h-10 bg-neutral-200 rounded w-full"></div>
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+          <div className="w-full max-w-sm">
+            <div className="animate-pulse">
+              <div className="h-8 bg-neutral-200 rounded w-3/4 mb-4"></div>
+              <div className="h-4 bg-neutral-200 rounded w-full mb-8"></div>
+              <div className="h-10 bg-neutral-200 rounded w-full mb-4"></div>
+              <div className="h-10 bg-neutral-200 rounded w-full mb-4"></div>
+              <div className="h-10 bg-neutral-200 rounded w-full"></div>
+            </div>
           </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <LoginContent />
     </Suspense>
-  )
+  );
 }

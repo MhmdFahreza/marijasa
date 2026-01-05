@@ -360,3 +360,83 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Animated background specific styles */
+.animated-bg-container {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+}
+
+/* Smooth transitions for dark mode */
+@media (prefers-color-scheme: dark) {
+  canvas {
+    filter: brightness(0.9) contrast(1.1);
+  }
+}
+
+/* Enhanced animations */
+@keyframes float-up {
+  0% {
+    transform: translateY(0px) translateX(0px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px) translateX(20px);
+    opacity: 0;
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    filter: blur(40px);
+  }
+  50% {
+    opacity: 0.6;
+    filter: blur(60px);
+  }
+}
+
+@keyframes blob-rotate {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+/* Apply animations to elements */
+.animate-blob {
+  animation: blob-rotate 15s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+
+/* Responsive canvas handling */
+@media (max-width: 640px) {
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* Performance optimization for smaller devices */
+@media (max-width: 768px) {
+  canvas {
+    image-rendering: pixelated;
+  }
+}
