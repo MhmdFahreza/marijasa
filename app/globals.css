@@ -135,6 +135,281 @@
   }
 }
 
+/* ================================
+   CHARACTER ANIMATIONS
+   ================================ */
+
+/* Main floating animation for character */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-15px);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 4s ease-in-out infinite;
+}
+
+/* Gentle bounce for body */
+@keyframes bounce-gentle {
+  0%, 100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-3px) scaleY(1.02);
+  }
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 2s ease-in-out infinite;
+}
+
+/* Wave animation for arm */
+@keyframes wave {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-20deg);
+  }
+  75% {
+    transform: rotate(20deg);
+  }
+}
+
+.animate-wave {
+  animation: wave 0.5s ease-in-out 2;
+}
+
+/* Idle arm movement */
+@keyframes arm-idle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+.animate-arm-idle {
+  animation: arm-idle 3s ease-in-out infinite;
+}
+
+/* Hat bobbing */
+@keyframes hat-bob {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-2px) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(-2px) rotate(2deg);
+  }
+}
+
+.animate-hat-bob {
+  animation: hat-bob 3s ease-in-out infinite;
+}
+
+/* Crown floating */
+@keyframes crown-float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-5px) rotate(-3deg);
+  }
+  66% {
+    transform: translateY(-3px) rotate(3deg);
+  }
+}
+
+.animate-crown-float {
+  animation: crown-float 4s ease-in-out infinite;
+}
+
+/* Star spin */
+@keyframes star-spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+.animate-star-spin {
+  animation: star-spin 5s linear infinite;
+  transform-origin: center;
+}
+
+/* Floating card animation */
+@keyframes float-card {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(5deg);
+  }
+}
+
+.animate-float-card {
+  animation: float-card 2s ease-in-out infinite;
+}
+
+/* Smile animation */
+@keyframes smile {
+  0%, 100% {
+    d: path("M 125 220 Q 150 245, 175 220");
+  }
+  50% {
+    d: path("M 125 220 Q 150 255, 175 220");
+  }
+}
+
+.animate-smile {
+  animation: smile 3s ease-in-out infinite;
+}
+
+/* ================================
+   FLOATING DECORATIONS ANIMATIONS
+   ================================ */
+
+@keyframes float-decoration-1 {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(10px, -15px) rotate(10deg);
+  }
+  50% {
+    transform: translate(5px, -25px) rotate(-5deg);
+  }
+  75% {
+    transform: translate(-5px, -10px) rotate(5deg);
+  }
+}
+
+.animate-float-decoration-1 {
+  animation: float-decoration-1 6s ease-in-out infinite;
+}
+
+@keyframes float-decoration-2 {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  33% {
+    transform: translate(-15px, 10px) rotate(-15deg);
+  }
+  66% {
+    transform: translate(10px, -10px) rotate(10deg);
+  }
+}
+
+.animate-float-decoration-2 {
+  animation: float-decoration-2 7s ease-in-out infinite;
+}
+
+@keyframes float-decoration-3 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(15px, -20px) scale(1.1);
+  }
+}
+
+.animate-float-decoration-3 {
+  animation: float-decoration-3 5s ease-in-out infinite;
+}
+
+@keyframes float-decoration-4 {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(-10px, -10px) rotate(-10deg);
+  }
+  75% {
+    transform: translate(10px, 10px) rotate(10deg);
+  }
+}
+
+.animate-float-decoration-4 {
+  animation: float-decoration-4 8s ease-in-out infinite;
+}
+
+/* Random floating for background elements */
+@keyframes float-random {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.3;
+  }
+  25% {
+    transform: translate(20px, -30px) scale(1.1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-10px, -50px) scale(0.9);
+    opacity: 0.4;
+  }
+  75% {
+    transform: translate(30px, -20px) scale(1.05);
+    opacity: 0.6;
+  }
+}
+
+.animate-float-random {
+  animation: float-random 15s ease-in-out infinite;
+}
+
+/* ================================
+   SCENE ANIMATIONS
+   ================================ */
+
+/* Plant sway */
+@keyframes sway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(3deg);
+  }
+  75% {
+    transform: rotate(-3deg);
+  }
+}
+
+.animate-sway {
+  animation: sway 4s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+/* Slow bounce for icons */
+@keyframes bounce-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+
+/* ================================
+   EXISTING ANIMATIONS (PRESERVED)
+   ================================ */
+
 @keyframes scroll {
   to {
     transform: translate(calc(-50% - 0.5rem));
@@ -279,6 +554,10 @@
   }
 }
 
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
 @keyframes slide-in-from-top-2 {
   from {
     opacity: 0;
@@ -322,10 +601,6 @@
 /* Utility classes */
 .animate-float {
   animation: float 6s ease-in-out infinite;
-}
-
-.animate-pulse-slow {
-  animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .animate-caret-blink {
@@ -439,4 +714,153 @@
   canvas {
     image-rendering: pixelated;
   }
+  
+  /* Reduce animations on mobile for better performance */
+  .animate-float-random {
+    animation-duration: 20s;
+  }
+}
+
+/* ================================
+   SPARKLE & SHINE EFFECTS
+   ================================ */
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-sparkle {
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+@keyframes shine {
+  0% {
+    transform: translateX(-100%) rotate(45deg);
+  }
+  100% {
+    transform: translateX(100%) rotate(45deg);
+  }
+}
+
+.animate-shine {
+  animation: shine 3s ease-in-out infinite;
+}
+
+/* ================================
+   GRADIENT ANIMATIONS
+   ================================ */
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+/* ================================
+   HOVER EFFECTS
+   ================================ */
+
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 40px rgba(124, 224, 168, 0.2);
+}
+
+.hover-glow {
+  transition: box-shadow 0.3s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 30px rgba(124, 224, 168, 0.4);
+}
+
+/* ================================
+   3D TRANSFORM EFFECTS
+   ================================ */
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* ================================
+   GLASSMORPHISM EFFECTS
+   ================================ */
+
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ================================
+   LOADING ANIMATIONS
+   ================================ */
+
+@keyframes dot-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+}
+
+.animate-dot-pulse {
+  animation: dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-loading {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+.dark .skeleton-loading {
+  background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+  background-size: 200% 100%;
 }
