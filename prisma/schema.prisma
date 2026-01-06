@@ -67,6 +67,10 @@ model User {
   email_verified Boolean   @default(false)
   is_active      Boolean   @default(true)
 
+  // Profile fields
+  address        String?   @db.Text
+  gps_link       String?   @db.Text
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 

@@ -35,6 +35,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   ACCOUNT_INACTIVE: "Akun Anda tidak aktif. Silakan hubungi admin.",
   NO_EMAIL:
     "Tidak dapat mengambil email dari akun Google. Silakan coba lagi.",
+  NO_SESSION:
+    "Tidak dapat membuat sesi. Silakan coba lagi.",
+  SESSION_ERROR:
+    "Terjadi kesalahan pada sesi. Silakan coba lagi.",
+  CALLBACK_ERROR:
+    "Terjadi kesalahan saat memproses login. Silakan coba lagi.",
   GOOGLE_SIGNIN_ERROR:
     "Terjadi kesalahan saat login dengan Google. Silakan coba lagi.",
   OAuthAccountNotLinked:
@@ -87,6 +93,7 @@ export function LoginForm({
 
         // If already authenticated via AuthContext, redirect
         if (isAuthenticated && user) {
+          console.log("[Login] User already authenticated via context");
           if (onSuccess) {
             onSuccess(user.email);
           } else {
@@ -99,10 +106,16 @@ export function LoginForm({
           return;
         }
 
-        // If authenticated via NextAuth session
+        // If authenticated via NextAuth session (Google OAuth)
         if (status === "authenticated" && session?.user) {
           const userEmail = session.user.email;
           const userId = (session.user as any).id;
+          const sessionId = (session.user as any).sessionId;
+
+          console.log("[Login] NextAuth session found:", {
+            email: userEmail,
+            hasSessionId: !!sessionId
+          });
 
           if (!userEmail || !userId) {
             setIsCheckingSession(false);
@@ -217,8 +230,11 @@ export function LoginForm({
       setIsGoogleLoading(true);
       setError(null);
 
+      console.log("[Login] Starting Google sign in...");
+
+      // Sign in with Google and redirect to custom callback
       await signIn("google", {
-        callbackUrl: "/",
+        callbackUrl: "/api/auth/google/set-cookies",
         redirect: true,
       });
     } catch (error) {
@@ -257,7 +273,7 @@ export function LoginForm({
       return;
     }
 
-    // Admin validation (if still needed)
+    // Admin validation
     if (userType === "admin") {
       const dummyAdminCredentials = [
         { email: "Marijasa@gmail.com", password: "admin1234" },
@@ -484,7 +500,7 @@ export function LoginForm({
           </CardHeader>
 
           <CardContent className="relative z-10">
-            {/* Error Alert with improved styling */}
+            {/* Error Alert */}
             {error && (
               <div className="mb-5 p-4 bg-gradient-to-r from-red-50 to-red-50/50 dark:from-red-950/30 dark:to-red-950/10 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-xl text-sm flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="flex items-start gap-3 flex-1">
@@ -544,12 +560,6 @@ export function LoginForm({
                     <p className="text-xs text-neutral-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
                       <span>ℹ️</span>
                       Gunakan email atau nomor telepon yang terdaftar
-                    </p>
-                  )}
-                  {userType === "mitra" && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
-                      <span>ℹ️</span>
-                      Gunakan email yang terdaftar sebagai mitra
                     </p>
                   )}
                 </Field>
@@ -721,7 +731,7 @@ export function LoginForm({
           </CardContent>
         </Card>
 
-        {/* Security Info Footer - Minimal */}
+        {/* Security Info Footer */}
         <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <div className="flex flex-col xs:flex-row items-center justify-center gap-2 text-center">
             <div className="flex items-center gap-1.5">

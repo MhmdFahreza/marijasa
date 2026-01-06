@@ -4,6 +4,13 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import prisma from "@/app/components/lib/prisma";
 import bcrypt from "bcryptjs";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  createSessionId,
+  storeSession,
+  storeTokens,
+} from "@/app/components/lib/token-service";
 
 // Normalize phone number to +62 format
 function normalizePhone(phone: string): string {
@@ -109,19 +116,19 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
-      // Handle Google OAuth - hanya cek apakah user ada di database
+      // Handle Google OAuth
       if (account?.provider === "google") {
         try {
           const userEmail = user.email?.toLowerCase();
 
           if (!userEmail) {
             console.error("[Google OAuth] No email provided");
-            return "/login?error=NO_EMAIL";
+            return false;
           }
 
           console.log(`[Google OAuth] Attempting sign in for: ${userEmail}`);
 
-          // Cek apakah user sudah terdaftar di database
+          // Check if user is registered in database
           const existingUser = await prisma.user.findUnique({
             where: { email: userEmail },
           });
@@ -173,6 +180,56 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = (user as any).role;
         token.phone = (user as any).phone;
+
+        // For Google OAuth, create session and tokens
+        if (account?.provider === "google") {
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { email: user.email!.toLowerCase() },
+            });
+
+            if (dbUser) {
+              // Create session ID
+              const sessionId = createSessionId();
+
+              // Store session in Redis
+              await storeSession(sessionId, {
+                userId: dbUser.user_id,
+                email: dbUser.email,
+                role: dbUser.role,
+                createdAt: Date.now(),
+                lastActivity: Date.now(),
+              });
+
+              // Generate tokens
+              const accessToken = generateAccessToken({
+                userId: dbUser.user_id,
+                email: dbUser.email,
+                role: dbUser.role,
+                sessionId,
+              });
+
+              const refreshToken = generateRefreshToken({
+                userId: dbUser.user_id,
+                email: dbUser.email,
+                role: dbUser.role,
+                sessionId,
+              });
+
+              // Store tokens in Redis
+              await storeTokens(sessionId, accessToken, refreshToken);
+
+              // Add to token for cookie creation
+              token.sessionId = sessionId;
+              token.accessToken = accessToken;
+              token.refreshToken = refreshToken;
+
+              console.log(`[Google OAuth] Created session: ${sessionId} for ${dbUser.email}`);
+            }
+          } catch (error) {
+            console.error("[Google OAuth] Error creating session:", error);
+          }
+        }
       }
 
       // For Google OAuth, get user data from database
@@ -202,6 +259,9 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         (session.user as any).phone = token.phone as string;
+        (session.user as any).sessionId = token.sessionId as string;
+        (session.user as any).accessToken = token.accessToken as string;
+        (session.user as any).refreshToken = token.refreshToken as string;
         session.user.name = token.name as string;
         session.user.image = token.picture as string;
       }
@@ -211,11 +271,7 @@ export const authOptions: NextAuthOptions = {
     async redirect({ url, baseUrl }) {
       // Handle error redirects
       if (url.includes("error=")) {
-        const urlObj = new URL(url, baseUrl);
-        const error = urlObj.searchParams.get("error");
-        if (error) {
-          return `${baseUrl}/login?error=${error}`;
-        }
+        return url;
       }
 
       // If URL starts with baseUrl, allow redirect
@@ -228,7 +284,7 @@ export const authOptions: NextAuthOptions = {
         return `${baseUrl}${url}`;
       }
 
-      // Default to baseUrl
+      // Default to baseUrl (home page)
       return baseUrl;
     },
   },
@@ -239,6 +295,17 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production'
+      }
+    },
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",

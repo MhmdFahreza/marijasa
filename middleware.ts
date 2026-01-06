@@ -6,6 +6,7 @@ import {
   verifyToken,
   getSession,
   getAccessToken,
+  refreshAccessToken,
 } from "@/app/components/lib/token-service";
 
 // Protected routes that require authentication
@@ -30,22 +31,64 @@ export async function middleware(request: NextRequest) {
 
   // Check custom auth (session + tokens)
   let isCustomAuth = false;
-  if (sessionId && accessToken) {
+  let needsRefresh = false;
+
+  if (sessionId) {
     // Verify session exists in Redis
     const session = await getSession(sessionId);
+    
     if (session) {
-      // Verify access token
-      const tokenPayload = verifyToken(accessToken);
-      if (tokenPayload && tokenPayload.sessionId === sessionId) {
-        // Verify token exists in Redis
-        const storedToken = await getAccessToken(sessionId);
-        if (storedToken === accessToken) {
-          isCustomAuth = true;
+      if (accessToken) {
+        // Verify access token
+        const tokenPayload = verifyToken(accessToken);
+        
+        if (tokenPayload && tokenPayload.sessionId === sessionId) {
+          // Verify token exists in Redis
+          const storedToken = await getAccessToken(sessionId);
+          
+          if (storedToken === accessToken) {
+            isCustomAuth = true;
+          } else {
+            // Token not in Redis, needs refresh
+            needsRefresh = true;
+          }
+        } else {
+          // Access token expired
+          needsRefresh = true;
         }
       } else if (refreshToken) {
-        // Access token expired but we have refresh token
-        // Let the /api/auth/me handle the refresh
-        isCustomAuth = true;
+        // No access token but has refresh token
+        needsRefresh = true;
+      }
+
+      // Try to refresh if needed
+      if (needsRefresh && refreshToken && accessToken) {
+        const refreshResult = await refreshAccessToken(accessToken, refreshToken);
+        
+        if (refreshResult.success && refreshResult.accessToken) {
+          // Update cookie with new access token
+          const response = NextResponse.next();
+          response.cookies.set("access_token", refreshResult.accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 60 * 60, // 1 hour
+            path: "/",
+          });
+          
+          isCustomAuth = true;
+          
+          // Continue with the response
+          if (protectedRoutes.some((route) => pathname.startsWith(route))) {
+            return response;
+          }
+          
+          if (authRoutes.some((route) => pathname === route)) {
+            return NextResponse.redirect(new URL("/", request.url));
+          }
+          
+          return response;
+        }
       }
     }
   }
