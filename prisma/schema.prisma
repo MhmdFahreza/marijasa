@@ -1,3 +1,4 @@
+// schema.prisma
 generator client {
   provider        = "prisma-client-js"
   output          = "../app/generated/prisma"
@@ -73,55 +74,10 @@ model User {
   otp_codes OTPCode[]
   bookings  Booking[]
   reviews   Review[]
-  accounts  Account[]
-  sessions  Session[]
 
   @@index([email])
   @@index([phone])
   @@map("users")
-}
-
-// NextAuth Models
-model Account {
-  account_id          String  @id @default(uuid()) @db.Uuid
-  user_id             String  @db.Uuid
-  type                String
-  provider            String
-  provider_account_id String
-  refresh_token       String? @db.Text
-  access_token        String? @db.Text
-  expires_at          Int?
-  token_type          String?
-  scope               String?
-  id_token            String? @db.Text
-  session_state       String?
-
-  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-
-  @@unique([provider, provider_account_id])
-  @@index([user_id])
-  @@map("accounts")
-}
-
-model Session {
-  session_id    String   @id @default(uuid()) @db.Uuid
-  session_token String   @unique
-  user_id       String   @db.Uuid
-  expires       DateTime
-
-  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-
-  @@index([user_id])
-  @@map("sessions")
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@map("verification_tokens")
 }
 
 model OTPCode {
