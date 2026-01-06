@@ -5,6 +5,8 @@ import {
   verifyOTP,
   clearOTPData,
   getRemainingAttempts,
+  getTempUserData,
+  deleteTempUserData,
 } from "@/app/components/lib/otp-service";
 import jwt from "jsonwebtoken";
 
@@ -85,30 +87,53 @@ export async function POST(request: NextRequest) {
 
     // OTP verified successfully
     if (type === "register") {
-      const user = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-      });
-
-      if (!user) {
+      // Ambil data sementara dari Redis
+      const tempUserData = await getTempUserData(normalizedEmail, "register");
+      
+      if (!tempUserData) {
         return NextResponse.json(
-          { message: "User tidak ditemukan. Silakan daftar ulang." },
+          { message: "Data pendaftaran tidak ditemukan. Silakan daftar ulang." },
           { status: 404 }
         );
       }
 
-      const updatedUser = await prisma.user.update({
-        where: { user_id: user.user_id },
-        data: { email_verified: true },
+      // Cek apakah email sudah terdaftar (mungkin terdaftar oleh user lain saat proses OTP)
+      const existingUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
       });
 
-      // Clear OTP data from Redis
+      if (existingUser) {
+        await deleteTempUserData(normalizedEmail, "register");
+        await clearOTPData(normalizedEmail, "register");
+        
+        return NextResponse.json(
+          { message: "Email sudah terdaftar. Silakan login." },
+          { status: 409 }
+        );
+      }
+
+      // Buat user baru di database
+      const newUser = await prisma.user.create({
+        data: {
+          name: tempUserData.name,
+          email: normalizedEmail,
+          phone: tempUserData.phone,
+          password: tempUserData.password,
+          avatar: "/profile.svg",
+          email_verified: true,
+          is_active: true,
+        },
+      });
+
+      // Hapus data sementara dan OTP dari Redis
+      await deleteTempUserData(normalizedEmail, "register");
       await clearOTPData(normalizedEmail, "register");
 
       // Generate JWT for auto-login
       const token = generateJWT({
-        userId: updatedUser.user_id,
-        email: updatedUser.email,
-        role: updatedUser.role,
+        userId: newUser.user_id,
+        email: newUser.email,
+        role: newUser.role,
       });
 
       const response = NextResponse.json(
@@ -117,12 +142,12 @@ export async function POST(request: NextRequest) {
           message: "Verifikasi berhasil! Akun Anda sudah aktif.",
           token,
           user: {
-            id: updatedUser.user_id,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            phone: updatedUser.phone,
-            avatar: updatedUser.avatar || "/profile.svg",
-            role: updatedUser.role,
+            id: newUser.user_id,
+            name: newUser.name,
+            email: newUser.email,
+            phone: newUser.phone,
+            avatar: newUser.avatar || "/profile.svg",
+            role: newUser.role,
           },
         },
         { status: 200 }
@@ -139,7 +164,7 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    // ==== RESET PASSWORD FLOW (INI YANG KURANG DI KODE KAMU) ====
+    // ==== RESET PASSWORD FLOW ====
     if (type === "reset_password") {
       const user = await prisma.user.findUnique({
         where: { email: normalizedEmail },
@@ -177,7 +202,7 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    // login atau lainnya
+    // Untuk login atau type lainnya
     return NextResponse.json(
       { success: true, message: "Verifikasi berhasil" },
       { status: 200 }

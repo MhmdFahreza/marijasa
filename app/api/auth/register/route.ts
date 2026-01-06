@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
 import bcrypt from "bcryptjs";
-import { generateOTP, storeOTP, checkCooldown } from "@/app/components/lib/otp-service";
+import { generateOTP, storeOTP, checkCooldown, storeTempUserData, getTempUserData, deleteTempUserData } from "@/app/components/lib/otp-service";
 import { sendOTPEmail } from "@/app/components/lib/email-service";
 
 export const runtime = "nodejs";
@@ -75,27 +75,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if email already exists
+    // Check if email already exists and verified
     const existingUserByEmail = await prisma.user.findUnique({
       where: { email },
       select: { user_id: true, email_verified: true },
     });
 
-    if (existingUserByEmail) {
-      if (existingUserByEmail.email_verified) {
-        return NextResponse.json(
-          { message: "Email sudah terdaftar. Silakan login." },
-          { status: 409 }
-        );
-      } else {
-        // User exists but not verified - delete old record and allow re-registration
-        await prisma.user.delete({ where: { email } });
-      }
+    if (existingUserByEmail && existingUserByEmail.email_verified) {
+      return NextResponse.json(
+        { message: "Email sudah terdaftar. Silakan login." },
+        { status: 409 }
+      );
     }
 
-    // Check if phone already exists
+    // Check if phone already exists and verified
     const existingUserByPhone = await prisma.user.findFirst({
-      where: { phone },
+      where: { phone, email_verified: true },
       select: { user_id: true },
     });
 
@@ -106,8 +101,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Jika ada user yang belum verified (dari pendaftaran sebelumnya), hapus
+    if (existingUserByEmail && !existingUserByEmail.email_verified) {
+      await prisma.user.delete({ where: { email } });
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Simpan data sementara di Redis (bukan di database)
+    const userData = {
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+    };
+
+    const storeTempResult = await storeTempUserData(email, userData, "register");
+    if (!storeTempResult.success) {
+      return NextResponse.json(
+        { message: "Gagal menyimpan data sementara. Silakan coba lagi." },
+        { status: 500 }
+      );
+    }
 
     // Generate OTP
     const otpCode = generateOTP();
@@ -115,6 +131,8 @@ export async function POST(request: NextRequest) {
     // Store OTP in Redis/Memory
     const storeResult = await storeOTP(email, otpCode, "register");
     if (!storeResult.success) {
+      // Hapus data sementara jika gagal
+      await deleteTempUserData(email, "register");
       return NextResponse.json(
         { message: storeResult.error || "Gagal menyimpan OTP" },
         { status: 500 }
@@ -124,24 +142,13 @@ export async function POST(request: NextRequest) {
     // Send OTP via email using Resend (or console in dev)
     const emailResult = await sendOTPEmail(email, otpCode, "register");
     if (!emailResult.success) {
+      // Hapus data sementara jika gagal
+      await deleteTempUserData(email, "register");
       return NextResponse.json(
         { message: "Gagal mengirim email verifikasi. Silakan coba lagi." },
         { status: 500 }
       );
     }
-
-    // Create pending user (email_verified = false)
-    await prisma.user.create({
-      data: {
-        name,
-        email,
-        phone,
-        password: hashedPassword,
-        avatar: "/profile.svg",
-        email_verified: false,
-        is_active: true,
-      },
-    });
 
     console.log(`[Register] OTP sent to ${email}`);
 

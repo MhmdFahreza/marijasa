@@ -1,7 +1,7 @@
 // app/api/auth/resend-otp/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
-import { generateOTP, storeOTP, checkCooldown, getRemainingAttempts } from "@/app/components/lib/otp-service";
+import { generateOTP, storeOTP, checkCooldown, getRemainingAttempts, getTempUserData } from "@/app/components/lib/otp-service";
 import { sendOTPEmail } from "@/app/components/lib/email-service";
 
 export const runtime = "nodejs";
@@ -34,24 +34,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    // Untuk register, cek apakah ada data sementara
+    if (type === "register") {
+      const tempData = await getTempUserData(normalizedEmail, "register");
+      if (!tempData) {
+        return NextResponse.json(
+          { message: "Data pendaftaran tidak ditemukan. Silakan daftar ulang." },
+          { status: 404 }
+        );
+      }
+    } else {
+      // Untuk reset_password dan login, cek apakah user ada
+      const user = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
 
-    if (!user) {
-      return NextResponse.json(
-        { message: "Email tidak ditemukan" },
-        { status: 404 }
-      );
-    }
+      if (!user) {
+        return NextResponse.json(
+          { message: "Email tidak ditemukan" },
+          { status: 404 }
+        );
+      }
 
-    // For register type, check if already verified
-    if (type === "register" && user.email_verified) {
-      return NextResponse.json(
-        { message: "Email sudah diverifikasi. Silakan login." },
-        { status: 400 }
-      );
+      // For register type, check if already verified
+      if (type === "reset_password" && !user.email_verified) {
+        return NextResponse.json(
+          { message: "Email belum diverifikasi. Silakan verifikasi email terlebih dahulu." },
+          { status: 400 }
+        );
+      }
     }
 
     // Generate new OTP

@@ -13,6 +13,7 @@ const OTP_KEY_PREFIX = "otp:";
 const META_KEY_PREFIX = "otp_meta:";
 const COOLDOWN_KEY_PREFIX = "otp_cooldown:";
 const ATTEMPTS_KEY_PREFIX = "otp_attempts:";
+const TEMP_USER_KEY_PREFIX = "temp_user:";
 
 // In-memory fallback storage (untuk development jika Redis tidak tersedia)
 const memoryStore: Map<string, { value: string; expiresAt: number }> = new Map();
@@ -82,26 +83,145 @@ interface OTPMeta {
   email: string;
 }
 
-// Helper function to parse data from Redis or memory
-// Upstash Redis bisa return object langsung atau string tergantung bagaimana disimpan
-function parseStoredData<T>(data: unknown): T | null {
-  if (!data) return null;
+interface TempUserData {
+  name: string;
+  email: string;
+  phone: string;
+  password: string; // hashed password
+}
+
+// Store temporary user data (for registration)
+export async function storeTempUserData(
+  email: string,
+  userData: TempUserData,
+  type: "register" | "login" | "reset_password"
+): Promise<{ success: boolean; error?: string }> {
+  const normalizedEmail = email.toLowerCase();
+  const tempKey = `${TEMP_USER_KEY_PREFIX}${normalizedEmail}:${type}`;
   
-  // Jika sudah object, langsung return
-  if (typeof data === 'object') {
-    return data as T;
+  try {
+    // Data sementara berlaku lebih lama dari OTP (10 menit)
+    const tempDataTTL = 10 * 60; // 10 menit
+
+    // Ensure we store as JSON string
+    const dataToStore = JSON.stringify(userData);
+    
+    console.log(`[OTP Debug] Storing temp user data for ${normalizedEmail}:`, userData);
+
+    if (isRedisAvailable() && redis) {
+      // Store as string
+      await redis.set(tempKey, dataToStore, { ex: tempDataTTL });
+      console.log(`[OTP] Stored temp user data in Redis for ${normalizedEmail}`);
+    } else {
+      memorySet(tempKey, dataToStore, tempDataTTL);
+      console.log(`[OTP] Stored temp user data in memory for ${normalizedEmail} (Redis not available)`);
+    }
+
+    // Verify it was stored correctly
+    if (isRedisAvailable() && redis) {
+      const stored = await redis.get(tempKey);
+      console.log(`[OTP Debug] Verified stored data type:`, typeof stored, stored);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error storing temp user data:", error);
+    return { success: false, error: "Gagal menyimpan data sementara" };
   }
-  
-  // Jika string, coba parse JSON
-  if (typeof data === 'string') {
-    try {
-      return JSON.parse(data) as T;
-    } catch {
+}
+
+// Get temporary user data
+export async function getTempUserData(
+  email: string,
+  type: "register" | "login" | "reset_password"
+): Promise<TempUserData | null> {
+  const normalizedEmail = email.toLowerCase();
+  const tempKey = `${TEMP_USER_KEY_PREFIX}${normalizedEmail}:${type}`;
+
+  try {
+    let tempData: unknown = null;
+
+    if (isRedisAvailable() && redis) {
+      tempData = await redis.get(tempKey);
+      console.log(`[OTP Debug] getTempUserData from Redis:`, {
+        type: typeof tempData,
+        value: tempData
+      });
+    } else {
+      tempData = memoryGet(tempKey);
+      console.log(`[OTP Debug] getTempUserData from memory:`, {
+        type: typeof tempData,
+        value: tempData
+      });
+    }
+
+    if (!tempData) {
+      console.log(`[OTP Debug] No temp data found for ${normalizedEmail}`);
       return null;
     }
+
+    // Handle different response formats
+    let parsedData: TempUserData;
+    
+    if (typeof tempData === 'string') {
+      try {
+        parsedData = JSON.parse(tempData);
+      } catch (parseError) {
+        console.error(`[OTP Debug] Failed to parse tempData as JSON:`, tempData, parseError);
+        return null;
+      }
+    } else if (typeof tempData === 'object' && tempData !== null) {
+      // If it's already an object, use it directly
+      parsedData = tempData as TempUserData;
+    } else {
+      console.error(`[OTP Debug] Unexpected tempData type:`, typeof tempData);
+      return null;
+    }
+
+    // Validate the structure
+    if (!parsedData.name || !parsedData.email || !parsedData.phone || !parsedData.password) {
+      console.error(`[OTP Debug] Invalid temp data structure:`, parsedData);
+      return null;
+    }
+
+    console.log(`[OTP Debug] Successfully retrieved temp data for ${normalizedEmail}`);
+    return parsedData;
+  } catch (error) {
+    console.error("Error getting temp user data:", error);
+    return null;
   }
+}
+
+// Delete temporary user data
+export async function deleteTempUserData(
+  email: string,
+  type: "register" | "login" | "reset_password"
+): Promise<void> {
+  const normalizedEmail = email.toLowerCase();
+  const tempKey = `${TEMP_USER_KEY_PREFIX}${normalizedEmail}:${type}`;
+
+  try {
+    if (isRedisAvailable() && redis) {
+      const result = await redis.del(tempKey);
+      console.log(`[OTP] Cleared temp user data for ${normalizedEmail}, result: ${result}`);
+    } else {
+      memoryDel(tempKey);
+      console.log(`[OTP] Cleared temp user data from memory for ${normalizedEmail}`);
+    }
+  } catch (error) {
+    console.error("Error deleting temp user data:", error);
+  }
+}
+
+// Clear all OTP and temp data for an email
+export async function clearAllRegistrationData(
+  email: string,
+  type: "register" | "login" | "reset_password"
+): Promise<void> {
+  const normalizedEmail = email.toLowerCase();
   
-  return null;
+  await clearOTPData(normalizedEmail, type);
+  await deleteTempUserData(normalizedEmail, type);
 }
 
 // Store OTP (Redis atau Memory)
@@ -153,10 +273,12 @@ export async function storeOTP(
       createdAt: Date.now(),
     };
 
-    if (isRedisAvailable() && redis) {
-      // Store OTP with TTL - Upstash akan menyimpan sebagai object
-      await redis.set(otpKey, otpData, { ex: OTP_TTL });
+    const otpDataString = JSON.stringify(otpData);
 
+    if (isRedisAvailable() && redis) {
+      // Store OTP as JSON string
+      await redis.set(otpKey, otpDataString, { ex: OTP_TTL });
+      
       // Set cooldown
       await redis.set(cooldownKey, "1", { ex: COOLDOWN_SECONDS });
 
@@ -165,28 +287,42 @@ export async function storeOTP(
 
       // Update metadata
       const existingMeta = await redis.get(metaKey);
-      const meta: OTPMeta = parseStoredData<OTPMeta>(existingMeta) || { 
-        totalSent: 0, 
-        lastSentAt: 0, 
-        email: normalizedEmail 
-      };
+      let meta: OTPMeta;
+      
+      if (existingMeta && typeof existingMeta === 'string') {
+        try {
+          meta = JSON.parse(existingMeta);
+        } catch {
+          meta = { totalSent: 0, lastSentAt: 0, email: normalizedEmail };
+        }
+      } else {
+        meta = { totalSent: 0, lastSentAt: 0, email: normalizedEmail };
+      }
 
       meta.totalSent += 1;
       meta.lastSentAt = Date.now();
 
-      await redis.set(metaKey, meta, { ex: META_TTL });
+      await redis.set(metaKey, JSON.stringify(meta), { ex: META_TTL });
       
       console.log(`[OTP] Stored in Redis for ${normalizedEmail}`);
     } else {
       // Fallback to memory store
-      memorySet(otpKey, JSON.stringify(otpData), OTP_TTL);
+      memorySet(otpKey, otpDataString, OTP_TTL);
       memorySet(cooldownKey, "1", COOLDOWN_SECONDS);
       memoryDel(attemptsKey);
 
       const existingMetaStr = memoryGet(metaKey);
-      const meta: OTPMeta = existingMetaStr
-        ? (JSON.parse(existingMetaStr) as OTPMeta)
-        : { totalSent: 0, lastSentAt: 0, email: normalizedEmail };
+      let meta: OTPMeta;
+      
+      if (existingMetaStr) {
+        try {
+          meta = JSON.parse(existingMetaStr);
+        } catch {
+          meta = { totalSent: 0, lastSentAt: 0, email: normalizedEmail };
+        }
+      } else {
+        meta = { totalSent: 0, lastSentAt: 0, email: normalizedEmail };
+      }
 
       meta.totalSent += 1;
       meta.lastSentAt = Date.now();
@@ -218,20 +354,28 @@ export async function verifyOTP(
   const attemptsKey = `${ATTEMPTS_KEY_PREFIX}${normalizedEmail}:${type}`;
 
   try {
+    console.log(`[OTP Debug] Verifying OTP for ${normalizedEmail}, type: ${type}`);
+
     // Check attempts
     let attempts = 0;
 
     if (isRedisAvailable() && redis) {
       const currentAttempts = await redis.get(attemptsKey);
+      console.log(`[OTP Debug] Current attempts:`, currentAttempts);
+      
       if (currentAttempts) {
-        attempts = typeof currentAttempts === 'number' 
-          ? currentAttempts 
-          : parseInt(String(currentAttempts)) || 0;
+        if (typeof currentAttempts === 'number') {
+          attempts = currentAttempts;
+        } else if (typeof currentAttempts === 'string') {
+          attempts = parseInt(currentAttempts) || 0;
+        }
       }
     } else {
       const currentAttempts = memoryGet(attemptsKey);
       attempts = currentAttempts ? parseInt(currentAttempts) : 0;
     }
+
+    console.log(`[OTP Debug] Attempts count: ${attempts}`);
 
     if (attempts >= MAX_ATTEMPTS) {
       return {
@@ -246,12 +390,30 @@ export async function verifyOTP(
 
     if (isRedisAvailable() && redis) {
       const storedData = await redis.get(otpKey);
-      console.log(`[OTP] Retrieved from Redis:`, typeof storedData, storedData);
-      otpData = parseStoredData<OTPData>(storedData);
+      console.log(`[OTP Debug] Retrieved OTP from Redis:`, {
+        type: typeof storedData,
+        value: storedData
+      });
+      
+      if (storedData) {
+        if (typeof storedData === 'string') {
+          try {
+            otpData = JSON.parse(storedData);
+          } catch (e) {
+            console.error(`[OTP Debug] Failed to parse OTP as JSON:`, e);
+          }
+        } else if (typeof storedData === 'object' && storedData !== null) {
+          otpData = storedData as OTPData;
+        }
+      }
     } else {
       const storedDataStr = memoryGet(otpKey);
       if (storedDataStr) {
-        otpData = JSON.parse(storedDataStr);
+        try {
+          otpData = JSON.parse(storedDataStr);
+        } catch (e) {
+          console.error(`[OTP Debug] Failed to parse OTP from memory:`, e);
+        }
       }
     }
 
@@ -265,6 +427,8 @@ export async function verifyOTP(
 
     // Verify OTP hash
     const inputHash = hashOTP(otp, otpData.salt);
+    console.log(`[OTP Debug] Input hash: ${inputHash}, Stored hash: ${otpData.hashedOtp}`);
+    
     if (inputHash !== otpData.hashedOtp) {
       // Increment attempts
       if (isRedisAvailable() && redis) {
@@ -342,9 +506,11 @@ export async function getRemainingAttempts(
     if (isRedisAvailable() && redis) {
       const currentAttempts = await redis.get(attemptsKey);
       if (currentAttempts) {
-        attempts = typeof currentAttempts === 'number' 
-          ? currentAttempts 
-          : parseInt(String(currentAttempts)) || 0;
+        if (typeof currentAttempts === 'number') {
+          attempts = currentAttempts;
+        } else if (typeof currentAttempts === 'string') {
+          attempts = parseInt(currentAttempts) || 0;
+        }
       }
     } else {
       const currentAttempts = memoryGet(attemptsKey);
@@ -381,5 +547,37 @@ export async function clearOTPData(
     console.log(`[OTP] Cleared OTP data for ${normalizedEmail}`);
   } catch (error) {
     console.error("Error clearing OTP data:", error);
+  }
+}
+
+// Get OTP metadata
+export async function getOTPMetaData(
+  email: string,
+  type: "register" | "login" | "reset_password"
+): Promise<OTPMeta | null> {
+  const normalizedEmail = email.toLowerCase();
+  const metaKey = `${META_KEY_PREFIX}${normalizedEmail}:${type}`;
+
+  try {
+    let metaData: string | null = null;
+
+    if (isRedisAvailable() && redis) {
+      metaData = (await redis.get(metaKey)) as string | null;
+    } else {
+      metaData = memoryGet(metaKey);
+    }
+
+    if (metaData) {
+      try {
+        return JSON.parse(metaData);
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting OTP metadata:", error);
+    return null;
   }
 }
