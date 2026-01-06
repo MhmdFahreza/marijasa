@@ -277,7 +277,7 @@ export function SignupForm({
                     onChange={(e) => setEmail(e.target.value)}
                     onFocus={() => setFocusedField("email")}
                     onBlur={() => setFocusedField(null)}
-                    placeholder="nama@email.com"
+                    placeholder="Masukan Email Anda"
                     autoComplete="email"
                     disabled={isLoading}
                     className={cn(
@@ -314,7 +314,7 @@ export function SignupForm({
                     onChange={(e) => setPhone(e.target.value)}
                     onFocus={() => setFocusedField("phone")}
                     onBlur={() => setFocusedField(null)}
-                    placeholder="081234567890"
+                    placeholder="Masukan Nomor Anda"
                     autoComplete="tel"
                     disabled={isLoading}
                     className={cn(

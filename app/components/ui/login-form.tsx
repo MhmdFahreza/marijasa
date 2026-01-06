@@ -526,7 +526,7 @@ export function LoginForm({
                           ? "admin@gmail.com"
                           : userType === "mitra"
                             ? "mitra@marijasa.com"
-                            : "Email atau 081234567890"
+                            : "Email atau Nomor Telepon"
                       }
                       autoComplete="email"
                       disabled={isLoading || isGoogleLoading || showRedirectLoader}

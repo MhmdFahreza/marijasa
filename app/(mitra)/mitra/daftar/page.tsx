@@ -1221,7 +1221,7 @@ export default function MitraDaftarPage() {
                                         <Input
                                             id="email-input"
                                             type="email"
-                                            placeholder="nama@email.com"
+                                            placeholder="Masukan Email Anda"
                                             value={email}
                                             onChange={(e) => {
                                                 setEmail(e.target.value);

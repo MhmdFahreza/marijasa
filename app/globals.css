@@ -848,3 +848,109 @@
   background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
   background-size: 200% 100%;
 }
+
+/* ================================
+   ADDITIONAL ANIMATIONS FOR PASSWORD PAGES
+   ================================ */
+
+/* Shake animation for error messages */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+  20%, 40%, 60%, 80% { transform: translateX(3px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Blob animation for background */
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(20px, -50px) scale(1.1); }
+  50% { transform: translate(-20px, 20px) scale(0.9); }
+  75% { transform: translate(50px, 50px) scale(1.05); }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 { animation-delay: 2s; }
+.animation-delay-4000 { animation-delay: 4s; }
+
+/* Enhanced float slow animation */
+@keyframes float-slow-enhanced {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-16px); }
+}
+
+.animate-float-slow {
+  animation: float-slow-enhanced 5s ease-in-out infinite;
+}
+
+/* Gentle bounce for body */
+@keyframes bounce-gentle-enhanced {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-3px) scaleY(1.01); }
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle-enhanced 2.5s ease-in-out infinite;
+}
+
+/* Arm idle animation */
+@keyframes arm-idle-enhanced {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(3deg); }
+}
+
+.animate-arm-idle {
+  animation: arm-idle-enhanced 3s ease-in-out infinite;
+}
+
+/* Floating decorations */
+@keyframes float-decoration-1 {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(5px, -20px) rotate(-5deg); }
+}
+
+.animate-float-decoration-1 {
+  animation: float-decoration-1 6s ease-in-out infinite;
+}
+
+@keyframes float-decoration-2 {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-8px, 15px) rotate(10deg); }
+}
+
+.animate-float-decoration-2 {
+  animation: float-decoration-2 7s ease-in-out infinite;
+}
+
+/* Pulse animation */
+@keyframes pulse-smooth {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.9; }
+}
+
+.animate-pulse {
+  animation: pulse-smooth 3s ease-in-out infinite;
+}
+
+/* Bounce slow */
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .animate-float-slow, .animate-blob, .animate-float-decoration-1 {
+    animation-duration: 8s; /* Slow down animations on mobile for performance */
+  }
+}
