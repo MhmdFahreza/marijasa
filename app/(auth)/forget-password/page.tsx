@@ -572,29 +572,7 @@ export default function ForgetPasswordPage() {
                 </button>
               </form>
             </div>
-          </div>
-          
-          {/* Trust Badges */}
-          <div className="mt-10 flex justify-center gap-8">
-            <div className="text-center group cursor-default">
-              <div className="w-14 h-14 mx-auto mb-2 bg-white rounded-2xl shadow-lg shadow-[#7CE0A8]/10 flex items-center justify-center group-hover:shadow-xl group-hover:shadow-[#7CE0A8]/20 transition-all duration-300 group-hover:-translate-y-1">
-                <span className="text-2xl">🔒</span>
-              </div>
-              <p className="text-xs text-slate-500 font-semibold">SSL 256-bit</p>
-            </div>
-            <div className="text-center group cursor-default">
-              <div className="w-14 h-14 mx-auto mb-2 bg-white rounded-2xl shadow-lg shadow-[#7CE0A8]/10 flex items-center justify-center group-hover:shadow-xl group-hover:shadow-[#7CE0A8]/20 transition-all duration-300 group-hover:-translate-y-1">
-                <span className="text-2xl">⚡</span>
-              </div>
-              <p className="text-xs text-slate-500 font-semibold">Instan</p>
-            </div>
-            <div className="text-center group cursor-default">
-              <div className="w-14 h-14 mx-auto mb-2 bg-white rounded-2xl shadow-lg shadow-[#7CE0A8]/10 flex items-center justify-center group-hover:shadow-xl group-hover:shadow-[#7CE0A8]/20 transition-all duration-300 group-hover:-translate-y-1">
-                <span className="text-2xl">✓</span>
-              </div>
-              <p className="text-xs text-slate-500 font-semibold">Verified</p>
-            </div>
-          </div>
+          </div>       
         </div>
       </div>
 
