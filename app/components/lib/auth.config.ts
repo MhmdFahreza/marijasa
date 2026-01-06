@@ -109,19 +109,19 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
-      // Handle Google OAuth
+      // Handle Google OAuth - hanya cek apakah user ada di database
       if (account?.provider === "google") {
         try {
           const userEmail = user.email?.toLowerCase();
 
           if (!userEmail) {
-            console.error("Google sign in: No email provided");
+            console.error("[Google OAuth] No email provided");
             return "/login?error=NO_EMAIL";
           }
 
           console.log(`[Google OAuth] Attempting sign in for: ${userEmail}`);
 
-          // Check if user exists in database
+          // Cek apakah user sudah terdaftar di database
           const existingUser = await prisma.user.findUnique({
             where: { email: userEmail },
           });
@@ -152,46 +152,7 @@ export const authOptions: NextAuthOptions = {
               where: { email: userEmail },
               data: { avatar: user.image },
             });
-          }
-
-          // Check and link Google account if not exists
-          const existingAccount = await prisma.account.findFirst({
-            where: {
-              user_id: existingUser.user_id,
-              provider: "google",
-            },
-          });
-
-          if (!existingAccount && account.providerAccountId) {
-            // Check if providerAccountId is already used by another user
-            const accountWithSameProviderId = await prisma.account.findFirst({
-              where: {
-                provider: "google",
-                provider_account_id: account.providerAccountId,
-              },
-            });
-
-            if (!accountWithSameProviderId) {
-              await prisma.account.create({
-                data: {
-                  user_id: existingUser.user_id,
-                  type: account.type || "oauth",
-                  provider: account.provider,
-                  provider_account_id: account.providerAccountId,
-                  access_token: account.access_token || null,
-                  refresh_token: account.refresh_token || null,
-                  expires_at: account.expires_at || null,
-                  token_type: account.token_type || null,
-                  scope: account.scope || null,
-                  id_token: account.id_token || null,
-                  session_state:
-                    typeof account.session_state === "string"
-                      ? account.session_state
-                      : null,
-                },
-              });
-              console.log(`[Google OAuth] Account linked for: ${userEmail}`);
-            }
+            console.log(`[Google OAuth] Avatar updated for: ${userEmail}`);
           }
 
           console.log(`[Google OAuth] Sign in successful for: ${userEmail}`);
