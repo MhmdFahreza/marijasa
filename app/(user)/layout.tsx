@@ -1,7 +1,7 @@
 // app/(user)/layout.tsx
 "use client";
 
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Navbar,
@@ -136,18 +136,25 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleLoginClick = () => {
+  const handleNavigation = useCallback((path: string) => {
+    if (pathname === path) {
+      setIsMobileMenuOpen(false);
+      return;
+    }
+
+    setIsMobileMenuOpen(false);
     setIsLoading(true);
     setTimeout(() => {
-      router.push("/login");
+      router.push(path);
     }, 300);
+  }, [pathname, router]);
+
+  const handleLoginClick = () => {
+    handleNavigation("/login");
   };
 
   const handleRegisterClick = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push("/register");
-    }, 300);
+    handleNavigation("/register");
   };
 
   const handleLogoClick = () => {
@@ -163,58 +170,50 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }, 300);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
-
-    // Call logout from AuthContext
-    await logout();
-
-    // Redirect to home
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push("/");
-      router.refresh();
-    }, 300);
-  };
+    
+    try {
+      // Set loading state before logout
+      setIsLoading(true);
+      
+      // Call logout from AuthContext
+      await logout();
+      
+      // Use timeout to show loading briefly and ensure smooth transition
+      setTimeout(() => {
+        // Redirect to home
+        router.push("/");
+        
+        // Force a refresh to update auth state
+        setTimeout(() => {
+          router.refresh();
+        }, 100);
+        
+        // Auto-reset loading after a reasonable time (fallback)
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 1000);
+      }, 300);
+      
+    } catch (error) {
+      console.error("Logout error:", error);
+      // If logout fails, reset loading state
+      setIsLoading(false);
+    }
+  }, [logout, router]);
 
   const handleProfileClick = () => {
-    if (pathname === "/profile") {
-      setIsMobileMenuOpen(false);
-      return;
-    }
-
-    setIsMobileMenuOpen(false);
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push("/profile");
-    }, 300);
+    handleNavigation("/profile");
   };
 
   const handleOrderHistoryClick = () => {
-    if (pathname === "/riwayat_pemesanan") {
-      setIsMobileMenuOpen(false);
-      return;
-    }
-
-    setIsMobileMenuOpen(false);
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push("/riwayat_pemesanan");
-    }, 300);
+    handleNavigation("/riwayat_pemesanan");
   };
 
   const handleFavoriteVendorsClick = () => {
-    if (pathname === "/vendor_favorit") {
-      setIsMobileMenuOpen(false);
-      return;
-    }
-
-    setIsMobileMenuOpen(false);
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push("/vendor_favorit");
-    }, 300);
+    handleNavigation("/vendor_favorit");
   };
 
   const toggleNotification = () => {
