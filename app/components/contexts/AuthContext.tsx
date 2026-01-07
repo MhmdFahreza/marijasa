@@ -199,10 +199,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session, clearTokenRefresh]);
 
-  // Refresh user data
+  // Refresh user data from database
   const refreshUser = useCallback(async () => {
-    await fetchCurrentUser();
-  }, [fetchCurrentUser]);
+    try {
+      // Fetch fresh profile data from API
+      const response = await fetch("/api/user/profile", {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profile) {
+          // Update user state with fresh data
+          setUser({
+            id: data.profile.user_id,
+            name: data.profile.name,
+            email: data.profile.email,
+            phone: data.profile.phone,
+            avatar: data.profile.avatar || "/profile.svg",
+            role: data.profile.role,
+          });
+          console.log("[Auth] User data refreshed from database");
+        }
+      }
+    } catch (error) {
+      console.error("[Auth] Error refreshing user data:", error);
+    }
+  }, []);
 
   const value: AuthContextType = {
     user,

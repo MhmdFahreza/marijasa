@@ -29,122 +29,101 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/app/components/contexts/AuthContext";
 
 // Tipe data untuk user
 interface UserProfile {
-  id: string;
+  user_id: string;
   name: string;
   email: string;
-  phone: string;
-  address: string;
-  gpsLink: string;
-  joinDate: string;
-  avatar: string;
+  phone: string | null;
+  address: string | null;
+  gps_link: string | null;
+  created_at: string;
+  avatar: string | null;
 }
-
-// Fungsi untuk mendapatkan info user dari Gmail (simulasi)
-const getUserInfoFromGmail = (email: string): { name: string; phone: string } => {
-  // Simulasi mendapatkan data dari Gmail
-  // Dalam implementasi nyata, ini akan mengambil data dari Google OAuth API
-  const emailPrefix = email.split('@')[0];
-  const capitalizedName = emailPrefix
-    .split(/[._-]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-  
-  // Generate nomor telepon dummy berdasarkan email (untuk simulasi)
-  const phoneNumber = `08${Math.abs(emailPrefix.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 100000000).toString().padStart(9, '0')}`;
-  
-  return {
-    name: capitalizedName,
-    phone: phoneNumber
-  };
-};
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading, refreshUser } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
   // State untuk data user
-  const [user, setUser] = useState<UserProfile>({
-    id: "",
-    name: "",
-    email: "",
-    phone: "",
-    address: "",
-    gpsLink: "",
-    joinDate: new Date().toISOString().split('T')[0],
-    avatar: "/avatars/user-avatar.jpg",
-  });
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   // State untuk preview avatar
-  const [avatarPreview, setAvatarPreview] = useState<string>("/avatars/user-avatar.jpg");
+  const [avatarPreview, setAvatarPreview] = useState<string>("/profile.svg");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Load user profile dari localStorage saat component mount
+  // Load user profile dari database saat component mount
   useEffect(() => {
-    // Cek apakah user sudah login
-    const authData = localStorage.getItem("authData");
-    const userData = localStorage.getItem("user");
-    const userToken = localStorage.getItem("userToken");
-
-    if (!authData || !userData || !userToken) {
-      // Jika belum login, redirect ke halaman login
-      toast.error("Anda harus login terlebih dahulu");
-      router.push("/login");
-      return;
-    }
-
-    try {
-      const parsedAuthData = JSON.parse(authData);
-      const parsedUserData = JSON.parse(userData);
-
-      // Cek apakah ada profile tersimpan sebelumnya
-      const savedProfile = localStorage.getItem("userProfile");
-      
-      if (savedProfile) {
-        // Jika ada profile tersimpan, gunakan itu
-        const profile = JSON.parse(savedProfile);
-        setUser(profile);
-        setAvatarPreview(profile.avatar);
-      } else {
-        // Jika belum ada profile tersimpan, buat dari data login
-        const userInfo = getUserInfoFromGmail(parsedUserData.email);
-        
-        const newProfile: UserProfile = {
-          id: `user-${Date.now()}`,
-          name: userInfo.name,
-          email: parsedUserData.email,
-          phone: userInfo.phone,
-          address: "",
-          gpsLink: "",
-          joinDate: parsedAuthData.loginTime ? new Date(parsedAuthData.loginTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          avatar: parsedUserData.avatar || "/avatars/user-avatar.jpg",
-        };
-
-        setUser(newProfile);
-        setAvatarPreview(newProfile.avatar);
-        
-        // Simpan profile baru ke localStorage
-        localStorage.setItem("userProfile", JSON.stringify(newProfile));
+    const loadProfile = async () => {
+      if (!isAuthenticated || !user) {
+        toast.error("Anda harus login terlebih dahulu");
+        router.push("/login");
+        return;
       }
-    } catch (error) {
-      console.error("Error loading user profile:", error);
-      toast.error("Terjadi kesalahan saat memuat profil");
-      router.push("/login");
-    } finally {
-      setIsLoading(false);
+
+      try {
+        setIsLoading(true);
+        
+        // Fetch user profile from API
+        const response = await fetch("/api/user/profile", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            toast.error("Sesi Anda telah berakhir. Silakan login kembali.");
+            router.push("/login");
+            return;
+          }
+          throw new Error("Gagal memuat profil");
+        }
+
+        const data = await response.json();
+        
+        if (data.profile) {
+          setProfile(data.profile);
+          setAvatarPreview(data.profile.avatar || "/profile.svg");
+        }
+      } catch (error) {
+        console.error("Error loading user profile:", error);
+        toast.error("Terjadi kesalahan saat memuat profil");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (!authLoading) {
+      loadProfile();
     }
-  }, [router]);
+  }, [isAuthenticated, user, authLoading, router]);
 
   // Handle change avatar
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Ukuran file maksimal 5MB");
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        toast.error("File harus berupa gambar");
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
           setAvatarPreview(event.target.result as string);
+          setAvatarFile(file);
           setIsEditing(true);
         }
       };
@@ -157,64 +136,120 @@ export default function ProfilePage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setUser((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setProfile((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [name]: value,
+      };
+    });
     setIsEditing(true);
   };
 
   // Handle save profile
-  const handleSaveProfile = () => {
-    // Simpan perubahan ke localStorage
-    const updatedProfile = {
-      ...user,
-      avatar: avatarPreview,
-    };
-    
-    // Simpan ke userProfile
-    localStorage.setItem("userProfile", JSON.stringify(updatedProfile));
-    
-    // Update juga data user di localStorage (untuk sinkronisasi)
-    const currentUser = localStorage.getItem("user");
-    if (currentUser) {
-      const parsedUser = JSON.parse(currentUser);
-      parsedUser.name = updatedProfile.name;
-      parsedUser.avatar = updatedProfile.avatar;
-      localStorage.setItem("user", JSON.stringify(parsedUser));
+  const handleSaveProfile = async () => {
+    if (!profile) return;
+
+    setIsSaving(true);
+
+    try {
+      // Upload avatar if changed
+      let avatarUrl = profile.avatar;
+      
+      if (avatarFile) {
+        const formData = new FormData();
+        formData.append("avatar", avatarFile);
+
+        const uploadResponse = await fetch("/api/user/upload-avatar", {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error("Gagal mengupload avatar");
+        }
+
+        const uploadData = await uploadResponse.json();
+        avatarUrl = uploadData.avatarUrl;
+      }
+
+      // Update profile
+      const response = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          name: profile.name,
+          address: profile.address,
+          gps_link: profile.gps_link,
+          avatar: avatarUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan profil");
+      }
+
+      const data = await response.json();
+      
+      // Update state with new profile data
+      setProfile(data.profile);
+      setAvatarPreview(data.profile.avatar || "/profile.svg");
+      setAvatarFile(null);
+      
+      // Refresh auth context
+      await refreshUser();
+      
+      toast.success("Profil berhasil disimpan!");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast.error("Terjadi kesalahan saat menyimpan profil");
+    } finally {
+      setIsSaving(false);
     }
-    
-    // Trigger custom event untuk memberitahu komponen lain bahwa profile telah diupdate
-    window.dispatchEvent(new CustomEvent('profileUpdated', { 
-      detail: updatedProfile 
-    }));
-    
-    toast.success("Profil berhasil disimpan!");
-    setIsEditing(false);
   };
 
   // Handle cancel changes
-  const handleCancelChanges = () => {
-    const savedProfile = localStorage.getItem("userProfile");
-    if (savedProfile) {
-      const profile = JSON.parse(savedProfile);
-      setUser(profile);
-      setAvatarPreview(profile.avatar);
+  const handleCancelChanges = async () => {
+    if (!user) return;
+
+    try {
+      // Reload profile from server
+      const response = await fetch("/api/user/profile", {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setProfile(data.profile);
+        setAvatarPreview(data.profile.avatar || "/profile.svg");
+        setAvatarFile(null);
+      }
+    } catch (error) {
+      console.error("Error reloading profile:", error);
     }
+
     setIsEditing(false);
     toast.info("Perubahan dibatalkan");
   };
 
   // Format join date
-  const formattedJoinDate = new Date(user.joinDate).toLocaleDateString('id-ID', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  const formattedJoinDate = profile
+    ? new Date(profile.created_at).toLocaleDateString("id-ID", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "";
 
   // Loading state
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
@@ -230,6 +265,16 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto text-center">
+          <p className="text-gray-600">Profil tidak ditemukan</p>
         </div>
       </div>
     );
@@ -262,7 +307,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col items-center">
                   <div className="relative mb-4">
                     <Avatar className="h-40 w-40 border-4 border-white shadow-lg">
-                      <AvatarImage src={avatarPreview} alt={user.name} />
+                      <AvatarImage src={avatarPreview} alt={profile.name} />
                       <AvatarFallback className="text-4xl bg-gradient-to-br from-emerald-100 to-teal-100">
                         <UserCircle className="h-20 w-20 text-emerald-500" />
                       </AvatarFallback>
@@ -278,15 +323,16 @@ export default function ProfilePage() {
                         accept="image/*"
                         className="hidden"
                         onChange={handleAvatarChange}
+                        disabled={isSaving}
                       />
                     </label>
                   </div>
-                  
+
                   <h2 className="text-2xl font-bold text-gray-900 mb-1">
-                    {user.name || "Pengguna"}
+                    {profile.name || "Pengguna"}
                   </h2>
                   <p className="text-gray-600 mb-4">Pengguna Aktif</p>
-                  
+
                   <div className="w-full space-y-3">
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2">
@@ -297,14 +343,14 @@ export default function ProfilePage() {
                         {formattedJoinDate}
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2">
                         <Mail className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">Email</span>
                       </div>
                       <span className="text-sm font-medium text-gray-900 truncate ml-2">
-                        {user.email}
+                        {profile.email}
                       </span>
                     </div>
                   </div>
@@ -324,8 +370,8 @@ export default function ProfilePage() {
                       Tips Link Google Maps
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Simpan link Google Maps lokasi rumah Anda di sini. 
-                      Saat memesan jasa, Anda bisa langsung menggunakan lokasi ini 
+                      Simpan link Google Maps lokasi rumah Anda di sini. Saat
+                      memesan jasa, Anda bisa langsung menggunakan lokasi ini
                       tanpa perlu membuka Google Maps lagi.
                     </p>
                   </div>
@@ -343,7 +389,8 @@ export default function ProfilePage() {
                   Informasi Pribadi
                 </CardTitle>
                 <CardDescription>
-                  Update informasi pribadi Anda. Nama dan nomor telepon dapat diubah sesuai kebutuhan.
+                  Update informasi pribadi Anda. Nama dan alamat dapat diubah
+                  sesuai kebutuhan.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-8">
@@ -357,8 +404,9 @@ export default function ProfilePage() {
                     <Input
                       id="name"
                       name="name"
-                      value={user.name}
+                      value={profile.name}
                       onChange={handleInputChange}
+                      disabled={isSaving}
                       className="pl-10 py-6 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
                       placeholder="Masukkan nama lengkap"
                     />
@@ -376,7 +424,7 @@ export default function ProfilePage() {
                       <Input
                         id="email"
                         name="email"
-                        value={user.email}
+                        value={profile.email}
                         disabled
                         className="pl-10 py-6 text-base bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed"
                       />
@@ -395,29 +443,33 @@ export default function ProfilePage() {
                       <Input
                         id="phone"
                         name="phone"
-                        value={user.phone}
-                        onChange={handleInputChange}
-                        className="pl-10 py-6 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
-                        placeholder="08xxxxxxxxxx"
+                        value={profile.phone || ""}
+                        disabled
+                        className="pl-10 py-6 text-base bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed"
+                        placeholder="Belum ada nomor telepon"
                       />
                     </div>
                     <p className="text-sm text-gray-500">
-                      Nomor telepon untuk dihubungi
+                      Nomor telepon tidak dapat diubah
                     </p>
                   </div>
                 </div>
 
                 {/* Alamat Lengkap */}
                 <div className="space-y-3">
-                  <Label htmlFor="address" className="text-base font-medium flex items-center gap-2">
+                  <Label
+                    htmlFor="address"
+                    className="text-base font-medium flex items-center gap-2"
+                  >
                     <Home className="h-4 w-4" />
                     Alamat Lengkap
                   </Label>
                   <Textarea
                     id="address"
                     name="address"
-                    value={user.address}
+                    value={profile.address || ""}
                     onChange={handleInputChange}
+                    disabled={isSaving}
                     className="min-h-[120px] py-4 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
                     placeholder="Masukkan alamat lengkap (jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota)"
                   />
@@ -425,7 +477,10 @@ export default function ProfilePage() {
 
                 {/* Link Google Maps */}
                 <div className="space-y-3">
-                  <Label htmlFor="gpsLink" className="text-base font-medium flex items-center gap-2">
+                  <Label
+                    htmlFor="gps_link"
+                    className="text-base font-medium flex items-center gap-2"
+                  >
                     <Globe className="h-4 w-4" />
                     Link Google Maps Lokasi Rumah
                   </Label>
@@ -433,11 +488,12 @@ export default function ProfilePage() {
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                       <Input
-                        id="gpsLink"
-                        name="gpsLink"
+                        id="gps_link"
+                        name="gps_link"
                         type="url"
-                        value={user.gpsLink}
+                        value={profile.gps_link || ""}
                         onChange={handleInputChange}
+                        disabled={isSaving}
                         className="pl-10 py-6 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
                         placeholder="https://maps.google.com/?q=..."
                       />
@@ -447,7 +503,8 @@ export default function ProfilePage() {
                         💡 Tips: Simpan link lokasi rumah Anda
                       </p>
                       <p className="text-sm text-emerald-700">
-                        Saat memesan jasa, Anda bisa langsung menggunakan lokasi ini tanpa perlu membuka Google Maps lagi
+                        Saat memesan jasa, Anda bisa langsung menggunakan
+                        lokasi ini tanpa perlu membuka Google Maps lagi
                       </p>
                     </div>
                   </div>
@@ -460,7 +517,7 @@ export default function ProfilePage() {
                       type="button"
                       variant="outline"
                       onClick={handleCancelChanges}
-                      disabled={!isEditing}
+                      disabled={!isEditing || isSaving}
                       className="px-8 py-6 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
                     >
                       Batalkan
@@ -468,25 +525,34 @@ export default function ProfilePage() {
                     <Button
                       type="button"
                       onClick={handleSaveProfile}
-                      disabled={!isEditing}
+                      disabled={!isEditing || isSaving}
                       className="px-8 py-6 text-base text-white transition-all duration-300 hover:shadow-lg transform hover:-translate-y-0.5"
-                      style={{ 
-                        backgroundColor: isEditing ? '#7CE0A8' : '#C6F7D9',
-                        cursor: isEditing ? 'pointer' : 'not-allowed'
+                      style={{
+                        backgroundColor: isEditing && !isSaving ? "#7CE0A8" : "#C6F7D9",
+                        cursor: isEditing && !isSaving ? "pointer" : "not-allowed",
                       }}
                       onMouseEnter={(e) => {
-                        if (isEditing) {
-                          e.currentTarget.style.backgroundColor = '#5CA68A';
+                        if (isEditing && !isSaving) {
+                          e.currentTarget.style.backgroundColor = "#5CA68A";
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (isEditing) {
-                          e.currentTarget.style.backgroundColor = '#7CE0A8';
+                        if (isEditing && !isSaving) {
+                          e.currentTarget.style.backgroundColor = "#7CE0A8";
                         }
                       }}
                     >
-                      <Save className="h-5 w-5 mr-2" />
-                      Simpan Perubahan
+                      {isSaving ? (
+                        <>
+                          <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                          Menyimpan...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-5 w-5 mr-2" />
+                          Simpan Perubahan
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -519,7 +585,8 @@ export default function ProfilePage() {
                         Keamanan Akun
                       </h3>
                       <p className="text-sm text-gray-600">
-                        Akun Anda dilindungi dengan verifikasi email dan sistem keamanan terbaik.
+                        Akun Anda dilindungi dengan verifikasi email dan sistem
+                        keamanan terbaik.
                       </p>
                     </div>
                   </div>
@@ -550,7 +617,8 @@ export default function ProfilePage() {
                         Notifikasi
                       </h3>
                       <p className="text-sm text-gray-600">
-                        Anda akan menerima notifikasi untuk pemesanan, pembayaran, dan update jasa.
+                        Anda akan menerima notifikasi untuk pemesanan,
+                        pembayaran, dan update jasa.
                       </p>
                     </div>
                   </div>
