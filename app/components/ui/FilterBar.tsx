@@ -1,31 +1,33 @@
 "use client";
 
 import { useMemo, useState, useCallback, memo, useEffect, useRef } from "react";
-import { SlidersHorizontal, X, RotateCcw, Search } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { SlidersHorizontal, X, RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/app/components/ui/select";
 import { Button } from "@/app/components/ui/button";
 import CitySelect from "@/app/components/ui/city-select";
-import { CITIES_ID } from "@/app/data/cities-id";
 import {
     Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SheetClose,
 } from "@/app/components/ui/sheet";
 
 import { PlaceholdersAndVanishInput } from "@/app/components/ui/placeholders-and-vanish-input";
 
-// Optimasi: Pindahkan konstanta keluar komponen
-const CATEGORY_LABELS: Record<string, string> = {
-    listrik: "Tukang Listrik",
-    ac: "Tukang AC",
-    pembersihanrumah: "Tukang Pembersihan Rumah",
-    ledeng: "Tukang Ledeng",
-    sedotwc: "Tukang Sedot WC",
-    kebun: "Tukang Kebun",
-    furnitur: "Tukang Mebel",
-};
+// Types
+interface City {
+  city_id: string;
+  name: string;
+  province: string;
+}
+
+interface Category {
+  category_id: string;
+  slug: string;
+  name: string;
+  icon?: string;
+}
 
 const RATING_LABELS: Record<string, string> = {
     "5": "⭐ 5",
@@ -46,7 +48,6 @@ interface FilterBarProps {
     onResetFilters: () => void;
 }
 
-// Optimasi: Komponen Chip yang terpisah dengan memo
 const Chip = memo(({
     label,
     onRemove
@@ -70,7 +71,6 @@ const Chip = memo(({
 
 Chip.displayName = "Chip";
 
-// Optimasi: Pindahkan konstanta placeholders keluar komponen
 const PLACEHOLDERS = [
     "Cari jasa kebersihan rumah",
     "Teknisi AC terdekat",
@@ -89,24 +89,61 @@ export default function FilterBar({
     onResetFilters,
 }: FilterBarProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
     const [urutkan, setUrutkan] = useState<string>("");
     const [isSmallMobile, setIsSmallMobile] = useState(false);
-    const [isTallMobile, setIsTallMobile] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const sheetContentRef = useRef<HTMLDivElement>(null);
 
-    // Deteksi ukuran layar - pisahkan small dan tall mobile
+    // Master data state
+    const [cities, setCities] = useState<City[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [isLoadingCities, setIsLoadingCities] = useState(true);
+    const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+
+    // Fetch cities from API
+    useEffect(() => {
+        const fetchCities = async () => {
+            try {
+                const response = await fetch('/api/master/cities');
+                const data = await response.json();
+                if (data.success) {
+                    setCities(data.data);
+                }
+            } catch (error) {
+                console.error('Error fetching cities:', error);
+            } finally {
+                setIsLoadingCities(false);
+            }
+        };
+
+        fetchCities();
+    }, []);
+
+    // Fetch categories from API
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await fetch('/api/master/categories');
+                const data = await response.json();
+                if (data.success) {
+                    setCategories(data.data);
+                }
+            } catch (error) {
+                console.error('Error fetching categories:', error);
+            } finally {
+                setIsLoadingCategories(false);
+            }
+        };
+
+        fetchCategories();
+    }, []);
+
+    // Deteksi ukuran layar
     useEffect(() => {
         const checkMobile = () => {
             const width = window.innerWidth;
             const height = window.innerHeight;
-
-            // Small devices (iPhone 5, SE) - width kecil DAN height kecil
             setIsSmallMobile(width <= 375 && height <= 667);
-
-            // Tall devices (iPhone X+) - width kecil tapi height besar
-            setIsTallMobile(width <= 414 && height > 667);
         };
 
         checkMobile();
@@ -114,7 +151,12 @@ export default function FilterBar({
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
-    // Fungsi untuk update URL dengan query params
+    // Get category label from slug
+    const getCategoryLabel = useCallback((slug: string) => {
+        const category = categories.find(cat => cat.slug === slug);
+        return category?.name || slug;
+    }, [categories]);
+
     const updateURL = useCallback((category: string, city: string, rating: string) => {
         const params = new URLSearchParams();
 
@@ -134,25 +176,21 @@ export default function FilterBar({
         router.push(newURL, { scroll: false });
     }, [router]);
 
-    // Handler untuk perubahan kategori dengan update URL
     const handleCategoryChange = useCallback((value: string) => {
         onCategoryChange(value);
         updateURL(value, selectedCity, selectedRating);
     }, [onCategoryChange, selectedCity, selectedRating, updateURL]);
 
-    // Handler untuk perubahan kota dengan update URL
     const handleCityChange = useCallback((value: string) => {
         onCityChange(value);
         updateURL(selectedCategory, value, selectedRating);
     }, [onCityChange, selectedCategory, selectedRating, updateURL]);
 
-    // Handler untuk perubahan rating dengan update URL
     const handleRatingChange = useCallback((value: string) => {
         onRatingChange(value);
         updateURL(selectedCategory, selectedCity, value);
     }, [onRatingChange, selectedCategory, selectedCity, updateURL]);
 
-    // Optimasi: Gunakan useCallback untuk handler
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         console.log("query:", e.target.value);
     }, []);
@@ -176,14 +214,13 @@ export default function FilterBar({
         setSheetOpen(false);
     }, []);
 
-    // Optimasi: useMemo untuk active chips
     const activeChips = useMemo(() => {
         const chips: { key: "kategori" | "kota" | "rating" | "urutkan"; label: string }[] = [];
 
         if (selectedCategory) {
             chips.push({
                 key: "kategori",
-                label: CATEGORY_LABELS[selectedCategory] || selectedCategory
+                label: getCategoryLabel(selectedCategory)
             });
         }
 
@@ -209,9 +246,8 @@ export default function FilterBar({
         }
 
         return chips;
-    }, [selectedCategory, selectedCity, selectedRating, urutkan]);
+    }, [selectedCategory, selectedCity, selectedRating, urutkan, getCategoryLabel]);
 
-    // Optimasi: useCallback untuk remove chip
     const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "urutkan") => {
         switch (key) {
             case "kategori":
@@ -229,7 +265,6 @@ export default function FilterBar({
         }
     }, [handleCategoryChange, handleCityChange, handleRatingChange]);
 
-    // Optimasi: Komponen Chips yang terpisah
     const Chips = useMemo(() => {
         if (activeChips.length === 0) return null;
 
@@ -263,18 +298,17 @@ export default function FilterBar({
                     <Select
                         value={selectedCategory}
                         onValueChange={handleCategoryChange}
+                        disabled={isLoadingCategories}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                            <SelectValue placeholder="Pilih kategori" />
+                            <SelectValue placeholder={isLoadingCategories ? "Loading..." : "Pilih kategori"} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px] overflow-y-auto z-[100]">
-                            <SelectItem value="listrik">Tukang Listrik</SelectItem>
-                            <SelectItem value="ac">Tukang AC</SelectItem>
-                            <SelectItem value="pembersihanrumah">Tukang Pembersihan Rumah</SelectItem>
-                            <SelectItem value="ledeng">Tukang Ledeng</SelectItem>
-                            <SelectItem value="sedotwc">Tukang Sedot WC</SelectItem>
-                            <SelectItem value="kebun">Tukang Kebun</SelectItem>
-                            <SelectItem value="furnitur">Tukang Mebel</SelectItem>
+                            {categories.map((cat) => (
+                                <SelectItem key={cat.category_id} value={cat.slug}>
+                                    {cat.name}
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -284,8 +318,8 @@ export default function FilterBar({
                     <CitySelect
                         value={selectedCity}
                         onValueChange={handleCityChange}
-                        cities={CITIES_ID}
-                        placeholder="Pilih kota"
+                        cities={cities.map(c => c.name)}
+                        placeholder={isLoadingCities ? "Loading..." : "Pilih kota"}
                         triggerClassName="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                         contentClassName="z-[100]"
                     />
@@ -341,42 +375,38 @@ export default function FilterBar({
                 </div>
             </div>
 
-            {/* TABLET (768px - 1023px) - Layout sama dengan Desktop */}
+            {/* TABLET (768px - 1023px) */}
             <div className="hidden md:grid lg:hidden grid-cols-12 items-center gap-2">
-                {/* Kategori */}
                 <div className="col-span-2">
                     <Select
                         value={selectedCategory}
                         onValueChange={handleCategoryChange}
+                        disabled={isLoadingCategories}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                            <SelectValue placeholder="Kategori" />
+                            <SelectValue placeholder={isLoadingCategories ? "..." : "Kategori"} />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
-                            <SelectItem value="listrik">Tukang Listrik</SelectItem>
-                            <SelectItem value="ac">Tukang AC</SelectItem>
-                            <SelectItem value="pembersihanrumah">Tukang Pembersihan Rumah</SelectItem>
-                            <SelectItem value="ledeng">Tukang Ledeng</SelectItem>
-                            <SelectItem value="sedotwc">Tukang Sedot WC</SelectItem>
-                            <SelectItem value="kebun">Tukang Kebun</SelectItem>
-                            <SelectItem value="furnitur">Tukang Mebel</SelectItem>
+                            {categories.map((cat) => (
+                                <SelectItem key={cat.category_id} value={cat.slug}>
+                                    {cat.name}
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
 
-                {/* Kota */}
                 <div className="col-span-2">
                     <CitySelect
                         value={selectedCity}
                         onValueChange={handleCityChange}
-                        cities={CITIES_ID}
-                        placeholder="Kota"
+                        cities={cities.map(c => c.name)}
+                        placeholder={isLoadingCities ? "..." : "Kota"}
                         triggerClassName="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                         contentClassName="z-[100]"
                     />
                 </div>
 
-                {/* Rating */}
                 <div className="col-span-2">
                     <Select
                         value={selectedRating}
@@ -396,7 +426,6 @@ export default function FilterBar({
                     </Select>
                 </div>
 
-                {/* Search Input */}
                 <div className="col-span-4">
                     <PlaceholdersAndVanishInput
                         placeholders={PLACEHOLDERS}
@@ -408,7 +437,6 @@ export default function FilterBar({
                     />
                 </div>
 
-                {/* Urutkan */}
                 <div className="col-span-2">
                     <Select
                         value={urutkan}
@@ -470,7 +498,6 @@ export default function FilterBar({
                             <SheetTitle className="text-[#7CE0A8] text-center">Filter</SheetTitle>
                         </SheetHeader>
 
-                        {/* Konten utama - Conditional layout */}
                         <div className={`pr-2 ${isSmallMobile ? 'mt-3 space-y-4 flex-1 overflow-y-auto' : 'mt-2 space-y-3'}`}>
                             {/* Kategori */}
                             <div className="space-y-1.5">
@@ -478,35 +505,17 @@ export default function FilterBar({
                                 <Select
                                     value={selectedCategory}
                                     onValueChange={handleCategoryChange}
+                                    disabled={isLoadingCategories}
                                 >
-                                    <SelectTrigger
-                                        className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
-                                        onClick={(e) => {
-                                            // Prevent keyboard on mobile for select
-                                            if (window.innerWidth < 768) {
-                                                e.preventDefault();
-                                            }
-                                        }}
-                                    >
-                                        <SelectValue placeholder="Pilih kategori" />
+                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                                        <SelectValue placeholder={isLoadingCategories ? "Loading..." : "Pilih kategori"} />
                                     </SelectTrigger>
-                                    <SelectContent
-                                        className="z-[9999]"
-                                        position="popper"
-                                        side="bottom"
-                                        avoidCollisions={false}
-                                        style={{
-                                            width: 'var(--radix-select-trigger-width)',
-                                            maxHeight: '200px'
-                                        }}
-                                    >
-                                        <SelectItem value="listrik">Tukang Listrik</SelectItem>
-                                        <SelectItem value="ac">Tukang AC</SelectItem>
-                                        <SelectItem value="pembersihanrumah">Tukang Pembersihan Rumah</SelectItem>
-                                        <SelectItem value="ledeng">Tukang Ledeng</SelectItem>
-                                        <SelectItem value="sedotwc">Tukang Sedot WC</SelectItem>
-                                        <SelectItem value="kebun">Tukang Kebun</SelectItem>
-                                        <SelectItem value="furnitur">Tukang Mebel</SelectItem>
+                                    <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
+                                        {categories.map((cat) => (
+                                            <SelectItem key={cat.category_id} value={cat.slug}>
+                                                {cat.name}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -517,16 +526,10 @@ export default function FilterBar({
                                 <CitySelect
                                     value={selectedCity}
                                     onValueChange={handleCityChange}
-                                    cities={CITIES_ID}
-                                    placeholder="Pilih kota"
+                                    cities={cities.map(c => c.name)}
+                                    placeholder={isLoadingCities ? "Loading..." : "Pilih kota"}
                                     triggerClassName="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                                     contentClassName="z-[9999]"
-                                    onTriggerClick={(e) => {
-                                        // Prevent keyboard on mobile for city select
-                                        if (window.innerWidth < 768) {
-                                            e.preventDefault();
-                                        }
-                                    }}
                                     avoidCollisions={false}
                                 />
                             </div>
@@ -538,27 +541,10 @@ export default function FilterBar({
                                     value={selectedRating}
                                     onValueChange={handleRatingChange}
                                 >
-                                    <SelectTrigger
-                                        className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
-                                        onClick={(e) => {
-                                            // Prevent keyboard on mobile for select
-                                            if (window.innerWidth < 768) {
-                                                e.preventDefault();
-                                            }
-                                        }}
-                                    >
+                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
                                         <SelectValue placeholder="Pilih rating" />
                                     </SelectTrigger>
-                                    <SelectContent
-                                        className="z-[9999]"
-                                        position="popper"
-                                        side="bottom"
-                                        avoidCollisions={false}
-                                        style={{
-                                            width: 'var(--radix-select-trigger-width)',
-                                            maxHeight: '200px'
-                                        }}
-                                    >
+                                    <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
                                         <SelectItem value="5">⭐ 5</SelectItem>
                                         <SelectItem value="4+">⭐ 4.0+</SelectItem>
                                         <SelectItem value="3+">⭐ 3.0+</SelectItem>
@@ -576,28 +562,10 @@ export default function FilterBar({
                                     value={urutkan}
                                     onValueChange={setUrutkan}
                                 >
-                                    <SelectTrigger
-                                        className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
-                                        onClick={(e) => {
-                                            // Prevent keyboard on mobile for select
-                                            if (window.innerWidth < 768) {
-                                                e.preventDefault();
-                                            }
-                                        }}
-                                    >
+                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
                                         <SelectValue placeholder="Urutkan" />
                                     </SelectTrigger>
-                                    <SelectContent
-                                        className="z-[9999]"
-                                        position="popper"
-                                        side="bottom"
-                                        avoidCollisions={false}
-                                        style={{
-                                            width: 'var(--radix-select-trigger-width)',
-                                            maxHeight: '200px',
-                                            zIndex: 9999
-                                        }}
-                                    >
+                                    <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
                                         <SelectItem value="terbaru">Terbaru</SelectItem>
                                         <SelectItem value="terdekat">Terdekat</SelectItem>
                                         <SelectItem value="rating">Rating Tertinggi</SelectItem>
@@ -606,7 +574,6 @@ export default function FilterBar({
                             </div>
                         </div>
 
-                        {/* Footer yang tetap di bawah */}
                         <SheetFooter className={`pt-3 border-t border-gray-200 flex-shrink-0 ${isSmallMobile ? 'mt-3' : 'mt-3'}`}>
                             <div className="flex gap-2 w-full">
                                 <Button
@@ -638,22 +605,18 @@ export default function FilterBar({
                 {Chips}
             </div>
 
-            {/* Tambahkan style untuk mencegah zoom dan keyboard issues */}
             <style jsx global>{`
-                /* Mencegah zoom pada input di iOS */
                 @media screen and (max-width: 768px) {
                     input[type="text"],
                     input[type="search"] {
                         font-size: 16px !important;
                     }
                     
-                    /* Hide keyboard for select elements */
                     select {
                         font-size: 16px !important;
                     }
                 }
                 
-                /* Untuk devices sangat kecil (iPhone 5, SE) - width <= 375px DAN height <= 667px */
                 @media screen and (max-width: 375px) and (max-height: 667px) {
                     .text-sm {
                         font-size: 13px !important;
@@ -672,20 +635,6 @@ export default function FilterBar({
                     }
                 }
                 
-                /* Untuk devices tall/panjang (iPhone X+) - height > 667px */
-                @media screen and (max-width: 414px) and (min-height: 668px) {
-                    /* Sheet content untuk tall mobile - compact spacing */
-                    [data-radix-dialog-content] .space-y-3 > * + * {
-                        margin-top: 12px !important;
-                    }
-                    
-                    /* Kurangi padding untuk header */
-                    [data-radix-dialog-content] h2 {
-                        margin-bottom: 8px !important;
-                    }
-                }
-                
-                /* Fix for Radix Select dropdown positioning */
                 [data-radix-popper-content-wrapper] {
                     z-index: 9999 !important;
                 }

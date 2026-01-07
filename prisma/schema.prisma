@@ -53,6 +53,43 @@ enum OTPType {
 }
 
 // ==========================================
+// MASTER DATA TABLES
+// ==========================================
+
+model City {
+  city_id    String  @id @default(uuid()) @db.Uuid
+  name       String  @unique
+  province   String
+  is_active  Boolean @default(true)
+  sort_order Int     @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([name])
+  @@index([province])
+  @@index([is_active])
+  @@map("cities")
+}
+
+model Category {
+  category_id String  @id @default(uuid()) @db.Uuid
+  slug        String  @unique // listrik, ac, pembersihanrumah, dll
+  name        String  // Tukang Listrik, Tukang AC, dll
+  description String? @db.Text
+  icon        String? // URL icon atau nama icon
+  is_active   Boolean @default(true)
+  sort_order  Int     @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([slug])
+  @@index([is_active])
+  @@map("categories")
+}
+
+// ==========================================
 // USER TABLES
 // ==========================================
 
@@ -61,20 +98,18 @@ model User {
   email          String    @unique
   name           String
   phone          String?   @unique
-  password       String?   // Nullable untuk Google OAuth
+  password       String?
   avatar         String?   @default("/profile.svg")
   role           UserRole  @default(USER)
   email_verified Boolean   @default(false)
   is_active      Boolean   @default(true)
 
-  // Profile fields
   address        String?   @db.Text
   gps_link       String?   @db.Text
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Relations
   otp_codes OTPCode[]
   bookings  Booking[]
   reviews   Review[]
@@ -89,14 +124,13 @@ model OTPCode {
   otp_id     String   @id @default(uuid()) @db.Uuid
   user_id    String?  @db.Uuid
   email      String
-  code       String   @db.VarChar(6) // 6-digit OTP code
+  code       String   @db.VarChar(6)
   type       OTPType
   expires_at DateTime
   verified   Boolean  @default(false)
 
   created_at DateTime @default(now())
 
-  // Relations
   user User? @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@index([email, type])
@@ -117,7 +151,6 @@ model UserFavorite {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Relations
   user   User   @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
 
@@ -135,7 +168,7 @@ model Admin {
   admin_id  String  @id @default(uuid()) @db.Uuid
   email     String  @unique
   name      String
-  password  String  // Hashed password
+  password  String
   avatar    String?
   is_active Boolean @default(true)
 
@@ -153,32 +186,27 @@ model Admin {
 model Vendor {
   vendor_id   String       @id @default(uuid()) @db.Uuid
   email       String       @unique
-  password    String       // Hashed password
+  password    String
   name        String
   phone       String
   avatar      String?      @default("https://i.pravatar.cc/120")
   description String       @db.Text
 
-  // Status & Verification
   verified Boolean      @default(false)
   status   VendorStatus @default(PENDING)
 
-  // Ratings
   rating       Float @default(0)
   review_count Int   @default(0)
 
-  // Service Info
-  service_areas String[] // Array of service area names
-  specialties   String[] // Array of specialty tags
-  tags          String[] // Array of category tags
-  category      String?  // Main category (ac, electrical, cleaning, etc.)
+  service_areas String[]
+  specialties   String[]
+  tags          String[]
+  category      String?
 
-  // Metadata
   join_date  DateTime @default(now())
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Relations
   services       Service[]
   gallery        VendorGallery[]
   bookings       Booking[]
@@ -198,13 +226,12 @@ model Service {
   description    String           @db.Text
   price          Float
   price_type     ServicePriceType @default(FIXED)
-  estimated_time String?          // e.g., "2-3 jam", "1-2 hari"
+  estimated_time String?
   is_active      Boolean          @default(true)
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Relations
   vendor        Vendor        @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
   booking_items BookingItem[]
 
@@ -222,7 +249,6 @@ model VendorGallery {
 
   created_at DateTime @default(now())
 
-  // Relations
   vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
 
   @@index([vendor_id])
@@ -235,36 +261,28 @@ model VendorGallery {
 
 model Booking {
   booking_id     String @id @default(uuid()) @db.Uuid
-  booking_number String @unique // e.g., "BK-20240101-0001"
+  booking_number String @unique
 
-  // User Info
   user_id String @db.Uuid
-
-  // Vendor Info
   vendor_id String @db.Uuid
 
-  // Booking Details
   scheduled_date DateTime
-  scheduled_time String   @db.VarChar(5) // e.g., "09:00"
+  scheduled_time String   @db.VarChar(5)
   location       String
   notes          String?  @db.Text
 
-  // Status
   status         BookingStatus @default(PENDING)
   payment_status PaymentStatus @default(PENDING)
 
-  // Pricing
   subtotal    Float
   service_fee Float @default(0)
   total       Float
 
-  // Metadata
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
   completed_at DateTime?
   cancelled_at DateTime?
 
-  // Relations
   user   User          @relation(fields: [user_id], references: [user_id])
   vendor Vendor        @relation(fields: [vendor_id], references: [vendor_id])
   items  BookingItem[]
@@ -285,7 +303,6 @@ model BookingItem {
   price           Float
   subtotal        Float
 
-  // Relations
   booking Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
   service Service @relation(fields: [service_id], references: [service_id])
 
@@ -304,13 +321,12 @@ model Review {
   user_id    String @db.Uuid
   vendor_id  String @db.Uuid
 
-  rating  Int     @db.SmallInt // 1-5
+  rating  Int     @db.SmallInt
   comment String? @db.Text
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Relations
   booking Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
   user    User    @relation(fields: [user_id], references: [user_id])
   vendor  Vendor  @relation(fields: [vendor_id], references: [vendor_id])
