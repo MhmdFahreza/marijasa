@@ -4,24 +4,79 @@ import prisma from '@/app/components/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get user session from cookie
-    const sessionCookie = request.cookies.get('session');
-    if (!sessionCookie) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Anda harus login terlebih dahulu' },
-        { status: 401 }
-      );
-    }
+    console.log('[Bookings API] POST request received');
+    
+    // Get all cookies for debugging
+    const allCookies = request.cookies.getAll();
+    console.log('[Bookings API] All cookies:', allCookies.map(c => `${c.name}=${c.value ? 'present' : 'missing'}`));
 
-    const sessionData = JSON.parse(sessionCookie.value);
-    const userId = sessionData.user?.user_id;
+    // Try to get user ID from various cookie sources
+    let userId: string | null = null;
+    
+    // Method 1: Check session_id cookie (custom auth)
+    const sessionId = request.cookies.get('session_id')?.value;
+    const accessToken = request.cookies.get('access_token')?.value;
+    
+    console.log('[Bookings API] Session cookies:', {
+      hasSessionId: !!sessionId,
+      hasAccessToken: !!accessToken
+    });
+
+    if (sessionId && accessToken) {
+      try {
+        // Call /api/auth/me to verify and get user
+        const origin = request.nextUrl.origin;
+        const meResponse = await fetch(`${origin}/api/auth/me`, {
+          method: 'GET',
+          headers: {
+            'Cookie': `session_id=${sessionId}; access_token=${accessToken}`
+          }
+        });
+
+        console.log('[Bookings API] /api/auth/me response status:', meResponse.status);
+
+        if (meResponse.ok) {
+          const meData = await meResponse.json();
+          console.log('[Bookings API] Full response from /api/auth/me:', JSON.stringify(meData));
+          
+          // Check different possible locations for user_id
+          if (meData.authenticated && meData.user) {
+            // Try different field names
+            userId = meData.user.user_id || meData.user.id;
+            console.log('[Bookings API] User ID found:', userId);
+          } else {
+            console.log('[Bookings API] Response structure:', {
+              hasAuthenticated: 'authenticated' in meData,
+              authenticated: meData.authenticated,
+              hasUser: 'user' in meData,
+              userKeys: meData.user ? Object.keys(meData.user) : []
+            });
+          }
+        } else {
+          const errorText = await meResponse.text();
+          console.error('[Bookings API] /api/auth/me error response:', errorText);
+        }
+      } catch (error) {
+        console.error('[Bookings API] Error calling /api/auth/me:', error);
+      }
+    }
 
     if (!userId) {
+      console.error('[Bookings API] No valid user ID found after all attempts');
       return NextResponse.json(
-        { error: 'Unauthorized', message: 'Session tidak valid' },
+        { 
+          error: 'Unauthorized', 
+          message: 'Anda harus login terlebih dahulu',
+          debug: {
+            hasSessionId: !!sessionId,
+            hasAccessToken: !!accessToken
+          }
+        },
         { status: 401 }
       );
     }
+
+    console.log('[Bookings API] Authenticated user ID:', userId);
 
     // Parse request body
     const body = await request.json();
@@ -45,6 +100,12 @@ export async function POST(request: NextRequest) {
       serviceFee,
       totalAmount
     } = body;
+
+    console.log('[Bookings API] Booking data:', {
+      orderId,
+      vendorId,
+      userId
+    });
 
     // Validate required fields
     if (!orderId || !vendorId || !workDate || !workTime) {
@@ -128,6 +189,8 @@ export async function POST(request: NextRequest) {
     const finalSubtotal = subtotal || calculatedSubtotal;
     const finalTotal = totalAmount || (finalSubtotal + serviceFee);
 
+    console.log('[Bookings API] Creating booking...');
+
     // Create booking
     const booking = await prisma.booking.create({
       data: {
@@ -162,6 +225,8 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    console.log('[Bookings API] Booking created:', booking.booking_id);
+
     return NextResponse.json(
       {
         success: true,
@@ -182,7 +247,7 @@ export async function POST(request: NextRequest) {
     );
 
   } catch (error: any) {
-    console.error('Error creating booking:', error);
+    console.error('[Bookings API] Error creating booking:', error);
     
     // Handle specific Prisma errors
     if (error.code === 'P2002') {
@@ -211,21 +276,39 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user session from cookie
-    const sessionCookie = request.cookies.get('session');
-    if (!sessionCookie) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Anda harus login terlebih dahulu' },
-        { status: 401 }
-      );
-    }
+    console.log('[Bookings API] GET request received');
+    
+    // Try to get user ID from various cookie sources
+    let userId: string | null = null;
+    
+    // Check session_id cookie (custom auth)
+    const sessionId = request.cookies.get('session_id')?.value;
+    const accessToken = request.cookies.get('access_token')?.value;
+    
+    if (sessionId && accessToken) {
+      try {
+        const origin = request.nextUrl.origin;
+        const meResponse = await fetch(`${origin}/api/auth/me`, {
+          method: 'GET',
+          headers: {
+            'Cookie': `session_id=${sessionId}; access_token=${accessToken}`
+          }
+        });
 
-    const sessionData = JSON.parse(sessionCookie.value);
-    const userId = sessionData.user?.user_id;
+        if (meResponse.ok) {
+          const meData = await meResponse.json();
+          if (meData.authenticated && meData.user) {
+            userId = meData.user.user_id || meData.user.id;
+          }
+        }
+      } catch (error) {
+        console.error('[Bookings API] Error verifying session:', error);
+      }
+    }
 
     if (!userId) {
       return NextResponse.json(
-        { error: 'Unauthorized', message: 'Session tidak valid' },
+        { error: 'Unauthorized', message: 'Anda harus login terlebih dahulu' },
         { status: 401 }
       );
     }
@@ -296,7 +379,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('Error fetching bookings:', error);
+    console.error('[Bookings API] Error fetching bookings:', error);
     return NextResponse.json(
       {
         error: 'Internal Server Error',

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     if (!sessionId) {
       console.log("[Auth Me] No session ID found");
       return NextResponse.json(
-        { message: "No session found", authenticated: false },
+        { message: "No session found", authenticated: false, user: null },
         { status: 401 }
       );
     }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     if (!session) {
       console.log("[Auth Me] Session not found in Redis:", sessionId);
       return NextResponse.json(
-        { message: "Session expired", authenticated: false },
+        { message: "Session expired", authenticated: false, user: null },
         { status: 401 }
       );
     }
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
             if (!user || !user.is_active) {
               console.log("[Auth Me] User not found or inactive");
               return NextResponse.json(
-                { message: "User not found or inactive", authenticated: false },
+                { message: "User not found or inactive", authenticated: false, user: null },
                 { status: 404 }
               );
             }
@@ -91,12 +91,18 @@ export async function GET(request: NextRequest) {
             // Update session activity
             await updateSessionActivity(sessionId);
 
+            console.log("[Auth Me] Returning user data (refreshed):", {
+              user_id: user.user_id,
+              email: user.email
+            });
+
             // Return response with new access token
             const response = NextResponse.json(
               {
                 authenticated: true,
                 user: {
-                  id: user.user_id,
+                  user_id: user.user_id, // Make sure we use user_id
+                  id: user.user_id, // Also include id for compatibility
                   name: user.name,
                   email: user.email,
                   phone: user.phone,
@@ -119,16 +125,15 @@ export async function GET(request: NextRequest) {
             return response;
           } else {
             console.log("[Auth Me] Refresh token failed");
-            // Refresh failed, session is invalid
             return NextResponse.json(
-              { message: "Session expired", authenticated: false },
+              { message: "Session expired", authenticated: false, user: null },
               { status: 401 }
             );
           }
         } else {
           console.log("[Auth Me] No refresh token available");
           return NextResponse.json(
-            { message: "Token expired", authenticated: false },
+            { message: "Token expired", authenticated: false, user: null },
             { status: 401 }
           );
         }
@@ -139,7 +144,7 @@ export async function GET(request: NextRequest) {
       if (!storedToken || storedToken !== accessToken) {
         console.log("[Auth Me] Token mismatch in Redis");
         return NextResponse.json(
-          { message: "Invalid token", authenticated: false },
+          { message: "Invalid token", authenticated: false, user: null },
           { status: 401 }
         );
       }
@@ -170,7 +175,7 @@ export async function GET(request: NextRequest) {
         if (!user || !user.is_active) {
           console.log("[Auth Me] User not found or inactive");
           return NextResponse.json(
-            { message: "User not found or inactive", authenticated: false },
+            { message: "User not found or inactive", authenticated: false, user: null },
             { status: 404 }
           );
         }
@@ -178,12 +183,18 @@ export async function GET(request: NextRequest) {
         // Update session activity
         await updateSessionActivity(sessionId);
 
+        console.log("[Auth Me] Returning user data (from refresh):", {
+          user_id: user.user_id,
+          email: user.email
+        });
+
         // Return response with new access token
         const response = NextResponse.json(
           {
             authenticated: true,
             user: {
-              id: user.user_id,
+              user_id: user.user_id, // Make sure we use user_id
+              id: user.user_id, // Also include id for compatibility
               name: user.name,
               email: user.email,
               phone: user.phone,
@@ -207,14 +218,14 @@ export async function GET(request: NextRequest) {
       } else {
         console.log("[Auth Me] Refresh token failed");
         return NextResponse.json(
-          { message: "Session expired", authenticated: false },
+          { message: "Session expired", authenticated: false, user: null },
           { status: 401 }
         );
       }
     } else {
       console.log("[Auth Me] No tokens found");
       return NextResponse.json(
-        { message: "No tokens found", authenticated: false },
+        { message: "No tokens found", authenticated: false, user: null },
         { status: 401 }
       );
     }
@@ -236,7 +247,7 @@ export async function GET(request: NextRequest) {
     if (!user || !user.is_active) {
       console.log("[Auth Me] User not found or inactive");
       return NextResponse.json(
-        { message: "User not found or inactive", authenticated: false },
+        { message: "User not found or inactive", authenticated: false, user: null },
         { status: 404 }
       );
     }
@@ -244,13 +255,14 @@ export async function GET(request: NextRequest) {
     // Update session activity
     await updateSessionActivity(sessionId);
 
-    console.log("[Auth Me] Authentication successful for:", user.email);
+    console.log("[Auth Me] Authentication successful for:", user.email, "- user_id:", user.user_id);
 
     return NextResponse.json(
       {
         authenticated: true,
         user: {
-          id: user.user_id,
+          user_id: user.user_id, // Make sure we use user_id
+          id: user.user_id, // Also include id for compatibility
           name: user.name,
           email: user.email,
           phone: user.phone,
@@ -263,7 +275,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[Auth Me] Error:", error);
     return NextResponse.json(
-      { message: "Internal server error", authenticated: false },
+      { message: "Internal server error", authenticated: false, user: null },
       { status: 500 }
     );
   }
