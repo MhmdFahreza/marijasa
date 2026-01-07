@@ -26,6 +26,30 @@ interface SessionData {
   ip?: string;
 }
 
+// Helper to safely handle Upstash Redis data
+// Upstash may return data as objects or strings depending on how it was stored
+function parseRedisData<T>(data: any): T | null {
+  if (!data) return null;
+  
+  // If data is already an object (Upstash auto-deserialized it)
+  if (typeof data === 'object' && !Buffer.isBuffer(data)) {
+    return data as T;
+  }
+  
+  // If data is a string, parse it
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data) as T;
+    } catch (error) {
+      console.error('[Redis] Failed to parse JSON:', error);
+      return null;
+    }
+  }
+  
+  console.error('[Redis] Unexpected data type:', typeof data);
+  return null;
+}
+
 // Generate Access Token (1 hour)
 export function generateAccessToken(payload: Omit<TokenPayload, "type">): string {
   return jwt.sign(
@@ -72,7 +96,10 @@ export async function storeSession(
 
   try {
     const key = `session:${sessionId}`;
-    await redis!.setex(key, SESSION_EXPIRES_IN, JSON.stringify(sessionData));
+    
+    // For Upstash Redis, we can store objects directly
+    // Upstash will handle the serialization
+    await redis!.set(key, sessionData, { ex: SESSION_EXPIRES_IN });
     
     console.log(`[Session] Created: ${sessionId} for user ${sessionData.userId}`);
     return { success: true };
@@ -97,7 +124,17 @@ export async function getSession(sessionId: string): Promise<SessionData | null>
       return null;
     }
 
-    return JSON.parse(data as string) as SessionData;
+    // Upstash returns the data, handle both object and string cases
+    const parsed = parseRedisData<SessionData>(data);
+    
+    if (!parsed) {
+      console.error(`[Session] Failed to parse session data for: ${sessionId}`);
+      // Clean up corrupted data
+      await redis!.del(key);
+      return null;
+    }
+
+    return parsed;
   } catch (error) {
     console.error("[Session] Get error:", error);
     return null;
@@ -117,7 +154,7 @@ export async function updateSessionActivity(sessionId: string): Promise<boolean>
     session.lastActivity = Date.now();
     
     const key = `session:${sessionId}`;
-    await redis!.setex(key, SESSION_EXPIRES_IN, JSON.stringify(session));
+    await redis!.set(key, session, { ex: SESSION_EXPIRES_IN });
     
     return true;
   } catch (error) {
@@ -158,11 +195,11 @@ export async function storeTokens(
   try {
     // Store access token (1 hour)
     const accessKey = `access_token:${sessionId}`;
-    await redis!.setex(accessKey, 60 * 60, accessToken); // 1 hour in seconds
+    await redis!.set(accessKey, accessToken, { ex: 60 * 60 });
 
     // Store refresh token (30 days)
     const refreshKey = `refresh_token:${sessionId}`;
-    await redis!.setex(refreshKey, SESSION_EXPIRES_IN, refreshToken);
+    await redis!.set(refreshKey, refreshToken, { ex: SESSION_EXPIRES_IN });
 
     console.log(`[Tokens] Stored for session: ${sessionId}`);
     return { success: true };
@@ -259,7 +296,7 @@ export async function refreshAccessToken(
 
     // Store new access token in Redis
     const accessKey = `access_token:${refreshPayload.sessionId}`;
-    await redis!.setex(accessKey, 60 * 60, newAccessToken);
+    await redis!.set(accessKey, newAccessToken, { ex: 60 * 60 });
 
     // Update session activity
     await updateSessionActivity(refreshPayload.sessionId);
