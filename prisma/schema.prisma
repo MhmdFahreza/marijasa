@@ -78,6 +78,7 @@ model User {
   otp_codes OTPCode[]
   bookings  Booking[]
   reviews   Review[]
+  favorites UserFavorite[]
 
   @@index([email])
   @@index([phone])
@@ -102,6 +103,28 @@ model OTPCode {
   @@index([code])
   @@index([user_id])
   @@map("otp_codes")
+}
+
+// ==========================================
+// USER FAVORITES TABLE
+// ==========================================
+
+model UserFavorite {
+  favorite_id String @id @default(uuid()) @db.Uuid
+  user_id     String @db.Uuid
+  vendor_id   String @db.Uuid
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  user   User   @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@unique([user_id, vendor_id])
+  @@index([user_id])
+  @@index([vendor_id])
+  @@map("user_favorites")
 }
 
 // ==========================================
@@ -156,10 +179,11 @@ model Vendor {
   updated_at DateTime @updatedAt
 
   // Relations
-  services Service[]
-  gallery  VendorGallery[]
-  bookings Booking[]
-  reviews  Review[]
+  services       Service[]
+  gallery        VendorGallery[]
+  bookings       Booking[]
+  reviews        Review[]
+  favorited_by   UserFavorite[]
 
   @@index([email])
   @@index([status])

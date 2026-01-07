@@ -1,6 +1,7 @@
+// app/vendor_favorit/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
@@ -18,9 +19,7 @@ import { Button } from "@/app/components/ui/button";
 import { Heart, Star, ArrowRight, Sparkles, Package } from "lucide-react";
 import SiteFooter from "@/app/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
-import { Vendors } from "@/app/data/dataVendor";
-
-const FAVORITES_STORAGE_KEY = "favoriteVendors";
+import { useAuth } from "@/app/components/contexts/AuthContext";
 
 type FavoriteVendor = {
   id: string;
@@ -29,76 +28,107 @@ type FavoriteVendor = {
   reviewCount: number;
   avatar?: string;
   tags: string[];
+  verified?: boolean;
+  addedAt?: string;
 };
 
 export default function VendorFavoritPage() {
   const router = useRouter();
   const prefersReduced = useReducedMotion();
+  const { user, isAuthenticated } = useAuth();
+  
   const [favorites, setFavorites] = useState<FavoriteVendor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
 
-  // Load favorites dengan useMemo untuk cache
-  const loadFavoritesFromStorage = useCallback(() => {
-    try {
-      const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
-      if (stored) {
-        const favoriteIds = JSON.parse(stored);
-        const favoriteVendors = Vendors.filter(v => favoriteIds.includes(v.id)).map(v => ({
-          id: v.id,
-          name: v.name,
-          rating: v.rating,
-          reviewCount: v.reviewCount,
-          avatar: v.avatar,
-          tags: v.tags,
-        }));
-        return favoriteVendors;
-      }
-      return [];
-    } catch (error) {
-      console.error("Error loading favorites:", error);
-      return [];
+  // Load favorites dari API
+  const loadFavoritesFromAPI = useCallback(async () => {
+    if (!isAuthenticated || !user) {
+      setFavorites([]);
+      setIsLoading(false);
+      return;
     }
-  }, []);
+
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/user/favorites', {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFavorites(data.favorites || []);
+      } else {
+        console.error('Error loading favorites:', await response.text());
+        setFavorites([]);
+      }
+    } catch (error) {
+      console.error('Error loading favorites:', error);
+      setFavorites([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user]);
 
   useEffect(() => {
-    const favorites = loadFavoritesFromStorage();
-    setFavorites(favorites);
-    setIsLoading(false);
-  }, [loadFavoritesFromStorage]);
+    loadFavoritesFromAPI();
+  }, [loadFavoritesFromAPI]);
 
-  // Optimized remove function dengan useCallback
-  const handleRemoveFavorite = useCallback((vendorId: string) => {
+  // Listen for favorites updates
+  useEffect(() => {
+    const handleFavoritesUpdate = () => {
+      loadFavoritesFromAPI();
+    };
+
+    window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
+
+    return () => {
+      window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
+    };
+  }, [loadFavoritesFromAPI]);
+
+  // Remove favorite handler
+  const handleRemoveFavorite = useCallback(async (vendorId: string) => {
+    if (!isAuthenticated || !user) return;
+
     // Tandai sebagai removing
     setRemovingIds(prev => new Set(prev).add(vendorId));
 
-    // Hapus dari state langsung tanpa delay
+    // Hapus dari state langsung untuk UX yang lebih baik
     setFavorites(prev => prev.filter(v => v.id !== vendorId));
-    
-    // Update localStorage
+
     try {
-      const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
-      if (stored) {
-        const favoriteIds = JSON.parse(stored);
-        const updated = favoriteIds.filter((id: string) => id !== vendorId);
-        localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
+      const response = await fetch('/api/user/favorites/remove', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ vendorId }),
+      });
+
+      if (!response.ok) {
+        // Jika gagal, kembalikan ke state sebelumnya
+        await loadFavoritesFromAPI();
       }
     } catch (error) {
-      console.error("Error removing favorite:", error);
+      console.error('Error removing favorite:', error);
+      // Jika error, kembalikan ke state sebelumnya
+      await loadFavoritesFromAPI();
+    } finally {
+      // Clear removing state setelah animasi
+      setTimeout(() => {
+        setRemovingIds(prev => {
+          const next = new Set(prev);
+          next.delete(vendorId);
+          return next;
+        });
+      }, 300);
     }
+  }, [isAuthenticated, user, loadFavoritesFromAPI]);
 
-    // Clear removing state setelah animasi
-    setTimeout(() => {
-      setRemovingIds(prev => {
-        const next = new Set(prev);
-        next.delete(vendorId);
-        return next;
-      });
-    }, 300);
-  }, []);
-
-  // Navigation handlers dengan useCallback
+  // Navigation handlers
   const handleViewProfile = useCallback((vendorId: string) => {
     setLeaving(true);
     setTimeout(() => {
@@ -122,6 +152,16 @@ export default function VendorFavoritPage() {
   }, [router, prefersReduced]);
 
   if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoaderTwo />
+      </div>
+    );
+  }
+
+  // Redirect ke login jika tidak authenticated
+  if (!isAuthenticated) {
+    router.push('/login');
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoaderTwo />
@@ -323,7 +363,7 @@ export default function VendorFavoritPage() {
 
                         {/* Tags */}
                         <div className="flex flex-wrap justify-center gap-1 mb-4">
-                          {vendor.tags.slice(0, 2).map((tag, i) => (
+                          {vendor.tags?.slice(0, 2).map((tag, i) => (
                             <span
                               key={i}
                               className="px-2 py-1 text-[10px] md:text-xs rounded-full bg-[#7CE0A8]/10 text-[#7CE0A8] font-medium"
@@ -331,7 +371,7 @@ export default function VendorFavoritPage() {
                               {tag}
                             </span>
                           ))}
-                          {vendor.tags.length > 2 && (
+                          {vendor.tags && vendor.tags.length > 2 && (
                             <span className="px-2 py-1 text-[10px] md:text-xs rounded-full bg-[#7CE0A8]/10 text-[#7CE0A8] font-medium">
                               +{vendor.tags.length - 2}
                             </span>

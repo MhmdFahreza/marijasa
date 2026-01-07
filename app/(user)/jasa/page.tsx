@@ -8,7 +8,6 @@ import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/app/components/ui/breadcrumb";
 import VendorCard from "@/app/components/ui/vendor-card";
-import { getAllVendors } from "@/app/data/dataVendor";
 import SiteFooter from "@/app/footer";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,121 +29,12 @@ import {
   DialogTitle,
 } from "@/app/components/ui/dialog";
 import { LoginForm } from "@/app/components/ui/login-form";
-import { Button } from "@/app/components/ui/button";
 import { Search, Filter, MapPin, Star, AlertCircle } from "lucide-react";
+import { useAuth } from "@/app/components/contexts/AuthContext";
 
 const FilterBar = dynamic(() => import("@/app/components/ui/FilterBar"), { ssr: false });
 
 const ITEMS_PER_PAGE = 10;
-
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  ac: ["tukang ac"],
-  listrik: ["tukang listrik"],
-  pembersihanrumah: ["tukang pembersihan rumah"],
-  ledeng: ["tukang ledeng"],
-  sedotwc: ["tukang sedot wc"],
-  kebun: ["tukang kebun"],
-  furnitur: ["tukang mebel"]
-};
-
-const calculateVendorRating = (vendorId: string, vendorName: string): number => {
-  try {
-    const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    
-    const vendorReviews = userOrders.filter(
-      (order: any) =>
-        order.status === 'selesai' &&
-        order.rating &&
-        order.rating > 0 &&
-        (order.vendor?.id === vendorId ||
-          order.vendorId === vendorId ||
-          order.vendor?.name === vendorName ||
-          order.vendorName === vendorName)
-    );
-
-    if (vendorReviews.length === 0) {
-      return 0;
-    }
-
-    const sum = vendorReviews.reduce((acc: number, order: any) => acc + order.rating, 0);
-    return sum / vendorReviews.length;
-  } catch (error) {
-    console.error('Error calculating vendor rating:', error);
-    return 0;
-  }
-};
-
-const countVendorReviews = (vendorId: string, vendorName: string): number => {
-  try {
-    const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    
-    const vendorReviews = userOrders.filter(
-      (order: any) =>
-        order.status === 'selesai' &&
-        order.rating &&
-        order.rating > 0 &&
-        (order.vendor?.id === vendorId ||
-          order.vendorId === vendorId ||
-          order.vendor?.name === vendorName ||
-          order.vendorName === vendorName)
-    );
-
-    return vendorReviews.length;
-  } catch (error) {
-    console.error('Error counting vendor reviews:', error);
-    return 0;
-  }
-};
-
-const isVendorInCategory = (vendor: any, category: string): boolean => {
-  if (!category) return true;
-
-  const keywords = CATEGORY_KEYWORDS[category] || [];
-  if (keywords.length === 0) return true;
-
-  const vendorTags = vendor.tags.map((tag: string) => tag.toLowerCase());
-  const vendorSummary = vendor.summary.toLowerCase();
-
-  return keywords.some(keyword => {
-    const lowerKeyword = keyword.toLowerCase();
-    const matchesInTags = vendorTags.some((tag: string) =>
-      tag.includes(lowerKeyword) || lowerKeyword.includes(tag)
-    );
-    const matchesInSummary = vendorSummary.includes(lowerKeyword);
-
-    return matchesInTags || matchesInSummary;
-  });
-};
-
-const isVendorInCity = (vendor: any, city: string): boolean => {
-  if (!city) return true;
-
-  const lowerCity = city.toLowerCase();
-  return vendor.serviceAreas?.some((area: string) =>
-    area.toLowerCase().includes(lowerCity)
-  ) || false;
-};
-
-const isVendorWithRating = (vendor: any, ratingFilter: string): boolean => {
-  if (!ratingFilter || ratingFilter === "semuarating") return true;
-
-  const vendorRating = vendor.calculatedRating || vendor.rating;
-
-  switch (ratingFilter) {
-    case "5":
-      return vendorRating >= 4.8;
-    case "4+":
-      return vendorRating >= 4.0 && vendorRating < 4.8;
-    case "3+":
-      return vendorRating >= 3.0 && vendorRating < 4.0;
-    case "2+":
-      return vendorRating >= 2.0 && vendorRating < 3.0;
-    case "1+":
-      return vendorRating >= 1.0 && vendorRating < 2.0;
-    default:
-      return true;
-  }
-};
 
 const EmptyState = ({
   onResetFilters,
@@ -230,24 +120,6 @@ const EmptyState = ({
         </div>
       )}
 
-      <div className="mb-8 max-w-md">
-        <h3 className="text-lg font-semibold text-foreground mb-3">Coba salah satu dari ini:</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
-          <div className="p-3 rounded-lg bg-background border border-border hover:border-[#7CE0A8]/30 transition-colors">
-            <p className="text-sm text-foreground/80">• Periksa ejaan kata kunci</p>
-          </div>
-          <div className="p-3 rounded-lg bg-background border border-border hover:border-[#7CE0A8]/30 transition-colors">
-            <p className="text-sm text-foreground/80">• Kurangi jumlah filter</p>
-          </div>
-          <div className="p-3 rounded-lg bg-background border border-border hover:border-[#7CE0A8]/30 transition-colors">
-            <p className="text-sm text-foreground/80">• Coba kategori yang berbeda</p>
-          </div>
-          <div className="p-3 rounded-lg bg-background border border-border hover:border-[#7CE0A8]/30 transition-colors">
-            <p className="text-sm text-foreground/80">• Perluas area pencarian</p>
-          </div>
-        </div>
-      </div>
-
       <div className="flex flex-col sm:flex-row gap-4">
         <button
           onClick={onResetFilters}
@@ -255,12 +127,6 @@ const EmptyState = ({
         >
           <Filter className="w-5 h-5" />
           Tampilkan Semua Jasa
-        </button>
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="px-8 py-3 bg-white dark:bg-neutral-800 border-2 border-[#7CE0A8] text-[#7CE0A8] font-medium rounded-xl hover:bg-[#7CE0A8]/5 transition-all duration-300"
-        >
-          Coba Filter Lainnya
         </button>
       </div>
     </motion.div>
@@ -271,10 +137,11 @@ export default function JasaPage() {
   const prefersReduced = useReducedMotion();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, isAuthenticated } = useAuth();
+  
   const [leaving, setLeaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [vendors, setVendors] = useState<any[]>([]);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -283,105 +150,59 @@ export default function JasaPage() {
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
 
+  // Load vendors dari API
   useEffect(() => {
-    const loadVendors = () => {
-      const allVendors = getAllVendors();
-      
-      const vendorsWithCalculatedRating = allVendors.map(vendor => {
-        const calculatedRating = calculateVendorRating(vendor.id, vendor.name);
-        const reviewCount = countVendorReviews(vendor.id, vendor.name);
+    const loadVendors = async () => {
+      try {
+        setIsLoading(true);
         
-        return {
-          ...vendor,
-          calculatedRating: calculatedRating > 0 ? calculatedRating : vendor.rating,
-          reviewCount: reviewCount,
-          rating: calculatedRating > 0 ? calculatedRating : vendor.rating
-        };
-      });
-      
-      setVendors(vendorsWithCalculatedRating);
+        // Build query params
+        const params = new URLSearchParams();
+        if (selectedCategory) params.set('kategori', selectedCategory);
+        if (selectedCity) params.set('kota', selectedCity);
+        if (selectedRating && selectedRating !== 'semuarating') {
+          params.set('rating', selectedRating);
+        }
+
+        const queryString = params.toString();
+        const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
+        
+        const response = await fetch(url, {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setVendors(data.vendors || []);
+        } else {
+          console.error('Error loading vendors:', await response.text());
+          setVendors([]);
+        }
+      } catch (error) {
+        console.error('Error loading vendors:', error);
+        setVendors([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     loadVendors();
+  }, [selectedCategory, selectedCity, selectedRating]);
 
-    const handleVendorUpdate = () => {
-      loadVendors();
-    };
-
-    const handleReviewsUpdate = () => {
-      loadVendors();
-    };
-
-    const handleStorageChange = () => {
-      loadVendors();
-    };
-
-    const handleUserLogout = () => {
-      setIsLoggedIn(false);
-      setShowLoginModal(false);
-    };
-
-    window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
-    window.addEventListener('reviewsUpdated', handleReviewsUpdate as EventListener);
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('userLoggedOut', handleUserLogout);
-
-    return () => {
-      window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
-      window.removeEventListener('reviewsUpdated', handleReviewsUpdate as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('userLoggedOut', handleUserLogout);
-    };
-  }, []);
-
+  // Set category from URL params
   useEffect(() => {
     const kategori = searchParams?.get('kategori');
-
     if (kategori) {
       setSelectedCategory(kategori);
     }
-
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('userToken');
-      setIsLoggedIn(!!token);
-    }
-
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
   }, [searchParams]);
 
-  const filteredVendors = useMemo(() => {
-    let filtered = [...vendors];
-
-    if (selectedCategory) {
-      filtered = filtered.filter(vendor =>
-        isVendorInCategory(vendor, selectedCategory)
-      );
-    }
-
-    if (selectedCity) {
-      filtered = filtered.filter(vendor =>
-        isVendorInCity(vendor, selectedCity)
-      );
-    }
-
-    if (selectedRating && selectedRating !== "semuarating") {
-      filtered = filtered.filter(vendor =>
-        isVendorWithRating(vendor, selectedRating)
-      );
-    }
-
-    return filtered;
-  }, [vendors, selectedCategory, selectedCity, selectedRating]);
-
+  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategory, selectedCity, selectedRating]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredVendors.length / ITEMS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(vendors.length / ITEMS_PER_PAGE));
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -391,7 +212,7 @@ export default function JasaPage() {
 
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentVendors = filteredVendors.slice(startIndex, endIndex);
+  const currentVendors = vendors.slice(startIndex, endIndex);
 
   const handleHomeClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -410,6 +231,7 @@ export default function JasaPage() {
     setSelectedCity("");
     setSelectedRating("");
     setCurrentPage(1);
+    router.push('/jasa', { scroll: false });
   };
 
   const handleLoginSuccess = async (email: string) => {
@@ -420,7 +242,6 @@ export default function JasaPage() {
     }
     
     await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-    
     router.push(`/login/otp?email=${encodeURIComponent(email)}`);
   };
 
@@ -505,19 +326,6 @@ export default function JasaPage() {
     return items;
   };
 
-  const getCategoryDisplayName = (category: string) => {
-    const names: Record<string, string> = {
-      "ac": "Tukang AC",
-      "listrik": "Tukang Listrik",
-      "pembersihanrumah": "Tukang Pembersihan Rumah",
-      "ledeng": "Tukang Ledeng",
-      "sedotwc": "Tukang Sedot WC",
-      "kebun": "Tukang Kebun",
-      "furnitur": "Tukang Mebel"
-    };
-    return names[category] || category;
-  };
-
   return (
     <>
       <motion.main
@@ -566,46 +374,7 @@ export default function JasaPage() {
               />
             </motion.div>
 
-            {(selectedCategory || selectedCity || (selectedRating && selectedRating !== "semuarating")) && (
-              <div className="mb-4 mt-2 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm text-muted-foreground">
-                  Menampilkan <span className="font-semibold text-foreground">{filteredVendors.length}</span> dari{" "}
-                  <span className="font-semibold text-foreground">{vendors.length}</span> jasa
-                  {selectedCategory && (
-                    <span className="ml-2">
-                      • Kategori: <span className="font-semibold text-foreground">
-                        {getCategoryDisplayName(selectedCategory)}
-                      </span>
-                    </span>
-                  )}
-                  {selectedCity && (
-                    <span className="ml-2">
-                      • Kota: <span className="font-semibold text-foreground">{selectedCity}</span>
-                    </span>
-                  )}
-                  {selectedRating && selectedRating !== "semuarating" && (
-                    <span className="ml-2">
-                      • Rating: <span className="font-semibold text-foreground">
-                        {selectedRating === "5" ? "5 Bintang" :
-                          selectedRating === "4+" ? "4.0 ke atas" :
-                            selectedRating === "3+" ? "3.0 ke atas" :
-                              selectedRating === "2+" ? "2.0 ke atas" :
-                                selectedRating === "1+" ? "1.0 ke atas" : selectedRating}
-                      </span>
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleResetFilters}
-                  className="text-sm text-primary hover:underline px-2 py-1 rounded hover:bg-primary/10"
-                >
-                  Reset semua filter
-                </button>
-              </div>
-            )}
-
-            {filteredVendors.length === 0 ? (
+            {vendors.length === 0 ? (
               <EmptyState
                 onResetFilters={handleResetFilters}
                 selectedCategory={selectedCategory}
@@ -638,8 +407,9 @@ export default function JasaPage() {
                     >
                       <VendorCard
                         vendor={v}
-                        isLoggedIn={isLoggedIn}
+                        isLoggedIn={isAuthenticated}
                         onLoginRequired={() => setShowLoginModal(true)}
+                        userId={user?.id}
                       />
                     </motion.div>
                   ))}

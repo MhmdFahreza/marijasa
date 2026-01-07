@@ -2,12 +2,19 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import {
-  verifyToken,
-  getSession,
-  getAccessToken,
-  refreshAccessToken,
-} from "@/app/components/lib/token-service";
+
+// PENTING: Set runtime ke nodejs
+export const config = {
+  matcher: [
+    "/profile/:path*",
+    "/riwayat_pemesanan/:path*",
+    "/vendor_favorit/:path*",
+    "/login",
+    "/register",
+    "/register/otp",
+  ],
+  runtime: "nodejs", // Tambahkan ini
+};
 
 // Protected routes that require authentication
 const protectedRoutes = ["/profile", "/riwayat_pemesanan", "/vendor_favorit"];
@@ -29,72 +36,19 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  // Check custom auth (session + tokens)
-  let isCustomAuth = false;
-  let needsRefresh = false;
+  // Simple check: user is authenticated if has session OR sessionToken
+  let isAuthenticated = false;
 
-  if (sessionId) {
-    // Verify session exists in Redis
-    const session = await getSession(sessionId);
-    
-    if (session) {
-      if (accessToken) {
-        // Verify access token
-        const tokenPayload = verifyToken(accessToken);
-        
-        if (tokenPayload && tokenPayload.sessionId === sessionId) {
-          // Verify token exists in Redis
-          const storedToken = await getAccessToken(sessionId);
-          
-          if (storedToken === accessToken) {
-            isCustomAuth = true;
-          } else {
-            // Token not in Redis, needs refresh
-            needsRefresh = true;
-          }
-        } else {
-          // Access token expired
-          needsRefresh = true;
-        }
-      } else if (refreshToken) {
-        // No access token but has refresh token
-        needsRefresh = true;
-      }
-
-      // Try to refresh if needed
-      if (needsRefresh && refreshToken && accessToken) {
-        const refreshResult = await refreshAccessToken(accessToken, refreshToken);
-        
-        if (refreshResult.success && refreshResult.accessToken) {
-          // Update cookie with new access token
-          const response = NextResponse.next();
-          response.cookies.set("access_token", refreshResult.accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 60 * 60, // 1 hour
-            path: "/",
-          });
-          
-          isCustomAuth = true;
-          
-          // Continue with the response
-          if (protectedRoutes.some((route) => pathname.startsWith(route))) {
-            return response;
-          }
-          
-          if (authRoutes.some((route) => pathname === route)) {
-            return NextResponse.redirect(new URL("/", request.url));
-          }
-          
-          return response;
-        }
-      }
-    }
+  // Check NextAuth session first (for Google OAuth)
+  if (sessionToken) {
+    isAuthenticated = true;
   }
-
-  // User is authenticated if either custom auth or NextAuth session exists
-  const isAuthenticated = isCustomAuth || !!sessionToken;
+  // Check custom auth (session + access token)
+  else if (sessionId && accessToken) {
+    // For custom auth, we'll validate in the API routes
+    // Here we just check if cookies exist
+    isAuthenticated = true;
+  }
 
   // Check if accessing protected route without auth
   if (protectedRoutes.some((route) => pathname.startsWith(route))) {
@@ -114,14 +68,3 @@ export async function middleware(request: NextRequest) {
 
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: [
-    "/profile/:path*",
-    "/riwayat_pemesanan/:path*",
-    "/vendor_favorit/:path*",
-    "/login",
-    "/register",
-    "/register/otp",
-  ],
-};

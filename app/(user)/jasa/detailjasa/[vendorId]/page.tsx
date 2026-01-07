@@ -1,3 +1,4 @@
+// app/jasa/detailjasa/[vendorId]/page.tsx
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -27,26 +28,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/app/components/ui/dialog'
-import { Send } from 'lucide-react'
-import { getVendorById } from '@/app/data/dataVendor'
+import { Send, CheckCircle2, Heart, MessageCircle, AlertCircle, ImageIcon, User, Eye, X as CloseIcon, ThumbsUp, Star } from 'lucide-react'
 import SiteFooter from '@/app/footer'
 import { LoaderTwo } from '@/app/components/transition/loader'
 import { LoginForm } from '@/app/components/ui/login-form'
 import { RatingStars } from '@/app/components/ui/rating-stars'
-import {
-  Star,
-  CheckCircle2,
-  Heart,
-  MapPin,
-  Phone,
-  MessageCircle,
-  AlertCircle,
-  ImageIcon,
-  User,
-  Eye,
-  X as CloseIcon,
-  ThumbsUp,
-} from 'lucide-react'
+import { useAuth } from '@/app/components/contexts/AuthContext'
 
 type GalleryImage = {
   src: string
@@ -55,230 +42,84 @@ type GalleryImage = {
 
 type Review = {
   id: string
-  orderId: string
-  vendorId: string
-  vendorName: string
   userName: string
   userEmail: string
   userAvatar?: string
   rating: number
   comment: string
   date: string
-  photos?: string[]
-  response?: {
-    vendorReply: string
-    replyDate: string
-  }
-  helpfulCount: number
-  mitraLikes?: string[]
-  isAnonymous?: boolean
-}
-
-// ⭐ FUNGSI HELPER UNTUK FORMAT TANGGAL
-const formatReviewDate = (orderHistory: any[]): string => {
-  try {
-    const ratingHistory = orderHistory?.find(
-      (h: any) => h.status === 'Rating dan Ulasan Diberikan'
-    )
-
-    if (ratingHistory?.date) {
-      const dateObj = new Date(ratingHistory.date)
-
-      if (isNaN(dateObj.getTime())) {
-        return new Date().toLocaleDateString('id-ID', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-        })
-      }
-
-      return dateObj.toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })
-    }
-
-    return new Date().toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    })
-  } catch (error) {
-    console.error('Error formatting date:', error)
-    return new Date().toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    })
-  }
 }
 
 export default function VendorDetailPage() {
   const params = useParams()
   const router = useRouter()
   const prefersReduced = useReducedMotion()
+  const { user, isAuthenticated } = useAuth()
+  
   const [leaving, setLeaving] = useState(false)
   const [activeTab, setActiveTab] = useState<string>('layanan')
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
-  const [favorites, setFavorites] = useState<string[]>([])
   const [vendor, setVendor] = useState<any>(null)
   const [reviews, setReviews] = useState<Review[]>([])
+  const [isLoadingVendor, setIsLoadingVendor] = useState(true)
   const [isLoadingReviews, setIsLoadingReviews] = useState(true)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [isFavorite, setIsFavorite] = useState(false)
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
 
   const vendorId = params.vendorId as string
 
-  // Load vendor data dengan sync - DIPERBAIKI
+  // Load vendor data dari API
   useEffect(() => {
-    const loadVendor = () => {
-      const vendorData = getVendorById(vendorId)
-      if (vendorData) {
-        // Pastikan summary/description selalu ada
-        const finalVendor = {
-          ...vendorData,
-          summary: vendorData.summary || vendorData.description || 'Deskripsi tidak tersedia',
-          description: vendorData.description || vendorData.summary || 'Deskripsi tidak tersedia'
-        }
-        setVendor(finalVendor)
-      }
-    }
-
-    loadVendor()
-
-    const handleVendorUpdate = (event: any) => {
-      if (event.detail.vendorId === vendorId) {
-        loadVendor()
-      }
-    }
-
-    // Listen untuk update dari mitra profile
-    const handleMitraUpdate = () => {
-      loadVendor()
-    }
-
-    window.addEventListener('vendorDataUpdated', handleVendorUpdate)
-    window.addEventListener('mitraProfileUpdated', handleMitraUpdate)
-
-    return () => {
-      window.removeEventListener('vendorDataUpdated', handleVendorUpdate)
-      window.removeEventListener('mitraProfileUpdated', handleMitraUpdate)
-    }
-  }, [vendorId])
-
-  // Load reviews dari localStorage dan dengarkan perubahan
-  useEffect(() => {
-    const loadReviews = () => {
-      setIsLoadingReviews(true)
+    const loadVendor = async () => {
       try {
-        const userOrders = JSON.parse(
-          localStorage.getItem('userOrders') || '[]'
-        )
+        setIsLoadingVendor(true)
+        const response = await fetch(`/api/vendors/${vendorId}`, {
+          credentials: 'include',
+        })
 
-        const vendorReviews: Review[] = userOrders
-          .filter(
-            (order: any) =>
-              order.status === 'selesai' &&
-              order.rating &&
-              order.rating > 0 &&
-              (order.vendor?.id === vendorId ||
-                order.vendorId === vendorId ||
-                order.vendor?.name === vendor?.name ||
-                order.vendorName === vendor?.name)
-          )
-          .map((order: any) => {
-            const userName = order.isAnonymous
-              ? 'Anonymous'
-              : order.customerInfo?.name ||
-              JSON.parse(localStorage.getItem('userProfile') || '{}').name ||
-              'Pengguna'
-
-            const userEmail = order.isAnonymous
-              ? order.customerInfo?.email
-              : JSON.parse(localStorage.getItem('user') || '{}').email
-
-            const userAvatar = order.isAnonymous
-              ? undefined
-              : JSON.parse(localStorage.getItem('userProfile') || '{}')
-                .avatar
-
-            const formattedDate = formatReviewDate(order.orderHistory)
-
-            return {
-              id: order.id || order.orderId,
-              orderId: order.id || order.orderId,
-              vendorId: vendorId,
-              vendorName: vendor?.name || order.vendorName || '',
-              userName,
-              userEmail,
-              userAvatar,
-              rating: order.rating,
-              comment: order.review || '',
-              date: formattedDate,
-              photos: order.ratingPhotos || [],
-              response: order.vendorResponse || undefined,
-              helpfulCount: order.helpfulCount || 0,
-              mitraLikes: order.mitraLikes || [],
-              isAnonymous: order.isAnonymous || false,
-            }
-          })
-          .sort((a: Review, b: Review) => {
-            return b.date.localeCompare(a.date)
-          })
-
-        setReviews(vendorReviews)
+        if (response.ok) {
+          const data = await response.json()
+          setVendor(data.vendor)
+          setReviews(data.vendor.reviews || [])
+        } else {
+          console.error('Error loading vendor:', await response.text())
+          setVendor(null)
+        }
       } catch (error) {
-        console.error('Error loading reviews:', error)
-        setReviews([])
+        console.error('Error loading vendor:', error)
+        setVendor(null)
       } finally {
+        setIsLoadingVendor(false)
         setIsLoadingReviews(false)
       }
     }
 
-    if (vendor) {
-      loadReviews()
-    }
+    loadVendor()
+  }, [vendorId])
 
-    const handleStorageChange = () => {
-      if (vendor) {
-        loadReviews()
-      }
-    }
-
-    const handleReviewsUpdate = (event: any) => {
-      if (vendor) {
-        loadReviews()
-      }
-    }
-
-    window.addEventListener('storage', handleStorageChange)
-    window.addEventListener('reviewsUpdated', handleReviewsUpdate)
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange)
-      window.removeEventListener('reviewsUpdated', handleReviewsUpdate)
-    }
-  }, [vendor, vendorId])
-
+  // Check if vendor is favorite
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('userToken')
-      setIsLoggedIn(!!token)
+    const checkFavorite = async () => {
+      if (!isAuthenticated || !user) return
 
-      const savedFavorites = localStorage.getItem('favorites')
-      if (savedFavorites) {
-        setFavorites(JSON.parse(savedFavorites))
+      try {
+        const response = await fetch(`/api/user/favorites/check?vendorId=${vendorId}`, {
+          credentials: 'include',
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setIsFavorite(data.isFavorite)
+        }
+      } catch (error) {
+        console.error('Error checking favorite:', error)
       }
     }
-  }, [])
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('favorites', JSON.stringify(favorites))
-    }
-  }, [favorites])
+    checkFavorite()
+  }, [vendorId, isAuthenticated, user])
 
   const handleNavigation = async (path: string) => {
     setLeaving(true)
@@ -291,8 +132,7 @@ export default function VendorDetailPage() {
     const element = document.getElementById(sectionId)
     if (element) {
       const offset = 100
-      const elementPosition =
-        element.getBoundingClientRect().top + window.pageYOffset
+      const elementPosition = element.getBoundingClientRect().top + window.pageYOffset
       window.scrollTo({
         top: elementPosition - offset,
         behavior: 'smooth',
@@ -301,43 +141,57 @@ export default function VendorDetailPage() {
   }
 
   const handleLoginSuccess = async (email: string) => {
-    setIsTransitioning(true);
-
-    // Simpan email ke localStorage untuk halaman OTP
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pendingLoginEmail', email);
-    }
-
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-
-    // Redirect ke halaman OTP
-    router.push(`/login/otp?email=${encodeURIComponent(email)}`);
-  };
+    setShowLoginModal(false)
+    setIsTransitioning(true)
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500))
+    router.push(`/login/otp?email=${encodeURIComponent(email)}`)
+  }
 
   const handleRegisterClick = async () => {
-    setShowLoginModal(false);
-    setIsTransitioning(true);
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-    router.push('/register');
-  };
+    setShowLoginModal(false)
+    setIsTransitioning(true)
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500))
+    router.push('/register')
+  }
 
-  const handleFavoriteClick = () => {
-    if (!isLoggedIn) {
+  const handleFavoriteClick = async () => {
+    if (!isAuthenticated || !user) {
       setShowLoginModal(true)
       return
     }
 
-    if (vendorId) {
-      if (favorites.includes(vendorId)) {
-        setFavorites((prev) => prev.filter((id) => id !== vendorId))
+    setIsTogglingFavorite(true)
+
+    try {
+      const endpoint = isFavorite ? '/api/user/favorites/remove' : '/api/user/favorites/add'
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ vendorId }),
+      })
+
+      if (response.ok) {
+        setIsFavorite(!isFavorite)
+        
+        // Dispatch event untuk update favorites page
+        window.dispatchEvent(new CustomEvent('favoritesUpdated'))
       } else {
-        setFavorites((prev) => [...prev, vendorId])
+        const error = await response.json()
+        console.error('Error toggling favorite:', error)
       }
+    } catch (error) {
+      console.error('Error toggling favorite:', error)
+    } finally {
+      setIsTogglingFavorite(false)
     }
   }
 
   const handlePesanSekarang = () => {
-    if (!isLoggedIn) {
+    if (!isAuthenticated) {
       setShowLoginModal(true)
       return
     }
@@ -345,28 +199,20 @@ export default function VendorDetailPage() {
   }
 
   const handleChatClick = () => {
-    if (!isLoggedIn) {
+    if (!isAuthenticated) {
       setShowLoginModal(true)
       return
     }
     handleNavigation(`/chat/${vendorId}`)
   }
 
-  const isFavorite = vendorId
-    ? favorites.includes(vendorId)
-    : false
-
   const tabs = [
     { id: 'layanan', label: 'Layanan' },
     { id: 'hasil-pekerjaan', label: 'Hasil Pekerjaan' },
-    {
-      id: 'ulasan',
-      label: 'Ulasan',
-    },
+    { id: 'ulasan', label: 'Ulasan' },
   ]
 
-  const hasGallery =
-    vendor && vendor.gallery && vendor.gallery.length > 0
+  const hasGallery = vendor && vendor.gallery && vendor.gallery.length > 0
 
   const calculateAverageRating = () => {
     if (reviews.length === 0) {
@@ -378,13 +224,19 @@ export default function VendorDetailPage() {
 
   const averageRating = calculateAverageRating()
 
+  if (isLoadingVendor) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoaderTwo />
+      </div>
+    )
+  }
+
   if (!vendor) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">
-            Vendor Tidak Ditemukan
-          </h1>
+          <h1 className="text-2xl font-bold mb-2">Vendor Tidak Ditemukan</h1>
           <p className="text-muted-foreground mb-4">
             Vendor yang Anda cari tidak tersedia
           </p>
@@ -401,27 +253,16 @@ export default function VendorDetailPage() {
       className="min-h-screen w-full max-w-7xl mx-auto px-4 py-6 pb-24 lg:pb-6"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: prefersReduced ? 0 : 0.25,
-        ease: 'easeOut',
-      }}
+      transition={{ duration: prefersReduced ? 0 : 0.25, ease: 'easeOut' }}
     >
+      {/* Breadcrumb */}
       <div className="mb-6">
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <motion.span
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Link
-                    href="/"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      handleNavigation('/')
-                    }}
-                  >
+                <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
+                  <Link href="/" onClick={(e) => { e.preventDefault(); handleNavigation('/') }}>
                     Home
                   </Link>
                 </motion.span>
@@ -430,17 +271,8 @@ export default function VendorDetailPage() {
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <motion.span
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Link
-                    href="/jasa"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      handleNavigation('/jasa')
-                    }}
-                  >
+                <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
+                  <Link href="/jasa" onClick={(e) => { e.preventDefault(); handleNavigation('/jasa') }}>
                     Jasa
                   </Link>
                 </motion.span>
@@ -461,12 +293,7 @@ export default function VendorDetailPage() {
             <Avatar className="h-16 w-16 md:h-32 md:w-32 flex-shrink-0">
               <AvatarImage src={vendor.avatar ?? ''} alt={vendor.name} />
               <AvatarFallback className="text-lg md:text-3xl">
-                {vendor.name
-                  .split(' ')
-                  .map((w: string) => w[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase()}
+                {vendor.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
 
@@ -474,9 +301,7 @@ export default function VendorDetailPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <h1 className="text-lg md:text-3xl font-bold">
-                      {vendor.name}
-                    </h1>
+                    <h1 className="text-lg md:text-3xl font-bold">{vendor.name}</h1>
                     {vendor.verified && (
                       <span className="inline-flex items-center gap-1 text-xs md:text-sm font-medium text-primary flex-shrink-0">
                         <CheckCircle2 className="h-4 w-4 md:h-5 md:w-5" />
@@ -500,18 +325,15 @@ export default function VendorDetailPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={
-                    isFavorite
-                      ? 'Hapus dari favorit'
-                      : 'Simpan ke favorit'
-                  }
+                  aria-label={isFavorite ? 'Hapus dari favorit' : 'Simpan ke favorit'}
                   className="flex-shrink-0"
                   onClick={handleFavoriteClick}
+                  disabled={isTogglingFavorite}
                 >
                   <Heart
-                    className="h-5 w-5"
-                    fill={isFavorite ? '#ef4444' : 'none'}
-                    color={isFavorite ? '#ef4444' : 'currentColor'}
+                    className={`h-5 w-5 transition-all duration-200 ${
+                      isFavorite ? 'text-[#7CE0A8] fill-[#7CE0A8]' : ''
+                    }`}
                   />
                 </Button>
               </div>
@@ -524,18 +346,16 @@ export default function VendorDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Sticky Tabs */}
           <div className="border-b border-gray-200 sticky top-0 bg-white z-10">
-            <nav
-              className="flex space-x-8"
-              aria-label="Tabs"
-            >
+            <nav className="flex space-x-8" aria-label="Tabs">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => scrollToSection(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
-                    ? 'border-[#7CE0A8] text-[#7CE0A8]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-[#7CE0A8] text-[#7CE0A8]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
                 >
                   {tab.label}
                   {tab.id === 'ulasan' && reviews.length > 0 && (
@@ -556,12 +376,8 @@ export default function VendorDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {vendor.tags.map((tag: string, i: number) => (
-                    <Badge
-                      key={i}
-                      variant="outline"
-                      className="px-3 py-1"
-                    >
+                  {vendor.tags?.map((tag: string, i: number) => (
+                    <Badge key={i} variant="outline" className="px-3 py-1">
                       {tag}
                     </Badge>
                   ))}
@@ -575,17 +391,11 @@ export default function VendorDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {vendor.serviceAreas.map(
-                    (area: string, i: number) => (
-                      <Badge
-                        key={i}
-                        variant="outline"
-                        className="px-3 py-1"
-                      >
-                        {area}
-                      </Badge>
-                    )
-                  )}
+                  {vendor.serviceAreas?.map((area: string, i: number) => (
+                    <Badge key={i} variant="outline" className="px-3 py-1">
+                      {area}
+                    </Badge>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -600,23 +410,21 @@ export default function VendorDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {vendor.gallery.map(
-                      (img: GalleryImage, i: number) => (
-                        <motion.div
-                          key={i}
-                          className="aspect-square rounded-lg overflow-hidden bg-muted cursor-pointer"
-                          whileHover={{ scale: 1.05 }}
-                          transition={{ duration: 0.2 }}
-                          onClick={() => setSelectedPhoto(img.src)}
-                        >
-                          <img
-                            src={img.src}
-                            alt={img.alt}
-                            className="w-full h-full object-cover"
-                          />
-                        </motion.div>
-                      )
-                    )}
+                    {vendor.gallery.map((img: GalleryImage, i: number) => (
+                      <motion.div
+                        key={i}
+                        className="aspect-square rounded-lg overflow-hidden bg-muted cursor-pointer"
+                        whileHover={{ scale: 1.05 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={() => setSelectedPhoto(img.src)}
+                      >
+                        <img
+                          src={img.src}
+                          alt={img.alt}
+                          className="w-full h-full object-cover"
+                        />
+                      </motion.div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -636,9 +444,7 @@ export default function VendorDetailPage() {
                           Belum Ada Hasil Pekerjaan
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                          Vendor ini belum mengunggah foto hasil
-                          pekerjaan. Anda dapat menghubungi vendor
-                          untuk informasi lebih lanjut.
+                          Vendor ini belum mengunggah foto hasil pekerjaan.
                         </p>
                       </div>
                     </div>
@@ -661,10 +467,7 @@ export default function VendorDetailPage() {
                       <div className="text-4xl md:text-5xl font-bold text-[#7CE0A8] mb-2">
                         {averageRating.toFixed(1)}
                       </div>
-                      <RatingStars
-                        value={averageRating}
-                        size="lg"
-                      />
+                      <RatingStars value={averageRating} size="lg" />
                       <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mt-2 font-medium">
                         Penilaian Keseluruhan
                       </p>
@@ -682,13 +485,7 @@ export default function VendorDetailPage() {
                     <div className="flex flex-col items-center justify-center py-2 md:py-4 px-3 md:px-4 border-t sm:border-t-0 sm:border-l border-[#7CE0A8]/20">
                       <div className="text-3xl md:text-4xl font-bold text-[#7CE0A8] mb-1">
                         {reviews.length > 0
-                          ? (
-                            (reviews.filter(
-                              (r) => r.rating >= 4
-                            ).length /
-                              reviews.length) *
-                            100
-                          ).toFixed(0)
+                          ? ((reviews.filter((r) => r.rating >= 4).length / reviews.length) * 100).toFixed(0)
                           : 0}
                         %
                       </div>
@@ -704,9 +501,7 @@ export default function VendorDetailPage() {
                 {isLoadingReviews ? (
                   <div className="text-center py-12 md:py-16">
                     <LoaderTwo />
-                    <p className="text-sm text-muted-foreground mt-4">
-                      Memuat ulasan...
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-4">Memuat ulasan...</p>
                   </div>
                 ) : reviews.length === 0 ? (
                   <div className="text-center py-12 md:py-16">
@@ -719,9 +514,7 @@ export default function VendorDetailPage() {
                           Belum Ada Ulasan
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                          Jadilah yang pertama memberikan ulasan
-                          untuk vendor ini setelah menggunakan
-                          layanan mereka.
+                          Jadilah yang pertama memberikan ulasan untuk vendor ini.
                         </p>
                       </div>
                     </div>
@@ -731,150 +524,54 @@ export default function VendorDetailPage() {
                     <div className="reviews-scroll-container max-h-[calc(315px*2.4)] md:max-h-[calc(416px*3.2)] overflow-y-auto pr-2">
                       <div className="space-y-4 md:space-y-6">
                         <AnimatePresence>
-                          {reviews.map((review, index) => {
-                            const mitraLiked =
-                              review.mitraLikes &&
-                              review.mitraLikes.length > 0
+                          {reviews.map((review, index) => (
+                            <motion.div
+                              key={review.id}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: index * 0.05 }}
+                              className="group relative rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900/50 hover:border-[#7CE0A8]/30 hover:shadow-md transition-all duration-300 p-4 md:p-5"
+                            >
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#7CE0A8] to-[#7CE0A8]/50 rounded-l-lg" />
 
-                            return (
-                              <motion.div
-                                key={review.id}
-                                initial={{
-                                  opacity: 0,
-                                  y: 20,
-                                }}
-                                animate={{
-                                  opacity: 1,
-                                  y: 0,
-                                }}
-                                transition={{
-                                  delay: index * 0.05,
-                                }}
-                                className="group relative rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900/50 hover:border-[#7CE0A8]/30 hover:shadow-md transition-all duration-300 p-4 md:p-5"
-                              >
-                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#7CE0A8] to-[#7CE0A8]/50 rounded-l-lg" />
+                              <div className="flex flex-col md:flex-row md:items-start gap-3 md:gap-4">
+                                <Avatar className="h-12 w-12 md:h-14 md:w-14 flex-shrink-0 ring-2 ring-[#7CE0A8]/20">
+                                  <AvatarImage src={review.userAvatar} alt={review.userName} />
+                                  <AvatarFallback className="bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
+                                    <User className="h-6 w-6 text-[#7CE0A8]" />
+                                  </AvatarFallback>
+                                </Avatar>
 
-                                <div className="flex flex-col md:flex-row md:items-start gap-3 md:gap-4">
-                                  <Avatar className="h-12 w-12 md:h-14 md:w-14 flex-shrink-0 ring-2 ring-[#7CE0A8]/20">
-                                    <AvatarImage
-                                      src={review.userAvatar}
-                                      alt={review.userName}
-                                    />
-                                    <AvatarFallback className="bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
-                                      <User className="h-6 w-6 text-[#7CE0A8]" />
-                                    </AvatarFallback>
-                                  </Avatar>
-
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 mb-2 md:mb-3">
-                                      <div className="min-w-0">
-                                        <h4 className="font-semibold text-gray-900 dark:text-white text-sm md:text-base truncate">
-                                          {review.userName}
-                                        </h4>
-                                      </div>
-                                      <span className="text-xs md:text-sm text-gray-500 dark:text-gray-500 font-medium whitespace-nowrap">
-                                        {review.date}
-                                      </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 mb-2 md:mb-3">
+                                    <div className="min-w-0">
+                                      <h4 className="font-semibold text-gray-900 dark:text-white text-sm md:text-base truncate">
+                                        {review.userName}
+                                      </h4>
                                     </div>
-
-                                    <div className="flex items-center gap-2 mb-3 md:mb-4">
-                                      <RatingStars
-                                        value={review.rating}
-                                        size="sm"
-                                      />
-                                      <span className="text-sm font-semibold text-[#7CE0A8] bg-[#7CE0A8]/10 px-2.5 py-1 rounded-full">
-                                        {review.rating.toFixed(1)}
-                                      </span>
-                                    </div>
-
-                                    <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4 mb-3">
-                                      {review.comment}
-                                    </p>
-
-                                    {review.photos &&
-                                      review.photos.length > 0 && (
-                                        <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
-                                          {review.photos.map(
-                                            (
-                                              photo: string,
-                                              idx: number
-                                            ) => (
-                                              <div
-                                                key={idx}
-                                                className="relative group/photo cursor-pointer"
-                                                onClick={() =>
-                                                  setSelectedPhoto(
-                                                    photo
-                                                  )
-                                                }
-                                              >
-                                                <img
-                                                  src={photo}
-                                                  alt={`Foto ${idx + 1
-                                                    }`}
-                                                  className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover flex-shrink-0 hover:scale-105 transition-transform"
-                                                />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                                                  <Eye className="w-5 h-5 text-white" />
-                                                </div>
-                                              </div>
-                                            )
-                                          )}
-                                        </div>
-                                      )}
-
-                                    {review.response && (
-                                      <div className="mb-3 p-3 bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 rounded-lg border border-[#7CE0A8]/20">
-                                        <div className="flex items-start gap-2">
-                                          <div className="w-6 h-6 rounded-full bg-[#7CE0A8] flex items-center justify-center flex-shrink-0">
-                                            <MessageCircle className="w-3 h-3 text-white" />
-                                          </div>
-                                          <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                              <span className="font-semibold text-[#7CE0A8] text-sm">
-                                                Balasan {
-                                                  review.vendorName
-                                                }
-                                              </span>
-                                              <span className="text-xs text-neutral-500">
-                                                {
-                                                  review
-                                                    .response
-                                                    .replyDate
-                                                }
-                                              </span>
-                                            </div>
-                                            <p className="text-sm text-gray-700 dark:text-gray-300">
-                                              {
-                                                review.response
-                                                  .vendorReply
-                                              }
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Like Section */}
-                                    <div className="flex items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                      {mitraLiked && (
-                                        <div className="flex items-center gap-1 text-xs md:text-sm text-[#7CE0A8] bg-[#7CE0A8]/10 px-2 py-1 rounded-full">
-                                          <ThumbsUp className="w-3 h-3 fill-[#7CE0A8]" />
-                                          <span>
-                                            {
-                                              review.mitraLikes
-                                                ?.length
-                                            }{' '}
-                                            Membantu
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
+                                    <span className="text-xs md:text-sm text-gray-500 dark:text-gray-500 font-medium whitespace-nowrap">
+                                      {new Date(review.date).toLocaleDateString('id-ID', {
+                                        day: 'numeric',
+                                        month: 'long',
+                                        year: 'numeric',
+                                      })}
+                                    </span>
                                   </div>
+
+                                  <div className="flex items-center gap-2 mb-3 md:mb-4">
+                                    <RatingStars value={review.rating} size="sm" />
+                                    <span className="text-sm font-semibold text-[#7CE0A8] bg-[#7CE0A8]/10 px-2.5 py-1 rounded-full">
+                                      {review.rating.toFixed(1)}
+                                    </span>
+                                  </div>
+
+                                  <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4 mb-3">
+                                    {review.comment}
+                                  </p>
                                 </div>
-                              </motion.div>
-                            )
-                          })}
+                              </div>
+                            </motion.div>
+                          ))}
                         </AnimatePresence>
                       </div>
                     </div>
@@ -889,13 +586,9 @@ export default function VendorDetailPage() {
         <div className="hidden lg:block lg:col-span-1">
           <Card className="sticky top-6">
             <CardHeader>
-              <CardTitle className="text-lg">
-                Dapatkan Penawaran
-              </CardTitle>
+              <CardTitle className="text-lg">Dapatkan Penawaran</CardTitle>
               <p className="text-sm text-muted-foreground text-justify">
-                Ingin mendapatkan informasi lebih lanjut atau
-                perkiraan harga? Pilih yang Anda inginkan di
-                bawah ini untuk memulai pesan atau chat.
+                Ingin mendapatkan informasi lebih lanjut atau perkiraan harga? Pilih yang Anda inginkan di bawah ini.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -913,9 +606,7 @@ export default function VendorDetailPage() {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    Atau
-                  </span>
+                  <span className="bg-background px-2 text-muted-foreground">Atau</span>
                 </div>
               </div>
 
@@ -958,20 +649,32 @@ export default function VendorDetailPage() {
         </div>
       </div>
 
+      {/* Login Modal - Updated Design */}
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-              Login Diperlukan
-            </DialogTitle>
-            <DialogDescription>
-              Anda perlu login untuk mengakses fitur ini. Silakan masuk ke akun Anda terlebih dahulu.
-            </DialogDescription>
+        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-0 bg-gradient-to-br from-white to-slate-50 dark:from-neutral-900 dark:to-neutral-950">
+          {/* Decorative gradient background */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
+          <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-gradient-to-tr from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
+
+          <DialogHeader className="relative z-10 p-6 pb-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
+                <AlertCircle className="h-6 w-6 text-[#7CE0A8]" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-bold bg-gradient-to-r from-neutral-900 via-neutral-800 to-neutral-700 dark:from-white dark:via-neutral-100 dark:to-neutral-300 bg-clip-text text-transparent">
+                  Login Diperlukan
+                </DialogTitle>
+                <DialogDescription className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                  Silakan masuk untuk mengakses fitur ini
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="py-4">
-            <LoginForm
-              userType="user"
+          
+          <div className="relative z-10 px-6 pb-6">
+            <LoginForm 
+              userType="user" 
               onSuccess={handleLoginSuccess}
               onRegisterClick={handleRegisterClick}
             />
@@ -987,9 +690,7 @@ export default function VendorDetailPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{
-              duration: prefersReduced ? 0 : 0.5,
-            }}
+            transition={{ duration: prefersReduced ? 0 : 0.5 }}
             className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
           >
             <LoaderTwo />
@@ -1053,24 +754,6 @@ export default function VendorDetailPage() {
 
         .reviews-scroll-container::-webkit-scrollbar-thumb:hover {
           background: rgba(124, 224, 168, 0.6);
-        }
-
-        @media (prefers-color-scheme: dark) {
-          .reviews-scroll-container {
-            scrollbar-color: rgba(124, 224, 168, 0.4) transparent;
-          }
-
-          .reviews-scroll-container::-webkit-scrollbar-track {
-            background: transparent;
-          }
-
-          .reviews-scroll-container::-webkit-scrollbar-thumb {
-            background: rgba(124, 224, 168, 0.4);
-          }
-
-          .reviews-scroll-container::-webkit-scrollbar-thumb:hover {
-            background: rgba(124, 224, 168, 0.6);
-          }
         }
       `}</style>
     </motion.main>

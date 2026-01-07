@@ -31,76 +31,86 @@ export type Vendor = {
   avatar?: string;
 };
 
-const FAVORITES_STORAGE_KEY = "favoriteVendors";
-
-// Helper function untuk manage favorites
-const getFavorites = (): string[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveFavorites = (ids: string[]) => {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(ids));
-  } catch (error) {
-    console.error("Error saving favorites:", error);
-  }
-};
-
 interface VendorCardProps {
   vendor: Vendor;
   isLoggedIn: boolean;
   onLoginRequired: () => void;
+  userId?: string;
 }
 
-export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: VendorCardProps) {
+export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId }: VendorCardProps) {
   const { id, name, verified, rating, reviewCount, tags, summary, gallery, avatar } = vendor;
   const router = useRouter();
   const prefersReduced = useReducedMotion();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Check if vendor is in favorites on mount - optimized
+  // Check if vendor is in favorites dari database
   useEffect(() => {
-    const favorites = getFavorites();
-    setIsFavorite(favorites.includes(id));
-  }, [id]);
+    const checkFavorite = async () => {
+      if (!isLoggedIn || !userId) return;
 
-  const handleToggleFavorite = useCallback((e: React.MouseEvent) => {
+      try {
+        const response = await fetch(`/api/user/favorites/check?vendorId=${id}`, {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setIsFavorite(data.isFavorite);
+        }
+      } catch (error) {
+        console.error('Error checking favorite:', error);
+      }
+    };
+
+    checkFavorite();
+  }, [id, isLoggedIn, userId]);
+
+  const handleToggleFavorite = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     
     // Cek login terlebih dahulu
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !userId) {
       onLoginRequired();
       return;
     }
 
-    const favorites = getFavorites();
-    const newIsFavorite = !isFavorite;
-    
-    setIsFavorite(newIsFavorite);
+    setIsLoading(true);
     setIsAnimating(true);
 
-    if (newIsFavorite) {
-      if (!favorites.includes(id)) {
-        saveFavorites([...favorites, id]);
-      }
-    } else {
-      saveFavorites(favorites.filter(favId => favId !== id));
-    }
+    try {
+      const endpoint = isFavorite ? '/api/user/favorites/remove' : '/api/user/favorites/add';
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ vendorId: id }),
+      });
 
-    setTimeout(() => setIsAnimating(false), 400);
-  }, [id, isFavorite, isLoggedIn, onLoginRequired]);
+      if (response.ok) {
+        setIsFavorite(!isFavorite);
+        
+        // Dispatch event untuk update favorites page
+        window.dispatchEvent(new CustomEvent('favoritesUpdated'));
+      } else {
+        const error = await response.json();
+        console.error('Error toggling favorite:', error);
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    } finally {
+      setIsLoading(false);
+      setTimeout(() => setIsAnimating(false), 400);
+    }
+  }, [id, isFavorite, isLoggedIn, userId, onLoginRequired]);
 
   const handleViewProfile = useCallback(() => {
-    // Lihat profil tidak perlu login
     setIsNavigating(true);
     setTimeout(() => {
       router.push(`/jasa/detailjasa/${id}`);
@@ -165,7 +175,8 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                       <TooltipTrigger asChild>
                         <button
                           onClick={handleToggleFavorite}
-                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative"
+                          disabled={isLoading}
+                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative disabled:opacity-50"
                           aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                         >
                           <Heart
@@ -192,7 +203,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                   </TooltipProvider>
                 </div>
 
-                {/* Rating - UPDATED */}
+                {/* Rating */}
                 <div className="mt-1 flex items-center gap-1.5 text-[10px] sm:text-sm md:text-base text-muted-foreground">
                   <RatingStars value={rating} size="sm" />
                   <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
@@ -267,7 +278,8 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleToggleFavorite}
-                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95"
+                      disabled={isLoading}
+                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95 disabled:opacity-50"
                       aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                     >
                       <Heart

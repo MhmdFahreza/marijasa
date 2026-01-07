@@ -1,3 +1,4 @@
+// app/components/lib/languange.ts
 "use client";
 
 import i18n from "i18next";
@@ -37,6 +38,7 @@ const resources = {
   },
 };
 
+// Initialize hanya sekali
 if (!i18n.isInitialized) {
   i18n
     .use(LanguageDetector)
@@ -47,11 +49,17 @@ if (!i18n.isInitialized) {
       supportedLngs: ["id", "en"],
       load: "languageOnly",
       detection: {
-        order: ["htmlTag", "navigator"],
-        caches: [], 
+        order: ["localStorage", "htmlTag", "navigator"],
+        caches: ["localStorage"],
       },
-      interpolation: { escapeValue: false },
+      interpolation: { 
+        escapeValue: false 
+      },
+      react: {
+        useSuspense: false, // Penting untuk Next.js
+      },
     });
 }
 
+export { i18n };
 export default i18n;
