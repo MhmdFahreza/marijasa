@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-// PENTING: Set runtime ke nodejs
 export const config = {
   matcher: [
     "/profile/:path*",
@@ -12,8 +11,8 @@ export const config = {
     "/login",
     "/register",
     "/register/otp",
+    "/mitra/:path*",
   ],
-  runtime: "nodejs", // Tambahkan ini
 };
 
 // Protected routes that require authentication
@@ -25,10 +24,61 @@ const authRoutes = ["/login", "/register", "/register/otp"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // =============== MITRA ROUTES ===============
+  if (pathname.startsWith('/mitra/')) {
+    // Allow access to login page
+    if (pathname === '/mitra/login') {
+      // If already logged in, redirect to dashboard
+      const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
+      const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
+
+      if (mitraSessionId && mitraAccessToken) {
+        return NextResponse.redirect(new URL("/mitra/dashboard", request.url));
+      }
+      
+      return NextResponse.next();
+    }
+
+    // Protected mitra routes - require authentication
+    const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
+    const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
+
+    if (!mitraSessionId || !mitraAccessToken) {
+      console.log('[Middleware] Mitra not authenticated, redirecting to login');
+      const url = new URL("/mitra/login", request.url);
+      return NextResponse.redirect(url);
+    }
+
+    // Verify mitra access token by calling verify API
+    try {
+      const verifyUrl = new URL('/api/mitra/verify', request.url);
+      const verifyResponse = await fetch(verifyUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'Cookie': `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken}`,
+        },
+      });
+
+      if (!verifyResponse.ok) {
+        console.log('[Middleware] Mitra token verification failed');
+        const url = new URL("/mitra/login", request.url);
+        return NextResponse.redirect(url);
+      }
+
+      console.log('[Middleware] Mitra authenticated successfully');
+      return NextResponse.next();
+    } catch (error) {
+      console.error('[Middleware] Error verifying mitra token:', error);
+      const url = new URL("/mitra/login", request.url);
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // =============== USER ROUTES ===============
+  
   // Get session ID and tokens from cookies
   const sessionId = request.cookies.get("session_id")?.value;
   const accessToken = request.cookies.get("access_token")?.value;
-  const refreshToken = request.cookies.get("refresh_token")?.value;
 
   // Get NextAuth session token
   const sessionToken = await getToken({
@@ -45,8 +95,6 @@ export async function middleware(request: NextRequest) {
   }
   // Check custom auth (session + access token)
   else if (sessionId && accessToken) {
-    // For custom auth, we'll validate in the API routes
-    // Here we just check if cookies exist
     isAuthenticated = true;
   }
 

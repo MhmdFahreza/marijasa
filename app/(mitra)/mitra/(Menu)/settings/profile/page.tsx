@@ -36,7 +36,7 @@ import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import CitySelect from "@/app/components/ui/city-select";
 import { CITIES_ID } from "@/app/data/cities-id";
 import { Skeleton } from "@/app/components/ui/skeleton";
-import { updateVendorData } from "@/app/data/dataVendor";
+import { toast } from "sonner";
 
 type ServiceArea = {
   id: string;
@@ -45,88 +45,66 @@ type ServiceArea = {
 };
 
 type ProfileData = {
-  id: string;
+  vendor_id: string;
   name: string;
   email: string;
   phone: string;
   description: string;
   avatar: string;
-  serviceAreas: ServiceArea[];
+  service_areas: string[];
   rating: number;
-  totalReviews: number;
-  joinDate: string;
+  review_count: number;
   verified: boolean;
   specialties: string[];
   tags: string[];
   category?: string;
-  summary?: string;
-};
-
-// Helper function untuk trigger custom event
-const updateMitraProfile = (name: string, avatar: string, verified?: boolean) => {
-  const event = new CustomEvent('mitraProfileUpdated', {
-    detail: { name, avatar, verified }
-  });
-  window.dispatchEvent(event);
-};
-
-// Helper function untuk load profile dari localStorage
-const loadProfileFromStorage = (): ProfileData | null => {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('mitraUser');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        
-        // Transform serviceAreas dari array string ke array object
-        const serviceAreas = Array.isArray(parsed.serviceAreas) 
-          ? parsed.serviceAreas.map((area: string, index: number) => ({
-              id: (index + 1).toString(),
-              city: area
-            }))
-          : [];
-        
-        return {
-          id: parsed.id || "mitra-001",
-          name: parsed.name || "Nama Mitra",
-          email: parsed.email || "",
-          phone: parsed.phone || "",
-          description: parsed.description || "",
-          avatar: parsed.avatar || "https://assets.aceternity.com/manu.png",
-          serviceAreas: serviceAreas,
-          rating: parsed.rating || 0,
-          totalReviews: parsed.reviewCount || 0,
-          joinDate: parsed.joinDate || "2023-01-15",
-          verified: parsed.verified || false,
-          specialties: parsed.specialties || [],
-          tags: parsed.tags || [],
-          category: parsed.category,
-          summary: parsed.summary || ""
-        };
-      } catch (e) {
-        console.error('Error parsing stored profile:', e);
-        return null;
-      }
-    }
-  }
-  return null;
+  join_date: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [newServiceArea, setNewServiceArea] = useState("");
   const [tempProfile, setTempProfile] = useState<ProfileData | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
 
-  // Load profile data dari localStorage saat mount
+  // Fetch profile data from API
   useEffect(() => {
-    const loadedProfile = loadProfileFromStorage();
-    if (loadedProfile) {
-      setProfile(loadedProfile);
-      setTempProfile(loadedProfile);
-    }
+    const fetchProfile = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/mitra/profile', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/mitra/login';
+            return;
+          }
+          throw new Error('Gagal memuat profil');
+        }
+
+        const data = await response.json();
+        setProfile(data.vendor);
+        setTempProfile(data.vendor);
+        setAvatarPreview(data.vendor.avatar || "https://assets.aceternity.com/manu.png");
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        toast.error('Gagal memuat profil');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProfile();
   }, []);
 
   // Reset tempProfile when editing starts
@@ -139,81 +117,104 @@ export default function ProfilePage() {
   const handleSave = async () => {
     if (!tempProfile) return;
     
-    setIsLoading(true);
+    setIsSaving(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setProfile(tempProfile);
-    
-    // Update localStorage mitraUser
-    if (typeof window !== 'undefined') {
-      const storedUser = localStorage.getItem('mitraUser');
-      if (storedUser) {
-        try {
-          const updatedUser = JSON.parse(storedUser);
-          updatedUser.name = tempProfile.name;
-          updatedUser.avatar = tempProfile.avatar;
-          updatedUser.description = tempProfile.description;
-          updatedUser.serviceAreas = tempProfile.serviceAreas.map(area => area.city);
-          updatedUser.specialties = tempProfile.specialties;
-          updatedUser.summary = tempProfile.description; // Update summary dengan description
-          
-          localStorage.setItem('mitraUser', JSON.stringify(updatedUser));
-          
-          // Update vendor data in global storage
-          updateVendorData(tempProfile.id, {
-            name: tempProfile.name,
-            avatar: tempProfile.avatar,
-            summary: tempProfile.description,
-            description: tempProfile.description,
-            serviceAreas: tempProfile.serviceAreas.map(area => area.city),
-            specialties: tempProfile.specialties,
-            verified: tempProfile.verified
-          });
-          
-          // Trigger update ke sidebar dan vendor cards
-          updateMitraProfile(tempProfile.name, tempProfile.avatar, tempProfile.verified);
-        } catch (e) {
-          console.error('Error updating localStorage:', e);
+    try {
+      // Upload avatar if changed
+      let avatarUrl = tempProfile.avatar;
+      
+      if (avatarFile) {
+        const formData = new FormData();
+        formData.append("avatar", avatarFile);
+
+        const uploadResponse = await fetch('/api/mitra/upload-avatar', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('Gagal mengupload avatar');
         }
+
+        const uploadData = await uploadResponse.json();
+        avatarUrl = uploadData.avatarUrl;
       }
+
+      // Update profile
+      const response = await fetch('/api/mitra/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: tempProfile.name,
+          description: tempProfile.description,
+          service_areas: tempProfile.service_areas,
+          specialties: tempProfile.specialties,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal menyimpan profil');
+      }
+
+      const data = await response.json();
+      
+      // Update state with new profile data
+      setProfile(data.vendor);
+      setTempProfile(data.vendor);
+      setAvatarFile(null);
+      
+      toast.success('Profil berhasil diperbarui!');
+      setShowSuccess(true);
+      setIsEditing(false);
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => setShowSuccess(false), 3000);
+      
+      // Dispatch event untuk update sidebar
+      window.dispatchEvent(new CustomEvent('mitraProfileUpdated', {
+        detail: { 
+          name: data.vendor.name, 
+          avatar: data.vendor.avatar,
+          verified: data.vendor.verified 
+        }
+      }));
+    } catch (error: any) {
+      console.error('Error saving profile:', error);
+      toast.error(error.message || 'Terjadi kesalahan saat menyimpan profil');
+    } finally {
+      setIsSaving(false);
     }
-    
-    setIsEditing(false);
-    setIsLoading(false);
-    setShowSuccess(true);
-    
-    // Hide success message after 3 seconds
-    setTimeout(() => setShowSuccess(false), 3000);
   };
 
   const handleCancel = () => {
     setTempProfile(profile);
+    setAvatarFile(null);
     setIsEditing(false);
+    toast.info("Perubahan dibatalkan");
   };
 
   const handleAddServiceArea = () => {
     if (!tempProfile || !newServiceArea) return;
     
-    if (!tempProfile.serviceAreas.some(area => area.city === newServiceArea)) {
+    if (!tempProfile.service_areas.includes(newServiceArea)) {
       setTempProfile({
         ...tempProfile,
-        serviceAreas: [
-          ...tempProfile.serviceAreas,
-          { id: Date.now().toString(), city: newServiceArea }
-        ]
+        service_areas: [...tempProfile.service_areas, newServiceArea]
       });
       setNewServiceArea("");
     }
   };
 
-  const handleRemoveServiceArea = (id: string) => {
+  const handleRemoveServiceArea = (city: string) => {
     if (!tempProfile) return;
     
     setTempProfile({
       ...tempProfile,
-      serviceAreas: tempProfile.serviceAreas.filter(area => area.id !== id)
+      service_areas: tempProfile.service_areas.filter(area => area !== city)
     });
   };
 
@@ -222,13 +223,24 @@ export default function ProfilePage() {
     
     const file = e.target.files?.[0];
     if (file) {
-      // Simulate upload and get URL
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Ukuran file maksimal 5MB");
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        toast.error("File harus berupa gambar");
+        return;
+      }
+
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setTempProfile({
-          ...tempProfile,
-          avatar: reader.result as string
-        });
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setAvatarPreview(event.target.result as string);
+          setAvatarFile(file);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -255,13 +267,23 @@ export default function ProfilePage() {
     });
   };
 
-  if (!profile || !tempProfile) {
+  if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Skeleton className="h-8 w-48 mb-6" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Skeleton className="h-64 lg:col-span-1" />
           <Skeleton className="h-96 lg:col-span-2" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile || !tempProfile) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">
+          <p className="text-gray-600">Profil tidak ditemukan</p>
         </div>
       </div>
     );
@@ -288,7 +310,7 @@ export default function ProfilePage() {
                   variant="outline"
                   onClick={handleCancel}
                   className="flex items-center gap-2"
-                  disabled={isLoading}
+                  disabled={isSaving}
                 >
                   <X className="h-4 w-4" />
                   <span className="hidden sm:inline">Batal</span>
@@ -296,9 +318,9 @@ export default function ProfilePage() {
                 <Button
                   onClick={handleSave}
                   className="bg-[#7CE0A8] hover:bg-[#6BC999] text-white flex items-center gap-2"
-                  disabled={isLoading}
+                  disabled={isSaving}
                 >
-                  {isLoading ? (
+                  {isSaving ? (
                     <>
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                       <span className="hidden sm:inline">Menyimpan...</span>
@@ -358,7 +380,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">
                     <Avatar className="h-32 w-32 sm:h-40 sm:w-40 border-4 border-white dark:border-neutral-800 shadow-lg">
-                      <AvatarImage src={isEditing ? tempProfile.avatar : profile.avatar} />
+                      <AvatarImage src={isEditing ? avatarPreview : profile.avatar} />
                       <AvatarFallback className="bg-[#7CE0A8]/20 text-[#7CE0A8] text-2xl">
                         {profile.name.charAt(0)}
                       </AvatarFallback>
@@ -376,6 +398,7 @@ export default function ProfilePage() {
                           accept="image/*"
                           onChange={handleAvatarChange}
                           className="hidden"
+                          disabled={isSaving}
                         />
                       </label>
                     )}
@@ -414,7 +437,7 @@ export default function ProfilePage() {
                     <div className="flex items-center justify-center gap-1">
                       <Briefcase className="h-4 w-4 text-[#7CE0A8]" />
                       <span className="text-lg font-bold text-neutral-900 dark:text-white">
-                        {profile.totalReviews}
+                        {profile.review_count}
                       </span>
                     </div>
                     <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
@@ -427,7 +450,7 @@ export default function ProfilePage() {
                   <div className="flex items-center justify-center gap-2">
                     <Clock className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
                     <span className="text-sm text-neutral-600 dark:text-neutral-400">
-                      Bergabung {new Date(profile.joinDate).toLocaleDateString('id-ID', {
+                      Bergabung {new Date(profile.join_date).toLocaleDateString('id-ID', {
                         year: 'numeric',
                         month: 'long'
                       })}
@@ -477,6 +500,7 @@ export default function ProfilePage() {
                           <button
                             onClick={() => handleRemoveSpecialty(index)}
                             className="ml-1 text-[#5AB88A] hover:text-[#4a9c7a]"
+                            disabled={isSaving}
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -487,6 +511,7 @@ export default function ProfilePage() {
                         variant="outline"
                         size="sm"
                         className="border-dashed border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
+                        disabled={isSaving}
                       >
                         <Plus className="h-3 w-3 mr-1" />
                         Tambah
@@ -547,6 +572,7 @@ export default function ProfilePage() {
                             onChange={(e) => setTempProfile({...tempProfile, name: e.target.value})}
                             placeholder="Masukkan nama mitra"
                             className="h-12 focus-visible:ring-[#7CE0A8]"
+                            disabled={isSaving}
                           />
                         ) : (
                           <div className="p-3 bg-gray-50 dark:bg-neutral-800 rounded-lg border">
@@ -601,6 +627,7 @@ export default function ProfilePage() {
                               placeholder="Ceritakan tentang layanan, pengalaman, dan keahlian Anda..."
                               rows={6}
                               className="focus-visible:ring-[#7CE0A8]"
+                              disabled={isSaving}
                             />
                             <p className="text-xs text-neutral-500 dark:text-neutral-400">
                               {tempProfile.description.length}/500 karakter
@@ -650,7 +677,7 @@ export default function ProfilePage() {
                             </div>
                             <Button
                               onClick={handleAddServiceArea}
-                              disabled={!newServiceArea}
+                              disabled={!newServiceArea || isSaving}
                               className="bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
                             >
                               <Plus className="h-4 w-4 mr-2" />
@@ -661,24 +688,25 @@ export default function ProfilePage() {
 
                         <div className="space-y-3">
                           <Label className="text-base font-semibold">
-                            Area Layanan Saat Ini ({tempProfile.serviceAreas.length} kota)
+                            Area Layanan Saat Ini ({tempProfile.service_areas.length} kota)
                           </Label>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                            {tempProfile.serviceAreas.map((area) => (
+                            {tempProfile.service_areas.map((city, index) => (
                               <div
-                                key={area.id}
+                                key={index}
                                 className="group relative p-4 bg-gradient-to-r from-gray-50 to-white dark:from-neutral-800 dark:to-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-[#7CE0A8]/50 transition-all"
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <MapPin className="h-4 w-4 text-[#7CE0A8]" />
                                     <span className="font-medium text-neutral-900 dark:text-white">
-                                      {area.city}
+                                      {city}
                                     </span>
                                   </div>
                                   <button
-                                    onClick={() => handleRemoveServiceArea(area.id)}
+                                    onClick={() => handleRemoveServiceArea(city)}
                                     className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full transition-colors"
+                                    disabled={isSaving}
                                   >
                                     <X className="h-4 w-4 text-red-500" />
                                   </button>
@@ -687,7 +715,7 @@ export default function ProfilePage() {
                             ))}
                           </div>
                           
-                          {tempProfile.serviceAreas.length === 0 && (
+                          {tempProfile.service_areas.length === 0 && (
                             <div className="text-center py-8 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg">
                               <Globe className="h-12 w-12 text-gray-400 dark:text-neutral-600 mx-auto mb-3" />
                               <p className="text-gray-500 dark:text-neutral-400">
@@ -718,18 +746,18 @@ export default function ProfilePage() {
                       <div className="space-y-6">
                         <div className="space-y-3">
                           <Label className="text-base font-semibold">
-                            Area Layanan ({profile.serviceAreas.length} kota)
+                            Area Layanan ({profile.service_areas.length} kota)
                           </Label>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                            {profile.serviceAreas.map((area) => (
+                            {profile.service_areas.map((city, index) => (
                               <div
-                                key={area.id}
+                                key={index}
                                 className="p-4 bg-gradient-to-r from-gray-50 to-white dark:from-neutral-800 dark:to-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700"
                               >
                                 <div className="flex items-center gap-2">
                                   <MapPin className="h-4 w-4 text-[#7CE0A8]" />
                                   <span className="font-medium text-neutral-900 dark:text-white">
-                                    {area.city}
+                                    {city}
                                   </span>
                                 </div>
                               </div>
@@ -744,7 +772,7 @@ export default function ProfilePage() {
                                 Total Area Layanan
                               </p>
                               <p className="text-2xl font-bold text-[#7CE0A8] mt-1">
-                                {profile.serviceAreas.length}
+                                {profile.service_areas.length}
                               </p>
                             </div>
                             <div className="text-right">
@@ -752,7 +780,7 @@ export default function ProfilePage() {
                                 Area Terpopuler
                               </p>
                               <p className="text-lg font-semibold text-neutral-700 dark:text-neutral-300 mt-1">
-                                {profile.serviceAreas[0]?.city || "-"}
+                                {profile.service_areas[0] || "-"}
                               </p>
                             </div>
                           </div>
@@ -773,7 +801,7 @@ export default function ProfilePage() {
                       variant="outline"
                       onClick={handleCancel}
                       className="flex-1"
-                      disabled={isLoading}
+                      disabled={isSaving}
                     >
                       <X className="h-4 w-4 mr-2" />
                       Batal
@@ -781,9 +809,9 @@ export default function ProfilePage() {
                     <Button
                       onClick={handleSave}
                       className="flex-1 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
-                      disabled={isLoading}
+                      disabled={isSaving}
                     >
-                      {isLoading ? (
+                      {isSaving ? (
                         <>
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2" />
                           Menyimpan...
@@ -819,7 +847,7 @@ export default function ProfilePage() {
                 variant="outline"
                 onClick={handleCancel}
                 className="px-6"
-                disabled={isLoading}
+                disabled={isSaving}
               >
                 <X className="h-4 w-4 mr-2" />
                 Batalkan Perubahan
@@ -827,9 +855,9 @@ export default function ProfilePage() {
               <Button
                 onClick={handleSave}
                 className="px-6 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
-                disabled={isLoading}
+                disabled={isSaving}
               >
-                {isLoading ? (
+                {isSaving ? (
                   <>
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mr-2" />
                     Menyimpan Perubahan...

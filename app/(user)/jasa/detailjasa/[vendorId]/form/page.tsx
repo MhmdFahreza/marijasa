@@ -21,7 +21,6 @@ import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
-import { getVendorById, getCategoryFromTags } from "@/app/data/dataVendor";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
@@ -42,21 +41,74 @@ const PAYMENT_FEES = {
 
 const SERVICE_FEE = 10000;
 
-// Fungsi untuk mendapatkan info user dari Gmail (sama seperti di profile)
-const getUserInfoFromGmail = (email: string): { name: string; phone: string } => {
-  const emailPrefix = email.split('@')[0];
-  const capitalizedName = emailPrefix
-    .split(/[._-]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-
-  const phoneNumber = `08${Math.abs(emailPrefix.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 100000000).toString().padStart(9, '0')}`;
-
-  return {
-    name: capitalizedName,
-    phone: phoneNumber
+// Interface untuk data order
+interface OrderData {
+  id?: string;
+  orderId: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  customerAddress: string;
+  gpsLink: string;
+  vendorId: string;
+  serviceCategory: string;
+  serviceDetails: {
+    selectedServices: string[];
+    quantities: { [key: string]: number };
+    notes?: string;
   };
-};
+  workDate: string;
+  workTime: string;
+  additionalNotes?: string;
+  status: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled";
+  orderDate: string;
+  paymentStatus: "pending" | "paid" | "failed" | "refunded";
+  subtotal: number;
+  serviceFee: number;
+  paymentMethod?: string;
+  totalAmount: number;
+  transactionFee?: number;
+}
+
+interface Vendor {
+  vendor_id: string;
+  name: string;
+  email: string;
+  phone: string;
+  avatar?: string;
+  description?: string;
+  verified: boolean;
+  status: string;
+  rating: number;
+  review_count: number;
+  service_areas: string[];
+  specialties: string[];
+  tags: string[];
+  category?: string;
+  join_date: string;
+  services?: Service[];
+  gallery?: any[];
+}
+
+interface Service {
+  service_id: string;
+  name: string;
+  description: string;
+  price: number;
+  price_type: string;
+  estimated_time?: string;
+  is_active: boolean;
+}
+
+interface UserProfile {
+  user_id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  gps_link?: string;
+  avatar?: string;
+}
 
 export default function VendorFormPage() {
   const params = useParams();
@@ -77,115 +129,122 @@ export default function VendorFormPage() {
   const [initialOrderId, setInitialOrderId] = useState<string>("");
   const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [vendor, setVendor] = useState<any>(null);
+  const [vendor, setVendor] = useState<Vendor | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // PERBAIKAN: Fungsi untuk load profile data dengan fallback ke user data
-  const loadProfileData = () => {
-    const savedProfile = localStorage.getItem("userProfile");
+  // Fetch user profile from API
+  const fetchUserProfile = async () => {
+    try {
+      const response = await fetch('/api/user/profile', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
 
-    if (savedProfile) {
-      const profile = JSON.parse(savedProfile);
-      setFormData((prev: any) => ({
-        ...prev,
-        name: profile.name || "",
-        email: profile.email || "",
-        phone: profile.phone || "",
-        address: profile.address || "",
-        gpsLink: prev.gpsLink || ""
-      }));
-      return;
-    }
-
-    const userData = localStorage.getItem("user");
-    const authData = localStorage.getItem("authData");
-
-    if (userData) {
-      try {
-        const parsedUserData = JSON.parse(userData);
-        const parsedAuthData = authData ? JSON.parse(authData) : null;
-
-        const userInfo = getUserInfoFromGmail(parsedUserData.email);
-
-        const newProfile = {
-          id: `user-${Date.now()}`,
-          name: userInfo.name,
-          email: parsedUserData.email,
-          phone: userInfo.phone,
-          address: "",
-          gpsLink: "",
-          joinDate: parsedAuthData?.loginTime
-            ? new Date(parsedAuthData.loginTime).toISOString().split('T')[0]
-            : new Date().toISOString().split('T')[0],
-          avatar: parsedUserData.avatar || "/avatars/user-avatar.jpg",
-        };
-
-        localStorage.setItem("userProfile", JSON.stringify(newProfile));
-
-        setFormData((prev: any) => ({
-          ...prev,
-          name: newProfile.name,
-          email: newProfile.email,
-          phone: newProfile.phone,
-          address: newProfile.address,
-          gpsLink: ""
-        }));
-
-      } catch (error) {
-        console.error("Error parsing user data:", error);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profile) {
+          setUserProfile(data.profile);
+          setFormData((prev: any) => ({
+            ...prev,
+            name: data.profile.name || "",
+            email: data.profile.email || "",
+            phone: data.profile.phone || "",
+            address: data.profile.address || "",
+            gpsLink: data.profile.gps_link || ""
+          }));
+        }
       }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      toast.error("Gagal memuat data profil");
+    }
+  };
+
+  // Fetch vendor data from API
+  const fetchVendor = async (vendorId: string) => {
+    try {
+      const response = await fetch(`/api/vendors/${vendorId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.vendor) {
+          setVendor(data.vendor);
+          return data.vendor;
+        } else {
+          toast.error("Data vendor tidak ditemukan");
+          setVendor(null);
+          return null;
+        }
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Gagal memuat data vendor");
+        setVendor(null);
+        return null;
+      }
+    } catch (error) {
+      console.error("Error fetching vendor:", error);
+      toast.error("Terjadi kesalahan saat memuat data vendor");
+      setVendor(null);
+      return null;
     }
   };
 
   useEffect(() => {
     setMounted(true);
 
-    const authData = localStorage.getItem("authData");
-    const userData = localStorage.getItem("user");
-    const userToken = localStorage.getItem("userToken");
+    // Check authentication and load data
+    const checkAuthAndLoadData = async () => {
+      try {
+        // Check authentication
+        const response = await fetch('/api/auth/session', {
+          method: 'GET',
+          credentials: 'include',
+        });
 
-    if (!authData || !userData || !userToken) {
-      toast.error("Anda harus login terlebih dahulu");
-      router.push("/login");
-      return;
-    }
+        if (!response.ok) {
+          toast.error("Anda harus login terlebih dahulu");
+          router.push("/login");
+          return;
+        }
 
-    loadProfileData();
+        // Load user profile
+        await fetchUserProfile();
 
-    const vendorId = params.vendorId as string;
-    const vendorData = getVendorById(vendorId);
-    setVendor(vendorData);
+        // Load vendor data
+        const vendorId = params.vendorId as string;
+        if (!vendorId) {
+          toast.error("ID vendor tidak valid");
+          router.push("/jasa");
+          return;
+        }
 
-    const handleProfileUpdate = (event: CustomEvent) => {
-      const updatedProfile = event.detail;
-      setFormData((prev: any) => ({
-        ...prev,
-        name: updatedProfile.name || "",
-        phone: updatedProfile.phone || "",
-        address: updatedProfile.address || "",
-      }));
-      toast.success("Data profil telah diperbarui!");
-    };
+        const vendorData = await fetchVendor(vendorId);
+        if (!vendorData) {
+          // Vendor not found, we'll handle in the render
+          setIsLoading(false);
+          return;
+        }
 
-    window.addEventListener('profileUpdated', handleProfileUpdate as EventListener);
-
-    return () => {
-      window.removeEventListener('profileUpdated', handleProfileUpdate as EventListener);
-    };
-  }, [params.vendorId, router]);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadProfileData();
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error checking auth:", error);
+        toast.error("Terjadi kesalahan");
+        router.push("/login");
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+    checkAuthAndLoadData();
+  }, [params.vendorId, router]);
 
   const handleNavigation = async (url: string) => {
     setLeaving(true);
@@ -205,49 +264,66 @@ export default function VendorFormPage() {
   };
 
   const handleUseProfileLocation = () => {
-    const savedProfile = localStorage.getItem("userProfile");
-    if (savedProfile) {
-      const profile = JSON.parse(savedProfile);
-      if (profile.gpsLink) {
-        setFormData({ ...formData, gpsLink: profile.gpsLink });
-        toast.success("Lokasi dari profile berhasil dimuat!");
-      } else {
-        toast.error("Belum ada lokasi tersimpan di profile. Silakan isi di halaman Profile terlebih dahulu.");
-      }
+    if (userProfile?.gps_link) {
+      setFormData({ ...formData, gpsLink: userProfile.gps_link });
+      toast.success("Lokasi dari profile berhasil dimuat!");
     } else {
-      toast.error("Belum ada data profile. Silakan isi profile terlebih dahulu.");
+      toast.error("Belum ada lokasi tersimpan di profile. Silakan isi di halaman Profile terlebih dahulu.");
     }
   };
 
-  // PERBAIKAN: Fungsi untuk membuat notifikasi user
-  const createUserNotification = (notification: {
-    title: string;
-    message: string;
-    type: 'order' | 'promo' | 'system' | 'reminder' | 'additional_service';
-    orderId?: string;
-  }) => {
-    const notifications = JSON.parse(localStorage.getItem('userNotifications') || '[]');
-    const newNotification = {
-      id: `notif-${Date.now()}`,
-      ...notification,
-      time: new Date().toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      date: new Date().toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      }),
-      read: false
-    };
-    notifications.unshift(newNotification);
-    localStorage.setItem('userNotifications', JSON.stringify(notifications));
+  // Fungsi untuk menyimpan order ke database
+  const saveOrderToDatabase = async (orderData: OrderData): Promise<{ success: boolean; orderId?: string; error?: string }> => {
+    try {
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(orderData),
+      });
 
-    // Dispatch event untuk update notifikasi di layout
-    window.dispatchEvent(new CustomEvent('notificationUpdated', {
-      detail: { type: 'user', notification: newNotification }
-    }));
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Gagal menyimpan pesanan');
+      }
+
+      const data = await response.json();
+      return { success: true, orderId: data.orderId };
+    } catch (error: any) {
+      console.error("Error saving order to database:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Fungsi untuk update payment status
+  const updatePaymentStatus = async (orderId: string, paymentData: {
+    paymentMethod: string;
+    paymentStatus: string;
+    transactionFee: number;
+    totalAmount: number;
+  }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch(`/api/bookings/${orderId}/payment`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(paymentData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Gagal memperbarui status pembayaran');
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error updating payment status:", error);
+      return { success: false, error: error.message };
+    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -285,118 +361,39 @@ export default function VendorFormPage() {
 
     const vendorId = params.vendorId as string;
 
-    // Buat data pesanan untuk user
-    const initialOrderData = {
-      id: orderId,
+    // Buat data pesanan untuk database
+    const orderData: OrderData = {
       orderId: orderId,
-      vendorName: vendor?.name || "",
-      serviceType: getServiceDescription(),
-      serviceDate: formData.date ? new Date(formData.date).toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      }) : "",
-      serviceTime: formattedTime,
-      status: "menunggu pembayaran",
-      statusColor: "bg-yellow-100 text-yellow-800",
-      totalPrice: servicePrice + SERVICE_FEE,
-      vendorAvatar: vendor?.avatar ?? "",
-      orderDate: new Date().toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      }) + " - " + new Date().toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      paymentMethod: null,
-      paymentId: null,
-      customerInfo: {
-        name: formData.name || "",
-        email: formData.email || "",
-        phone: formData.phone || "",
-        address: formData.address || "",
-        gpsLink: formData.gpsLink || ""
-      },
-      serviceDetails: {
-        complaints: [],
-        services: [getServiceDescription()],
-        repairs: [],
-        freon: false,
-        installation: false,
-        propertyType: formData.propertyType || "",
-        date: formData.date || "",
-        time: formattedTime,
-        budget: ""
-      },
-      paymentDetails: {
-        subtotal: servicePrice,
-        minTransaction: 75000,
-        serviceFee: SERVICE_FEE,
-        transactionFee: 0,
-        total: servicePrice + SERVICE_FEE
-      },
-      orderHistory: [
-        {
-          status: "Permintaan Dibuat",
-          date: new Date().toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-          }) + " - " + new Date().toLocaleTimeString('id-ID', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        }
-      ],
-      vendorNotes: ""
-    };
-
-    // Simpan pesanan user
-    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    localStorage.setItem('userOrders', JSON.stringify([...existingOrders, initialOrderData]));
-
-    // LANGSUNG SIMPAN KE MITRA
-    const serviceCategory = getCategoryFromTags(vendor?.tags || []);
-    const buildServiceDetails = (category: string, formData: any, servicePrice: number) => {
-      const selectedServices = formData.selectedServices || [];
-      return {
-        selectedServices: selectedServices,
-        additionalInfo: formData.additionalInfo || {},
-        totalPrice: servicePrice
-      };
-    };
-
-    const serviceDetails = buildServiceDetails(serviceCategory, formData, servicePrice);
-
-    const newOrderForMitra = {
-      id: orderId,
       customerName: formData.name || "",
       customerEmail: formData.email || "",
       customerPhone: formData.phone || "",
       customerAddress: formData.address || "",
       gpsLink: formData.gpsLink || "",
       vendorId: vendorId,
-      serviceCategory: serviceCategory,
-      serviceDetails: serviceDetails,
-      workDate: formData.date || new Date().toISOString().split('T')[0],
+      serviceCategory: vendor?.category || (vendor?.tags?.[0] || "Lainnya"),
+      serviceDetails: {
+        selectedServices: formData.selectedServices || [],
+        quantities: formData.quantities || {},
+        notes: formData.notes || ""
+      },
+      workDate: formData.date,
       workTime: formattedTime,
       additionalNotes: formData.notes || "",
       status: "pending",
       orderDate: new Date().toISOString().split('T')[0],
-      paymentStatus: "unpaid"
+      paymentStatus: "pending",
+      subtotal: servicePrice,
+      serviceFee: SERVICE_FEE,
+      totalAmount: servicePrice + SERVICE_FEE
     };
 
-    const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-    localStorage.setItem('allOrders', JSON.stringify([...allOrders, newOrderForMitra]));
-
-    // PERBAIKAN: Buat notifikasi saat berhasil mengajukan pemesanan (DI SINI, BUKAN saat pembayaran)
-    createUserNotification({
-      title: "Pesanan Baru Dibuat",
-      message: `Pesanan #${orderId} telah berhasil dibuat. Silakan lanjutkan ke pembayaran.`,
-      type: 'order',
-      orderId: orderId
-    });
+    // Simpan ke database
+    const result = await saveOrderToDatabase(orderData);
+    
+    if (!result.success) {
+      toast.error(result.error || "Gagal menyimpan pesanan");
+      return;
+    }
 
     setShowSuccessModal(true);
 
@@ -406,7 +403,6 @@ export default function VendorFormPage() {
     }, 2000);
   };
 
-  // PERBAIKAN: handleFinalSubmit TANPA membuat notifikasi lagi
   const handleFinalSubmit = async () => {
     if (!selectedPayment) {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
@@ -436,66 +432,28 @@ export default function VendorFormPage() {
       }
     }
 
-    // PERBAIKAN: TIDAK membuat notifikasi lagi di sini karena sudah dibuat saat form submit
-
     setIsProcessingPayment(true);
 
+    // Update payment status di database
+    const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
+    const totalPrice = calculateTotalPrice();
+
+    const paymentData = {
+      paymentMethod: selectedPayment,
+      paymentStatus: "paid",
+      transactionFee: transactionFee,
+      totalAmount: totalPrice
+    };
+
+    const result = await updatePaymentStatus(initialOrderId, paymentData);
+
+    if (!result.success) {
+      toast.error(result.error || "Gagal memproses pembayaran");
+      setIsProcessingPayment(false);
+      return;
+    }
+
     setTimeout(() => {
-      // Update pesanan user: status jadi diproses
-      const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-      const updatedOrders = existingOrders.map((order: any) => {
-        if (order.id === initialOrderId) {
-          const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-          const total = calculateTotalPrice();
-
-          return {
-            ...order,
-            paymentMethod: selectedPayment,
-            paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
-            status: "diproses",
-            statusColor: "bg-blue-100 text-blue-800",
-            totalPrice: total,
-            paymentDetails: {
-              ...order.paymentDetails,
-              transactionFee: transactionFee,
-              total: total
-            },
-            orderHistory: [
-              ...order.orderHistory,
-              {
-                status: "Pembayaran Diterima",
-                date: new Date().toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-              }
-            ]
-          };
-        }
-        return order;
-      });
-
-      localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
-
-      // Update pesanan mitra
-      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-      const updatedAllOrders = allOrders.map((order: any) => {
-        if (order.id === initialOrderId) {
-          return {
-            ...order,
-            status: "in-progress",
-            paymentStatus: "paid"
-          };
-        }
-        return order;
-      });
-
-      localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
-
       setIsProcessingPayment(false);
       setShowPaymentSuccessModal(true);
 
@@ -513,8 +471,8 @@ export default function VendorFormPage() {
     let total = 0;
 
     selectedServices.forEach((serviceId: string) => {
-      const service = vendor.services.find((s: any) => s.id === serviceId);
-      if (service && service.active) {
+      const service = vendor.services?.find((s: Service) => s.service_id === serviceId);
+      if (service && service.is_active) {
         const quantity = formData.quantities?.[serviceId] || 1;
         total += service.price * quantity;
       }
@@ -550,7 +508,7 @@ export default function VendorFormPage() {
     if (selectedServices.length === 0) return "Layanan";
 
     const serviceNames = selectedServices.map((serviceId: string) => {
-      const service = vendor.services.find((s: any) => s.id === serviceId);
+      const service = vendor.services?.find((s: Service) => s.service_id === serviceId);
       if (service) {
         const quantity = formData.quantities?.[serviceId] || 1;
         return `${service.name}${quantity > 1 ? ` (${quantity}x)` : ''}`;
@@ -561,8 +519,12 @@ export default function VendorFormPage() {
     return serviceNames || "Layanan";
   };
 
-  if (!mounted) {
-    return null;
+  if (!mounted || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoaderTwo />
+      </div>
+    );
   }
 
   if (!vendor) {
@@ -570,6 +532,7 @@ export default function VendorFormPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">Vendor Tidak Ditemukan</h1>
+          <p className="text-gray-600 mb-4">Vendor dengan ID {params.vendorId} tidak ditemukan dalam database.</p>
           <Button onClick={() => handleNavigation("/jasa")}>
             Kembali ke Daftar Jasa
           </Button>
@@ -624,9 +587,9 @@ export default function VendorFormPage() {
                 <BreadcrumbLink asChild>
                   <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
                     <a
-                      href={`/jasa/detailjasa/${vendor.id}`}
+                      href={`/jasa/detailjasa/${vendor.vendor_id}`}
                       className="cursor-pointer"
-                      onClick={(e) => handleBreadcrumbClick(e, `/jasa/detailjasa/${vendor.id}`)}
+                      onClick={(e) => handleBreadcrumbClick(e, `/jasa/detailjasa/${vendor.vendor_id}`)}
                     >
                       {vendor.name}
                     </a>
@@ -652,6 +615,7 @@ export default function VendorFormPage() {
             handleCancel={handleCancel}
             handleUseProfileLocation={handleUseProfileLocation}
             gettingLocation={gettingLocation}
+            userProfile={userProfile}
           />
         ) : (
           <ConfirmationStep
@@ -695,7 +659,7 @@ export default function VendorFormPage() {
                 Berhasil Mengajukan Pemesanan!
               </h3>
               <p className="text-gray-600 mb-6">
-                Pesanan Anda telah berhasil diajukan dan tersimpan di riwayat pemesanan.
+                Pesanan Anda telah berhasil diajukan dan tersimpan di database.
                 Silakan lanjutkan ke pembayaran.
               </p>
               <div className="flex justify-center">
@@ -759,7 +723,7 @@ export default function VendorFormPage() {
   );
 }
 
-// OrderForm component - same as before
+// OrderForm component
 function OrderForm({
   vendor,
   formData,
@@ -767,7 +731,8 @@ function OrderForm({
   handleFormSubmit,
   handleCancel,
   handleUseProfileLocation,
-  gettingLocation
+  gettingLocation,
+  userProfile
 }: any) {
   const getTomorrowDate = () => {
     const tomorrow = new Date();
@@ -813,7 +778,7 @@ function OrderForm({
     setFormData({ ...formData, minute: minute.toString() });
   };
 
-  const activeServices = vendor.services?.filter((s: any) => s.active) || [];
+  const activeServices = vendor.services?.filter((s: any) => s.is_active) || [];
 
   return (
     <>
@@ -828,7 +793,7 @@ function OrderForm({
             </Avatar>
             <div>
               <h2 className="text-xl font-bold">{vendor.name}</h2>
-              <p className="text-sm text-muted-foreground">{vendor.tags.join(" • ")}</p>
+              <p className="text-sm text-muted-foreground">{vendor.tags?.join(" • ") || "Layanan profesional"}</p>
             </div>
           </div>
         </CardContent>
@@ -838,7 +803,7 @@ function OrderForm({
         <CardHeader>
           <CardTitle>Form Pemesanan Layanan</CardTitle>
           <CardDescription>
-            Lengkapi formulir di bawah untuk memesan layanan {vendor.tags[0]}
+            Lengkapi formulir di bawah untuk memesan layanan {vendor.tags?.[0] || vendor.name}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -856,7 +821,7 @@ function OrderForm({
                     id="name"
                     placeholder="Masukkan nama lengkap"
                     required
-                    value={formData.name || ""}
+                    value={formData.name || userProfile?.name || ""}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
@@ -868,7 +833,7 @@ function OrderForm({
                     type="tel"
                     placeholder="08xxxxxxxxxx"
                     required
-                    value={formData.phone || ""}
+                    value={formData.phone || userProfile?.phone || ""}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                 </div>
@@ -920,7 +885,7 @@ function OrderForm({
                   placeholder="Masukkan alamat lengkap"
                   rows={3}
                   required
-                  value={formData.address || ""}
+                  value={formData.address || userProfile?.address || ""}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 />
               </div>
@@ -942,33 +907,33 @@ function OrderForm({
               ) : (
                 <div className="space-y-3">
                   {activeServices.map((service: any) => (
-                    <div key={service.id} className="border rounded-lg p-4">
+                    <div key={service.service_id} className="border rounded-lg p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-3 flex-1">
                           <Checkbox
-                            id={service.id}
-                            checked={(formData.selectedServices || []).includes(service.id)}
+                            id={service.service_id}
+                            checked={(formData.selectedServices || []).includes(service.service_id)}
                             onCheckedChange={(checked) => {
                               const current = formData.selectedServices || [];
                               if (checked) {
                                 setFormData({
                                   ...formData,
-                                  selectedServices: [...current, service.id],
-                                  quantities: { ...(formData.quantities || {}), [service.id]: 1 }
+                                  selectedServices: [...current, service.service_id],
+                                  quantities: { ...(formData.quantities || {}), [service.service_id]: 1 }
                                 });
                               } else {
                                 const newQuantities = { ...(formData.quantities || {}) };
-                                delete newQuantities[service.id];
+                                delete newQuantities[service.service_id];
                                 setFormData({
                                   ...formData,
-                                  selectedServices: current.filter((i: string) => i !== service.id),
+                                  selectedServices: current.filter((i: string) => i !== service.service_id),
                                   quantities: newQuantities
                                 });
                               }
                             }}
                           />
                           <div className="flex-1">
-                            <Label htmlFor={service.id} className="font-medium cursor-pointer">
+                            <Label htmlFor={service.service_id} className="font-medium cursor-pointer">
                               {service.name}
                             </Label>
                             <p className="text-sm text-muted-foreground mt-1">
@@ -980,15 +945,15 @@ function OrderForm({
                         <div className="text-right">
                           <div className="font-semibold text-primary">
                             Rp {service.price.toLocaleString('id-ID')}
-                            {service.priceType === 'hourly' && '/jam'}
-                            {service.priceType === 'unit' && '/unit'}
+                            {service.price_type === 'HOURLY' && '/jam'}
+                            {service.price_type === 'UNIT' && '/unit'}
                           </div>
 
-                          {(formData.selectedServices || []).includes(service.id) && (
+                          {(formData.selectedServices || []).includes(service.service_id) && (
                             <div className="mt-2">
-                              <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>
+                              <Label htmlFor={`qty-${service.service_id}`} className="text-xs">Jumlah:</Label>
                               <Input
-                                id={`qty-${service.id}`}
+                                id={`qty-${service.service_id}`}
                                 type="number"
                                 min="1"
                                 defaultValue="1"
@@ -999,7 +964,7 @@ function OrderForm({
                                     ...formData,
                                     quantities: {
                                       ...(formData.quantities || {}),
-                                      [service.id]: qty
+                                      [service.service_id]: qty
                                     }
                                   });
                                 }}
@@ -1022,7 +987,7 @@ function OrderForm({
                         const selectedServices = formData.selectedServices || [];
                         let total = 0;
                         selectedServices.forEach((serviceId: string) => {
-                          const service = activeServices.find((s: any) => s.id === serviceId);
+                          const service = activeServices.find((s: any) => s.service_id === serviceId);
                           if (service) {
                             const quantity = formData.quantities?.[serviceId] || 1;
                             total += service.price * quantity;
@@ -1126,7 +1091,7 @@ function OrderForm({
   );
 }
 
-// ConfirmationStep component - same as before but without notification on payment
+// ConfirmationStep component
 function ConfirmationStep({
   vendor,
   formData,
@@ -1455,7 +1420,6 @@ function ConfirmationStep({
                       }}
                       className="space-y-4"
                     >
-                      {/* Payment methods rendering - abbreviated for space */}
                       {Object.entries(paymentMethods).map(([category, methods]) => (
                         <div key={category} className="border rounded-lg overflow-hidden">
                           <button

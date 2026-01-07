@@ -42,25 +42,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AspectRatio } from "@/app/components/ui/aspect-ratio";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
-import { updateVendorData } from "@/app/data/dataVendor";
+import { toast } from "sonner";
 
 type ServiceItem = {
-  id: string;
+  service_id: string;
   name: string;
   price: number;
-  priceType: "fixed" | "hourly" | "unit" | "custom";
+  price_type: "FIXED" | "HOURLY" | "UNIT";
   description: string;
-  active: boolean;
-  estimatedTime?: string;
+  is_active: boolean;
+  estimated_time?: string;
 };
 
 type WorkImage = {
-  id: string;
-  file?: File;
-  preview: string;
-  displayName: string;
-  uploadedAt: Date;
-  description?: string;
+  gallery_id: string;
+  image_url: string;
+  caption?: string;
+  sort_order: number;
+  created_at: string;
 };
 
 type ServiceCategory = {
@@ -127,13 +126,13 @@ export default function ServicesPage() {
   const [isEditingService, setIsEditingService] = useState(false);
   const [currentService, setCurrentService] = useState<ServiceItem | null>(null);
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
-  const [newService, setNewService] = useState<Omit<ServiceItem, 'id'>>({
+  const [newService, setNewService] = useState<Omit<ServiceItem, 'service_id'>>({
     name: "",
     price: 0,
-    priceType: "fixed",
+    price_type: "FIXED",
     description: "",
-    active: true,
-    estimatedTime: ""
+    is_active: true,
+    estimated_time: ""
   });
 
   const [workImages, setWorkImages] = useState<WorkImage[]>([]);
@@ -146,47 +145,46 @@ export default function ServicesPage() {
 
   const [priceInput, setPriceInput] = useState<string>("");
 
+  // Fetch data from API
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
 
-      if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('mitraUser');
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setVendorData(parsed);
-            
-            if (parsed.services && Array.isArray(parsed.services)) {
-              setServices(parsed.services);
-            }
-            
-            if (parsed.category) {
-              setSelectedCategory(parsed.category);
-            }
+        // Fetch vendor profile to get category
+        const profileResponse = await fetch('/api/mitra/profile', {
+          method: 'GET',
+          credentials: 'include',
+        });
 
-            // Load work images
-            if (parsed.gallery && Array.isArray(parsed.gallery)) {
-              const images: WorkImage[] = parsed.gallery.map((img: any, index: number) => ({
-                id: `img-${index + 1}-${Date.now()}`,
-                preview: img.src,
-                displayName: img.alt || `image-${index + 1}.jpg`,
-                uploadedAt: new Date(),
-                description: img.alt
-              }));
-              setWorkImages(images);
-            }
-          } catch (e) {
-            console.error('Error parsing vendor data:', e);
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          setVendorData(profileData.vendor);
+          if (profileData.vendor.category) {
+            setSelectedCategory(profileData.vendor.category);
           }
         }
+
+        // Fetch services
+        const servicesResponse = await fetch('/api/mitra/services', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (servicesResponse.ok) {
+          const servicesData = await servicesResponse.json();
+          setServices(servicesData.services || []);
+          setWorkImages(servicesData.gallery || []);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error('Gagal memuat data');
+      } finally {
+        setIsLoading(false);
       }
-      
-      setIsLoading(false);
     };
 
-    loadData();
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -199,66 +197,15 @@ export default function ServicesPage() {
     }
   }, [isServiceDialogOpen, isEditingService, currentService]);
 
-  const saveServicesToStorage = useCallback((updatedServices: ServiceItem[]) => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('mitraUser');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          parsed.services = updatedServices;
-          localStorage.setItem('mitraUser', JSON.stringify(parsed));
-          setVendorData(parsed);
-
-          // Update vendor data in global storage
-          updateVendorData(parsed.id, {
-            services: updatedServices
-          });
-        } catch (e) {
-          console.error('Error updating services:', e);
-        }
-      }
-    }
-  }, []);
-
-  const saveImagesToStorage = useCallback((images: WorkImage[]) => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('mitraUser');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          const gallery = images.map(img => ({
-            src: img.preview,
-            alt: img.description || img.displayName
-          }));
-          
-          // Update localStorage
-          parsed.gallery = gallery;
-          localStorage.setItem('mitraUser', JSON.stringify(parsed));
-          setVendorData(parsed);
-
-          // PENTING: Update vendor data in global storage dengan sessionStorage
-          updateVendorData(parsed.id, {
-            gallery: gallery
-          });
-
-          console.log('Gallery updated successfully:', gallery);
-          console.log('Vendor ID:', parsed.id);
-        } catch (e) {
-          console.error('Error updating images:', e);
-        }
-      }
-    }
-  }, []);
-
   const handleAddService = () => {
     setCurrentService(null);
     setNewService({
       name: "",
       price: 0,
-      priceType: "fixed",
+      price_type: "FIXED",
       description: "",
-      active: true,
-      estimatedTime: ""
+      is_active: true,
+      estimated_time: ""
     });
     setPriceInput("");
     setIsEditingService(false);
@@ -270,111 +217,195 @@ export default function ServicesPage() {
     setNewService({
       name: service.name,
       price: service.price,
-      priceType: service.priceType,
+      price_type: service.price_type,
       description: service.description,
-      active: service.active,
-      estimatedTime: service.estimatedTime || ""
+      is_active: service.is_active,
+      estimated_time: service.estimated_time || ""
     });
     setPriceInput(service.price === 0 ? "" : service.price.toString());
     setIsEditingService(true);
     setIsServiceDialogOpen(true);
   };
 
-  const handleDeleteService = (id: string) => {
-    const updatedServices = services.filter(service => service.id !== id);
-    setServices(updatedServices);
-    saveServicesToStorage(updatedServices);
-    setSuccessMessage("Layanan berhasil dihapus");
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
-  };
-
-  const handleSaveService = () => {
-    const priceValue = priceInput === "" ? 0 : parseInt(priceInput.replace(/\D/g, '')) || 0;
-
-    let updatedServices: ServiceItem[];
-
-    if (isEditingService && currentService) {
-      updatedServices = services.map(service =>
-        service.id === currentService.id
-          ? { ...newService, price: priceValue, id: currentService.id }
-          : service
-      );
-      setSuccessMessage("Layanan berhasil diperbarui");
-    } else {
-      const newServiceWithId = {
-        ...newService,
-        price: priceValue,
-        id: Date.now().toString()
-      };
-      updatedServices = [...services, newServiceWithId];
-      setSuccessMessage("Layanan baru berhasil ditambahkan");
+  const handleDeleteService = async (id: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus layanan ini?")) {
+      return;
     }
 
-    setServices(updatedServices);
-    saveServicesToStorage(updatedServices);
-    setIsServiceDialogOpen(false);
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
+    try {
+      const response = await fetch(`/api/mitra/services?id=${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal menghapus layanan');
+      }
+
+      const updatedServices = services.filter(service => service.service_id !== id);
+      setServices(updatedServices);
+      
+      setSuccessMessage("Layanan berhasil dihapus");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      console.error('Error deleting service:', error);
+      toast.error(error.message || 'Gagal menghapus layanan');
+    }
   };
 
-  const toggleServiceActive = (id: string) => {
-    const updatedServices = services.map(service =>
-      service.id === id
-        ? { ...service, active: !service.active }
-        : service
-    );
-    setServices(updatedServices);
-    saveServicesToStorage(updatedServices);
+  const handleSaveService = async () => {
+    const priceValue = priceInput === "" ? 0 : parseFloat(priceInput) || 0;
+
+    try {
+      if (isEditingService && currentService) {
+        // Update existing service
+        const response = await fetch('/api/mitra/services', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            service_id: currentService.service_id,
+            ...newService,
+            price: priceValue
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Gagal memperbarui layanan');
+        }
+
+        const data = await response.json();
+        
+        const updatedServices = services.map(service =>
+          service.service_id === currentService.service_id
+            ? data.service
+            : service
+        );
+        setServices(updatedServices);
+        setSuccessMessage("Layanan berhasil diperbarui");
+      } else {
+        // Create new service
+        const response = await fetch('/api/mitra/services', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            ...newService,
+            price: priceValue
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Gagal menambahkan layanan');
+        }
+
+        const data = await response.json();
+        setServices([...services, data.service]);
+        setSuccessMessage("Layanan baru berhasil ditambahkan");
+      }
+
+      setIsServiceDialogOpen(false);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      console.error('Error saving service:', error);
+      toast.error(error.message || 'Terjadi kesalahan');
+    }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const toggleServiceActive = async (id: string) => {
+    const service = services.find(s => s.service_id === id);
+    if (!service) return;
+
+    try {
+      const response = await fetch('/api/mitra/services', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          service_id: id,
+          is_active: !service.is_active
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal memperbarui status layanan');
+      }
+
+      const data = await response.json();
+      
+      const updatedServices = services.map(service =>
+        service.service_id === id
+          ? data.service
+          : service
+      );
+      setServices(updatedServices);
+    } catch (error: any) {
+      console.error('Error toggling service active:', error);
+      toast.error(error.message || 'Terjadi kesalahan');
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
 
     if (workImages.length + files.length > MAX_WORK_IMAGES) {
-      alert(`Maksimal ${MAX_WORK_IMAGES} foto hasil pekerjaan`);
+      toast.error(`Maksimal ${MAX_WORK_IMAGES} foto hasil pekerjaan`);
       return;
     }
 
     const validFiles = files.filter(file => {
       if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
-        alert(`File ${file.name} melebihi ${MAX_IMAGE_SIZE_MB}MB`);
+        toast.error(`File ${file.name} melebihi ${MAX_IMAGE_SIZE_MB}MB`);
         return false;
       }
       return true;
     });
 
-    const newImagesPromises = validFiles.map(file => {
-      return new Promise<WorkImage>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const base64 = event.target?.result as string;
-          const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          
-          resolve({
-            id: imageId,
-            file,
-            preview: base64,
-            displayName: file.name,
-            uploadedAt: new Date(),
-            description: ""
-          });
-        };
-        reader.readAsDataURL(file);
-      });
-    });
+    // Upload each file
+    for (const file of validFiles) {
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('caption', 'Hasil pekerjaan');
 
-    Promise.all(newImagesPromises).then(newImages => {
-      const updatedImages = [...workImages, ...newImages];
-      setWorkImages(updatedImages);
-      
-      // PENTING: Panggil saveImagesToStorage untuk sync ke localStorage dan sessionStorage
-      saveImagesToStorage(updatedImages);
-      
-      setSuccessMessage(`${newImages.length} foto berhasil diupload`);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-    });
+        const response = await fetch('/api/mitra/gallery', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Gagal mengupload gambar');
+        }
+
+        const data = await response.json();
+        
+        // Refresh gallery
+        const galleryResponse = await fetch('/api/mitra/services', {
+          credentials: 'include',
+        });
+        
+        if (galleryResponse.ok) {
+          const galleryData = await galleryResponse.json();
+          setWorkImages(galleryData.gallery || []);
+        }
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        toast.error('Gagal mengupload gambar');
+      }
+    }
+
+    setSuccessMessage(`${validFiles.length} foto berhasil diupload`);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
 
     // Reset input
     e.target.value = '';
@@ -386,53 +417,84 @@ export default function ServicesPage() {
     setIsImageDialogOpen(true);
   };
 
-  const handleDeleteImage = (id: string) => {
-    const updatedImages = workImages.filter(img => img.id !== id);
-    
-    setWorkImages(updatedImages);
-    
-    // PENTING: Panggil saveImagesToStorage untuk sync
-    saveImagesToStorage(updatedImages);
-    
-    setSuccessMessage("Foto berhasil dihapus");
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
+  const handleDeleteImage = async (id: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus foto ini?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/mitra/gallery?id=${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal menghapus foto');
+      }
+
+      const updatedImages = workImages.filter(img => img.gallery_id !== id);
+      setWorkImages(updatedImages);
+      
+      setSuccessMessage("Foto berhasil dihapus");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      console.error('Error deleting image:', error);
+      toast.error(error.message || 'Gagal menghapus foto');
+    }
   };
 
-  const handleSaveImageDescription = () => {
+  const handleSaveImageDescription = async () => {
     if (!currentImage) return;
 
-    const updatedImages = workImages.map(img =>
-      img.id === currentImage.id
-        ? { ...img, description: currentImage.description }
-        : img
-    );
+    try {
+      const response = await fetch('/api/mitra/gallery', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          gallery_id: currentImage.gallery_id,
+          caption: currentImage.caption
+        }),
+      });
 
-    setWorkImages(updatedImages);
-    
-    // PENTING: Panggil saveImagesToStorage untuk sync
-    saveImagesToStorage(updatedImages);
+      if (!response.ok) {
+        throw new Error('Gagal memperbarui deskripsi');
+      }
 
-    setIsImageDialogOpen(false);
-    setSuccessMessage("Deskripsi foto berhasil diperbarui");
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
+      const updatedImages = workImages.map(img =>
+        img.gallery_id === currentImage.gallery_id
+          ? { ...img, caption: currentImage.caption }
+          : img
+      );
+
+      setWorkImages(updatedImages);
+      setIsImageDialogOpen(false);
+      
+      setSuccessMessage("Deskripsi foto berhasil diperbarui");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      console.error('Error saving image description:', error);
+      toast.error(error.message || 'Terjadi kesalahan');
+    }
   };
 
-  const formatPrice = (price: number, type: ServiceItem['priceType']) => {
+  const formatPrice = (price: number, type: ServiceItem['price_type']) => {
     switch (type) {
-      case 'hourly':
+      case 'HOURLY':
         return `Rp ${price.toLocaleString('id-ID')}/jam`;
-      case 'unit':
+      case 'UNIT':
         return `Rp ${price.toLocaleString('id-ID')}/unit`;
-      case 'custom':
-        return `Rp ${price.toLocaleString('id-ID')}`;
+      case 'FIXED':
       default:
         return `Rp ${price.toLocaleString('id-ID')}`;
     }
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('id-ID', {
       day: 'numeric',
       month: 'long',
@@ -441,8 +503,14 @@ export default function ServicesPage() {
   };
 
   const handlePriceChange = (value: string) => {
-    const cleanValue = value.replace(/\D/g, '');
-    setPriceInput(cleanValue);
+    const cleanValue = value.replace(/[^\d.]/g, '');
+    // Hanya boleh ada satu titik desimal
+    const parts = cleanValue.split('.');
+    if (parts.length > 2) {
+      setPriceInput(parts[0] + '.' + parts.slice(1).join(''));
+    } else {
+      setPriceInput(cleanValue);
+    }
   };
 
   if (isLoading) {
@@ -532,7 +600,7 @@ export default function ServicesPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-neutral-600 dark:text-neutral-400">Layanan Aktif</span>
                     <span className="font-semibold text-[#7CE0A8]">
-                      {services.filter(s => s.active).length}
+                      {services.filter(s => s.is_active).length}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -636,7 +704,7 @@ export default function ServicesPage() {
                       <div className="space-y-4">
                         {services.map((service) => (
                           <motion.div
-                            key={service.id}
+                            key={service.service_id}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             className="p-4 bg-white dark:bg-neutral-800 rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-[#7CE0A8]/50 transition-all"
@@ -648,7 +716,7 @@ export default function ServicesPage() {
                                     <h4 className="font-semibold text-neutral-900 dark:text-white">
                                       {service.name}
                                     </h4>
-                                    {service.active ? (
+                                    {service.is_active ? (
                                       <Badge className="bg-[#7CE0A8]/20 text-[#5AB88A] border-[#7CE0A8]/30">
                                         Aktif
                                       </Badge>
@@ -659,7 +727,7 @@ export default function ServicesPage() {
                                     )}
                                   </div>
                                   <span className="font-bold text-lg text-[#7CE0A8]">
-                                    {formatPrice(service.price, service.priceType)}
+                                    {formatPrice(service.price, service.price_type)}
                                   </span>
                                 </div>
 
@@ -668,15 +736,15 @@ export default function ServicesPage() {
                                 </p>
 
                                 <div className="flex flex-wrap gap-2 text-xs">
-                                  {service.estimatedTime && (
+                                  {service.estimated_time && (
                                     <span className="px-2 py-1 bg-gray-100 dark:bg-neutral-700 rounded">
-                                      ⏱️ {service.estimatedTime}
+                                      ⏱️ {service.estimated_time}
                                     </span>
                                   )}
                                   <span className="px-2 py-1 bg-gray-100 dark:bg-neutral-700 rounded">
-                                    {service.priceType === 'fixed' ? 'Harga Tetap' :
-                                      service.priceType === 'hourly' ? 'Per Jam' :
-                                        service.priceType === 'unit' ? 'Per Unit' : 'Kustom'}
+                                    {service.price_type === 'FIXED' ? 'Harga Tetap' :
+                                      service.price_type === 'HOURLY' ? 'Per Jam' :
+                                      'Per Unit'}
                                   </span>
                                 </div>
                               </div>
@@ -685,8 +753,8 @@ export default function ServicesPage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm text-neutral-600 dark:text-neutral-400">Aktif</span>
                                   <Switch
-                                    checked={service.active}
-                                    onCheckedChange={() => toggleServiceActive(service.id)}
+                                    checked={service.is_active}
+                                    onCheckedChange={() => toggleServiceActive(service.service_id)}
                                   />
                                 </div>
                                 <div className="flex gap-1">
@@ -701,7 +769,7 @@ export default function ServicesPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDeleteService(service.id)}
+                                    onClick={() => handleDeleteService(service.service_id)}
                                     className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -725,7 +793,7 @@ export default function ServicesPage() {
                       </div>
                       <div className="p-4 bg-[#7CE0A8]/10 rounded-lg">
                         <div className="text-2xl font-bold text-[#7CE0A8]">
-                          {services.filter(s => s.active).length}
+                          {services.filter(s => s.is_active).length}
                         </div>
                         <div className="text-sm text-[#5AB88A]">
                           Layanan Aktif
@@ -810,24 +878,24 @@ export default function ServicesPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                         {workImages.map((image) => (
                           <motion.div
-                            key={image.id}
+                            key={image.gallery_id}
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             className="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-[#7CE0A8]/50 transition-all"
                           >
                             <AspectRatio ratio={4 / 3}>
                               <img
-                                src={image.preview}
-                                alt={image.displayName}
+                                src={image.image_url}
+                                alt={image.caption || "Hasil pekerjaan"}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                                 <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
                                   <p className="text-sm font-medium truncate">
-                                    {image.displayName}
+                                    {image.caption || "Hasil pekerjaan"}
                                   </p>
                                   <p className="text-xs opacity-90">
-                                    {formatDate(image.uploadedAt)}
+                                    {formatDate(image.created_at)}
                                   </p>
                                 </div>
                               </div>
@@ -845,7 +913,7 @@ export default function ServicesPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleDeleteImage(image.id)}
+                                onClick={() => handleDeleteImage(image.gallery_id)}
                                 className="h-8 w-8 bg-white/90 hover:bg-white text-red-500"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -927,22 +995,21 @@ export default function ServicesPage() {
                   />
                 </div>
                 <select
-                  value={newService.priceType}
+                  value={newService.price_type}
                   onChange={(e) =>
-                    setNewService({ ...newService, priceType: e.target.value as ServiceItem['priceType'] })
+                    setNewService({ ...newService, price_type: e.target.value as ServiceItem['price_type'] })
                   }
                   className="w-[140px] flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] focus:ring-offset-2"
                 >
-                  <option value="fixed">Harga Tetap</option>
-                  <option value="hourly">Per Jam</option>
-                  <option value="unit">Per Unit</option>
-                  <option value="custom">Kustom</option>
+                  <option value="FIXED">Harga Tetap</option>
+                  <option value="HOURLY">Per Jam</option>
+                  <option value="UNIT">Per Unit</option>
                 </select>
               </div>
               <p className="text-xs text-neutral-500">
                 Harga akan ditampilkan sebagai: {formatPrice(
-                  priceInput === "" ? 0 : parseInt(priceInput.replace(/\D/g, '')) || 0,
-                  newService.priceType
+                  priceInput === "" ? 0 : parseFloat(priceInput) || 0,
+                  newService.price_type
                 )}
               </p>
             </div>
@@ -963,8 +1030,8 @@ export default function ServicesPage() {
               <Label htmlFor="estimated-time">Perkiraan Waktu Pengerjaan</Label>
               <Input
                 id="estimated-time"
-                value={newService.estimatedTime || ''}
-                onChange={(e) => setNewService({ ...newService, estimatedTime: e.target.value })}
+                value={newService.estimated_time || ''}
+                onChange={(e) => setNewService({ ...newService, estimated_time: e.target.value })}
                 placeholder="Contoh: 2-3 jam, 1 hari"
                 className="focus-visible:ring-[#7CE0A8]"
               />
@@ -973,8 +1040,8 @@ export default function ServicesPage() {
             <div className="flex items-center space-x-2">
               <Switch
                 id="service-active"
-                checked={newService.active}
-                onCheckedChange={(checked) => setNewService({ ...newService, active: checked })}
+                checked={newService.is_active}
+                onCheckedChange={(checked) => setNewService({ ...newService, is_active: checked })}
               />
               <Label htmlFor="service-active" className="cursor-pointer">
                 Tampilkan layanan ini ke pelanggan
@@ -1016,8 +1083,8 @@ export default function ServicesPage() {
                 <div className="mb-4 overflow-hidden rounded-lg">
                   <AspectRatio ratio={16 / 9}>
                     <img
-                      src={currentImage.preview}
-                      alt={currentImage.displayName}
+                      src={currentImage.image_url}
+                      alt={currentImage.caption || "Hasil pekerjaan"}
                       className="w-full h-full object-cover"
                     />
                   </AspectRatio>
@@ -1028,10 +1095,10 @@ export default function ServicesPage() {
                     <Label htmlFor="image-description">Deskripsi</Label>
                     <Textarea
                       id="image-description"
-                      value={currentImage.description || ''}
+                      value={currentImage.caption || ''}
                       onChange={(e) => setCurrentImage({
                         ...currentImage,
-                        description: e.target.value
+                        caption: e.target.value
                       })}
                       placeholder="Jelaskan pekerjaan dalam foto ini..."
                       rows={3}
@@ -1040,8 +1107,7 @@ export default function ServicesPage() {
                   </div>
 
                   <div className="text-sm text-neutral-500">
-                    <p>Nama file: {currentImage.displayName}</p>
-                    <p>Upload pada: {formatDate(currentImage.uploadedAt)}</p>
+                    <p>Upload pada: {formatDate(currentImage.created_at)}</p>
                   </div>
                 </div>
               </div>

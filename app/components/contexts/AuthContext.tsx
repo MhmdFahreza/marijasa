@@ -11,6 +11,7 @@ import React, {
   useRef,
 } from "react";
 import { useSession, signOut as nextAuthSignOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 
 interface User {
   id: string;
@@ -39,11 +40,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { data: session, status } = useSession();
+  const pathname = usePathname();
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRefreshingRef = useRef(false);
 
+  // Check if current path is mitra route
+  const isMitraRoute = pathname?.startsWith('/mitra') || false;
+
   // Fetch current user from API
   const fetchCurrentUser = useCallback(async () => {
+    // Skip if on mitra routes
+    if (isMitraRoute) {
+      return null;
+    }
+
     try {
       const response = await fetch("/api/auth/me", {
         credentials: "include",
@@ -64,10 +74,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[Auth] Error fetching current user:", error);
       return null;
     }
-  }, []);
+  }, [isMitraRoute]);
 
   // Refresh access token
   const refreshAccessToken = useCallback(async () => {
+    // Skip if on mitra routes
+    if (isMitraRoute) {
+      return false;
+    }
+
     // Prevent multiple simultaneous refresh attempts
     if (isRefreshingRef.current) {
       console.log("[Auth] Token refresh already in progress, skipping...");
@@ -109,10 +124,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [fetchCurrentUser]);
+  }, [fetchCurrentUser, isMitraRoute]);
 
   // Setup auto token refresh
   const setupTokenRefresh = useCallback(() => {
+    // Skip if on mitra routes
+    if (isMitraRoute) {
+      return;
+    }
+
     // Clear existing interval
     if (refreshIntervalRef.current) {
       clearInterval(refreshIntervalRef.current);
@@ -125,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, TOKEN_REFRESH_INTERVAL);
 
     console.log("[Auth] Token auto-refresh enabled (every 50 minutes)");
-  }, [refreshAccessToken]);
+  }, [refreshAccessToken, isMitraRoute]);
 
   // Clear token refresh interval
   const clearTokenRefresh = useCallback(() => {
@@ -139,6 +159,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize auth state
   useEffect(() => {
     const initAuth = async () => {
+      // Skip auth check for mitra routes
+      if (isMitraRoute) {
+        setIsLoading(false);
+        setUser(null);
+        return;
+      }
+
       setIsLoading(true);
 
       // First check if we have a session from NextAuth (Google OAuth)
@@ -154,9 +181,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setUser(userFromSession);
         setIsLoading(false);
-        
-        // Setup token refresh for custom auth (not needed for NextAuth)
-        // setupTokenRefresh();
         return;
       }
 
@@ -183,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       clearTokenRefresh();
     };
-  }, [session, status, fetchCurrentUser, setupTokenRefresh, clearTokenRefresh]);
+  }, [session, status, fetchCurrentUser, setupTokenRefresh, clearTokenRefresh, isMitraRoute]);
 
   // Login function - set user after successful login
   const login = useCallback(

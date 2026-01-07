@@ -16,6 +16,7 @@ import {
 } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
 import { LoaderTwo } from "@/app/components/transition/loader"; 
+import { toast } from "sonner";
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
@@ -186,104 +187,80 @@ export default function DashboardLayout({
   const [showLogoutRedirectLoader, setShowLogoutRedirectLoader] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
-  // State untuk profile data dari localStorage
+  // State untuk profile data dari API
   const [mitraProfile, setMitraProfile] = useState<{
     name: string;
     avatar: string;
     verified?: boolean;
     role?: string;
+    email?: string;
   }>({
     name: "Nama Mitra",
     avatar: "https://assets.aceternity.com/manu.png"
   });
 
-  // Handle hydration dan load data dari localStorage
-  useEffect(() => {
-    setMounted(true);
-    
-    // Load profile dari localStorage saat mount
-    const loadMitraProfile = () => {
-      if (typeof window !== 'undefined') {
-        const storedMitraUser = localStorage.getItem('mitraUser');
-        if (storedMitraUser) {
-          try {
-            const parsed = JSON.parse(storedMitraUser);
-            setMitraProfile({
-              name: parsed.name || "Nama Mitra",
-              avatar: parsed.avatar || "https://assets.aceternity.com/manu.png",
-              verified: parsed.verified,
-              role: parsed.role
-            });
-          } catch (e) {
-            console.error('Error parsing stored mitra user:', e);
-          }
+  // Fetch mitra profile dari API
+  const fetchMitraProfile = async () => {
+    try {
+      const response = await fetch('/api/mitra/profile', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/mitra/login');
+          return;
         }
+        throw new Error('Gagal memuat profil');
       }
-    };
 
-    loadMitraProfile();
-  }, []);
-
-  // Listen untuk update profile dari halaman lain
-  useEffect(() => {
-    const handleProfileUpdate = (event: CustomEvent) => {
-      const { name, avatar, verified } = event.detail;
-      setMitraProfile(prev => ({ 
-        ...prev, 
-        name: name || prev.name, 
-        avatar: avatar || prev.avatar,
-        verified: verified !== undefined ? verified : prev.verified
-      }));
-    };
-
-    window.addEventListener('mitraProfileUpdated' as any, handleProfileUpdate);
-
-    // Listen untuk storage changes (jika ada tab lain yang update)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'mitraUser') {
-        if (e.newValue) {
-          try {
-            const parsed = JSON.parse(e.newValue);
-            setMitraProfile({
-              name: parsed.name || "Nama Mitra",
-              avatar: parsed.avatar || "https://assets.aceternity.com/manu.png",
-              verified: parsed.verified,
-              role: parsed.role
-            });
-          } catch (error) {
-            console.error('Error parsing updated mitra user:', error);
-          }
-        }
+      const data = await response.json();
+      if (data.vendor) {
+        setMitraProfile({
+          name: data.vendor.name || "Nama Mitra",
+          avatar: data.vendor.avatar || "https://assets.aceternity.com/manu.png",
+          verified: data.vendor.verified,
+          role: 'vendor',
+          email: data.vendor.email
+        });
       }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('mitraProfileUpdated' as any, handleProfileUpdate);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
+    } catch (error) {
+      console.error('Error fetching mitra profile:', error);
+      router.push('/mitra/login');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Check authentication on mount
   useEffect(() => {
-    if (mounted) {
-      const mitraToken = localStorage.getItem('mitraToken');
-      const mitraUser = localStorage.getItem('mitraUser');
-      
-      if (!mitraToken || !mitraUser) {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/mitra/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          router.push('/mitra/login');
+          return;
+        }
+
+        await fetchMitraProfile();
+      } catch (error) {
+        console.error('Error checking auth:', error);
         router.push('/mitra/login');
       }
-    }
-  }, [mounted, router]);
+    };
 
-  // Reset navigation state when pathname changes
-  useEffect(() => {
-    setIsNavigating(false);
-  }, [pathname]);
+    setMounted(true);
+    checkAuth();
+  }, [router]);
 
   // Determine active view based on pathname
   const activeView = useMemo(() => {
@@ -352,35 +329,35 @@ export default function DashboardLayout({
     setLogoutModalOpen(true);
   }, []);
 
-  const handleLogoutConfirm = useCallback(() => {
+  const handleLogoutConfirm = useCallback(async () => {
     setIsLoggingOut(true);
     
-    setTimeout(() => {
-      setShowLogoutRedirectLoader(true);
-      
-      setTimeout(() => {
-        setLogoutModalOpen(false);
-        setIsLoggingOut(false);
-        
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('mitraToken');
-          localStorage.removeItem('mitraUser');
-          sessionStorage.clear();
-          
-          document.cookie.split(";").forEach((c) => {
-            document.cookie = c
-              .replace(/^ +/, "")
-              .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-          });
-          
-          window.location.href = '/mitra/login';
-        }
-      }, 1500);
-    }, 1000);
-  }, []);
+    try {
+      const response = await fetch('/api/mitra/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
 
-  // Show loading state until mounted
-  if (!mounted) {
+      if (response.ok) {
+        setShowLogoutRedirectLoader(true);
+        
+        setTimeout(() => {
+          router.push('/mitra/login');
+        }, 1500);
+      } else {
+        toast.error('Gagal logout');
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Terjadi kesalahan saat logout');
+    } finally {
+      setIsLoggingOut(false);
+      setLogoutModalOpen(false);
+    }
+  }, [router]);
+
+  // Show loading state until mounted and profile loaded
+  if (!mounted || isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-neutral-900">
         <div className="text-center">

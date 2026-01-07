@@ -1,3 +1,4 @@
+
 // app/components/ui/login-form.tsx
 "use client";
 
@@ -15,10 +16,8 @@ import { Input } from "../ui/input";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { LoaderTwo } from "@/app/components/transition/loader";
-import { validateVendorLogin, getCategoryFromTags } from "@/app/data/dataVendor";
 import { signIn, useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useAuth } from "@/app/components/contexts/AuthContext";
 
 type UserType = "user" | "mitra" | "admin";
 
@@ -74,101 +73,6 @@ export function LoginForm({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
-  const { user, isAuthenticated, login } = useAuth();
-
-  // Check for existing session on mount
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        if (status === "loading") {
-          return;
-        }
-
-        // Check for error from URL (OAuth error)
-        const errorParam = searchParams?.get("error");
-        if (errorParam) {
-          setIsCheckingSession(false);
-          return;
-        }
-
-        // If already authenticated via AuthContext, redirect
-        if (isAuthenticated && user) {
-          console.log("[Login] User already authenticated via context");
-          if (onSuccess) {
-            onSuccess(user.email);
-          } else {
-            setShowRedirectLoader(true);
-            setTimeout(() => {
-              router.push("/");
-              router.refresh();
-            }, 1000);
-          }
-          return;
-        }
-
-        // If authenticated via NextAuth session (Google OAuth)
-        if (status === "authenticated" && session?.user) {
-          const userEmail = session.user.email;
-          const userId = (session.user as any).id;
-          const sessionId = (session.user as any).sessionId;
-
-          console.log("[Login] NextAuth session found:", {
-            email: userEmail,
-            hasSessionId: !!sessionId
-          });
-
-          if (!userEmail || !userId) {
-            setIsCheckingSession(false);
-            return;
-          }
-
-          // Login via context
-          login({
-            id: userId,
-            name: session.user.name || "",
-            email: userEmail,
-            phone: (session.user as any).phone || "",
-            avatar: session.user.image || "/profile.svg",
-            role: (session.user as any).role || "USER",
-          });
-
-          if (onSuccess) {
-            onSuccess(userEmail);
-          } else {
-            setShowRedirectLoader(true);
-            setTimeout(() => {
-              router.push("/");
-              router.refresh();
-            }, 1000);
-          }
-          return;
-        }
-
-        setIsCheckingSession(false);
-      } catch (error) {
-        console.error("Error checking session:", error);
-        setIsCheckingSession(false);
-      }
-    };
-
-    checkSession();
-  }, [status, session, router, onSuccess, searchParams, isAuthenticated, user, login]);
-
-  // Check for error from URL
-  useEffect(() => {
-    const errorParam = searchParams?.get("error");
-    if (errorParam) {
-      const errorMessage =
-        ERROR_MESSAGES[errorParam] || ERROR_MESSAGES["default"];
-      setError(errorMessage);
-      setIsGoogleLoading(false);
-
-      // Clear error from URL
-      const url = new URL(window.location.href);
-      url.searchParams.delete("error");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [searchParams]);
 
   // User config
   const userConfig = {
@@ -197,6 +101,82 @@ export function LoginForm({
 
   const config = userConfig[userType];
 
+  // Check for existing session on mount - ONLY FOR USER TYPE
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        // Skip session check for mitra and admin - they use different auth
+        if (userType === "mitra" || userType === "admin") {
+          setIsCheckingSession(false);
+          return;
+        }
+
+        // Only check session for user type
+        if (status === "loading") {
+          return;
+        }
+
+        // Check for error from URL (OAuth error)
+        const errorParam = searchParams?.get("error");
+        if (errorParam) {
+          setIsCheckingSession(false);
+          return;
+        }
+
+        // If authenticated via NextAuth session (Google OAuth) - only for user type
+        if (status === "authenticated" && session?.user && userType === "user") {
+          const userEmail = session.user.email;
+          const userId = (session.user as any).id;
+
+          console.log("[Login] NextAuth session found for user:", {
+            email: userEmail,
+            userId: userId
+          });
+
+          if (!userEmail || !userId) {
+            setIsCheckingSession(false);
+            return;
+          }
+
+          // For user type, we might want to redirect
+          if (onSuccess) {
+            onSuccess(userEmail);
+          } else {
+            setShowRedirectLoader(true);
+            setTimeout(() => {
+              router.push("/");
+              router.refresh();
+            }, 1000);
+          }
+          return;
+        }
+
+        setIsCheckingSession(false);
+      } catch (error) {
+        console.error("Error checking session:", error);
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkSession();
+  }, [status, session, router, onSuccess, searchParams, userType]);
+
+  // Check for error from URL
+  useEffect(() => {
+    const errorParam = searchParams?.get("error");
+    if (errorParam) {
+      const errorMessage =
+        ERROR_MESSAGES[errorParam] || ERROR_MESSAGES["default"];
+      setError(errorMessage);
+      setIsGoogleLoading(false);
+
+      // Clear error from URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [searchParams]);
+
   // Validation functions
   const validateEmail = (email: string) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -224,7 +204,7 @@ export function LoginForm({
     return input.includes("@");
   };
 
-  // Google Sign In handler
+  // Google Sign In handler - only for user type
   const handleGoogleSignIn = async () => {
     try {
       setIsGoogleLoading(true);
@@ -288,25 +268,10 @@ export function LoginForm({
         setError("Email atau password admin salah.");
         return;
       }
-    }
-
-    // Mitra validation
-    if (userType === "mitra") {
-      const vendor = validateVendorLogin(trimmedIdentifier, password);
-
-      if (!vendor) {
-        setError(
-          "Email atau password mitra salah. Pastikan Anda menggunakan kredensial yang benar."
-        );
-        return;
-      }
 
       setIsLoading(true);
-
       try {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const category = getCategoryFromTags(vendor.tags);
 
         if (onSuccess) {
           onSuccess(trimmedIdentifier);
@@ -316,7 +281,7 @@ export function LoginForm({
 
         setShowRedirectLoader(true);
         setTimeout(() => {
-          router.push("/mitra/dashboard");
+          router.push("/admin/dashboard");
           router.refresh();
         }, 1000);
       } catch (error) {
@@ -324,11 +289,68 @@ export function LoginForm({
         setError("Terjadi kesalahan saat login. Silakan coba lagi.");
         setIsLoading(false);
       }
+      return;
+    }
+
+    // Mitra validation - FIXED
+    if (userType === "mitra") {
+      setIsLoading(true);
+
+      try {
+        console.log('[Mitra Login] Attempting login for:', trimmedIdentifier);
+
+        // Call mitra login API
+        const response = await fetch('/api/mitra/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: trimmedIdentifier,
+            password: password,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || 'Email atau password salah');
+          setIsLoading(false);
+          return;
+        }
+
+        console.log('[Mitra Login] Login successful:', {
+          id: data.vendor.id,
+          name: data.vendor.name,
+          email: data.vendor.email
+        });
+
+        if (onSuccess) {
+          onSuccess(trimmedIdentifier);
+          setIsLoading(false);
+          return;
+        }
+
+        // Show success loader
+        setShowRedirectLoader(true);
+        
+        // Redirect after a short delay
+        setTimeout(() => {
+          console.log('[Mitra Login] Redirecting to dashboard...');
+          window.location.href = "/mitra/dashboard";
+        }, 1500);
+      } catch (error) {
+        console.error("Mitra login error:", error);
+        setError("Terjadi kesalahan saat login. Silakan coba lagi.");
+        setIsLoading(false);
+        setShowRedirectLoader(false);
+      }
 
       return;
     }
 
-    // User login via API
+    // User login via API (only for user type)
     setIsLoading(true);
 
     try {
@@ -387,15 +409,10 @@ export function LoginForm({
         return;
       }
 
-      // Login successful - update context
-      if (data.user) {
-        login(data.user);
-      }
-
-      // PERBAIKAN: Hanya redirect ke home, bukan ke OTP
+      // Login successful
       if (onSuccess) {
         // Close modal dan refresh parent page
-        onSuccess(data.user.email);
+        onSuccess(data.user?.email || trimmedIdentifier);
         setIsLoading(false);
         
         // Refresh halaman setelah modal ditutup
@@ -447,8 +464,8 @@ export function LoginForm({
 
   const loaderText = getRedirectLoaderText();
 
-  // Show loading while checking session
-  if (isCheckingSession || status === "loading") {
+  // Show loading while checking session - ONLY FOR USER TYPE
+  if (isCheckingSession && userType === "user") {
     return (
       <div className="flex flex-col gap-4 sm:gap-6">
         <Card className="shadow-lg">
@@ -660,65 +677,63 @@ export function LoginForm({
                   </Button>
 
                   {/* Divider - Google Login */}
-                  {userType !== "admin" &&
-                    userType !== "mitra" &&
-                    !showRedirectLoader && (
-                      <>
-                        <div className="relative my-4 sm:my-5 md:my-6">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-neutral-300 dark:border-neutral-700" />
-                          </div>
-                          <div className="relative flex justify-center text-[10px] sm:text-xs uppercase">
-                            <span className="bg-white dark:bg-neutral-900 px-2 sm:px-3 text-neutral-500 dark:text-neutral-400 font-medium">
-                              atau lanjutkan dengan
-                            </span>
-                          </div>
+                  {userType === "user" && !showRedirectLoader && (
+                    <>
+                      <div className="relative my-4 sm:my-5 md:my-6">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-neutral-300 dark:border-neutral-700" />
                         </div>
+                        <div className="relative flex justify-center text-[10px] sm:text-xs uppercase">
+                          <span className="bg-white dark:bg-neutral-900 px-2 sm:px-3 text-neutral-500 dark:text-neutral-400 font-medium">
+                            atau lanjutkan dengan
+                          </span>
+                        </div>
+                      </div>
 
-                        <Button
-                          variant="outline"
-                          type="button"
-                          onClick={handleGoogleSignIn}
-                          disabled={isLoading || isGoogleLoading}
-                          className={cn(
-                            "w-full border-2 border-[#7CE0A8]/30 hover:border-[#7CE0A8]",
-                            "text-neutral-700 dark:text-neutral-300 hover:bg-[#7CE0A8]/5",
-                            "transition-all duration-300 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base",
-                            "flex items-center justify-center gap-2 sm:gap-3 font-medium",
-                            "dark:hover:bg-[#7CE0A8]/10"
-                          )}
-                        >
-                          {isGoogleLoading ? (
-                            <>
-                              <div className="h-4 w-4 sm:h-5 sm:w-5 border-2 border-[#7CE0A8] border-t-transparent rounded-full animate-spin"></div>
-                              <span className="text-xs sm:text-sm">Menghubungkan ke Google...</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24">
-                                <path
-                                  fill="currentColor"
-                                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                />
-                                <path
-                                  fill="currentColor"
-                                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                />
-                                <path
-                                  fill="currentColor"
-                                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                                />
-                                <path
-                                  fill="currentColor"
-                                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                                />
-                              </svg>
-                              <span className="text-xs sm:text-sm">Google</span>
-                            </>
-                          )}
-                        </Button>
-                      </>
-                    )}
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={handleGoogleSignIn}
+                        disabled={isLoading || isGoogleLoading}
+                        className={cn(
+                          "w-full border-2 border-[#7CE0A8]/30 hover:border-[#7CE0A8]",
+                          "text-neutral-700 dark:text-neutral-300 hover:bg-[#7CE0A8]/5",
+                          "transition-all duration-300 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base",
+                          "flex items-center justify-center gap-2 sm:gap-3 font-medium",
+                          "dark:hover:bg-[#7CE0A8]/10"
+                        )}
+                      >
+                        {isGoogleLoading ? (
+                          <>
+                            <div className="h-4 w-4 sm:h-5 sm:w-5 border-2 border-[#7CE0A8] border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-xs sm:text-sm">Menghubungkan ke Google...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24">
+                              <path
+                                fill="currentColor"
+                                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                              />
+                              <path
+                                fill="currentColor"
+                                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                              />
+                              <path
+                                fill="currentColor"
+                                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                              />
+                              <path
+                                fill="currentColor"
+                                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                              />
+                            </svg>
+                            <span className="text-xs sm:text-sm">Google</span>
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
 
                   {/* Register Link */}
                   {config.registerLink && !showRedirectLoader && (
