@@ -83,7 +83,7 @@ interface Vendor {
   review_count: number;
   service_areas: string[];
   specialties: string[];
-  tags: string[]; // Tags diupdate otomatis dari nama layanan
+  tags: string[];
   category?: string;
   join_date: string;
   services?: Service[];
@@ -820,7 +820,7 @@ function OrderForm({
     setFormData({ ...formData, minute: minute.toString() });
   };
 
-  const activeServices = vendor.services?.filter((s: any) => s.isActive) || [];
+  const activeServices = vendor.services?.filter((s: any) => s.is_active) || [];
 
   return (
     <>
@@ -976,19 +976,19 @@ function OrderForm({
                                   {service.name}
                                 </Label>
                                 <Badge variant="outline" className="text-xs">
-                                  {service.priceType === 'FIXED' ? 'Harga Tetap' :
-                                   service.priceType === 'HOURLY' ? 'Per Jam' :
+                                  {service.price_type === 'FIXED' ? 'Harga Tetap' :
+                                   service.price_type === 'HOURLY' ? 'Per Jam' :
                                    'Per Unit'}
                                 </Badge>
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {service.description}
                               </p>
-                              {service.estimatedTime && (
+                              {service.estimated_time && (
                                 <div className="flex items-center gap-1 mt-2">
                                   <Calendar className="h-3 w-3 text-muted-foreground" />
                                   <span className="text-xs text-muted-foreground">
-                                    {service.estimatedTime}
+                                    {service.estimated_time}
                                   </span>
                                 </div>
                               )}
@@ -997,7 +997,7 @@ function OrderForm({
 
                           <div className="text-right">
                             <div className="font-semibold text-primary">
-                              {formatPrice(service.price, service.priceType)}
+                              {formatPrice(service.price, service.price_type)}
                             </div>
 
                             {(formData.selectedServices || []).includes(service.service_id) && (
@@ -1062,13 +1062,13 @@ function OrderForm({
                         Rp {(() => {
                           const selectedServices = formData.selectedServices || [];
                           let total = 0;
-                            selectedServices.forEach((serviceId: string) => {
-                              const service = activeServices.find((s: any) => s.service_id === serviceId);
-                              if (service) {
-                                const quantity = formData.quantities?.[serviceId] || 1;
-                                total += service.price * quantity;
-                              }
-                            });
+                          selectedServices.forEach((serviceId: string) => {
+                            const service = activeServices.find((s: any) => s.service_id === serviceId);
+                            if (service) {
+                              const quantity = formData.quantities?.[serviceId] || 1;
+                              total += service.price * quantity;
+                            }
+                          });
                           return total.toLocaleString('id-ID');
                         })()}
                       </span>
@@ -1304,13 +1304,13 @@ function ConfirmationStep({
             </div>
             <div className="space-y-3">
               {selectedServicesDetails.map((service: any) => (
-                <div key={service.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div key={service.service_id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-medium">{service.name}</p>
                     <p className="text-sm text-muted-foreground">Qty: {service.quantity}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{formatPrice(service.price, service.priceType)}</p>
+                    <p className="font-medium">{formatPrice(service.price, service.price_type)}</p>
                     <p className="text-sm text-muted-foreground">Total: Rp {(service.total).toLocaleString('id-ID')}</p>
                   </div>
                 </div>
