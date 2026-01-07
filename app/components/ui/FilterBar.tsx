@@ -102,40 +102,56 @@ export default function FilterBar({
 
     // Fetch cities from API
     useEffect(() => {
+        let isMounted = true;
+        
         const fetchCities = async () => {
             try {
                 const response = await fetch('/api/master/cities');
                 const data = await response.json();
-                if (data.success) {
+                if (data.success && isMounted) {
                     setCities(data.data);
                 }
             } catch (error) {
                 console.error('Error fetching cities:', error);
             } finally {
-                setIsLoadingCities(false);
+                if (isMounted) {
+                    setIsLoadingCities(false);
+                }
             }
         };
 
         fetchCities();
+        
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     // Fetch categories from API
     useEffect(() => {
+        let isMounted = true;
+        
         const fetchCategories = async () => {
             try {
                 const response = await fetch('/api/master/categories');
                 const data = await response.json();
-                if (data.success) {
+                if (data.success && isMounted) {
                     setCategories(data.data);
                 }
             } catch (error) {
                 console.error('Error fetching categories:', error);
             } finally {
-                setIsLoadingCategories(false);
+                if (isMounted) {
+                    setIsLoadingCategories(false);
+                }
             }
         };
 
         fetchCategories();
+        
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     // Deteksi ukuran layar
@@ -151,12 +167,19 @@ export default function FilterBar({
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
-    // Get category label from slug
-    const getCategoryLabel = useCallback((slug: string) => {
-        const category = categories.find(cat => cat.slug === slug);
-        return category?.name || slug;
+    // Get category label from slug - optimized with useMemo
+    const categoryMap = useMemo(() => {
+        return categories.reduce((acc, cat) => {
+            acc[cat.slug] = cat.name;
+            return acc;
+        }, {} as Record<string, string>);
     }, [categories]);
 
+    const getCategoryLabel = useCallback((slug: string) => {
+        return categoryMap[slug] || slug;
+    }, [categoryMap]);
+
+    // Update URL function - debounced
     const updateURL = useCallback((category: string, city: string, rating: string) => {
         const params = new URLSearchParams();
 
@@ -173,22 +196,30 @@ export default function FilterBar({
         const queryString = params.toString();
         const newURL = queryString ? `/jasa?${queryString}` : '/jasa';
 
-        router.push(newURL, { scroll: false });
+        // Use replace instead of push to avoid history pollution
+        router.replace(newURL, { scroll: false });
     }, [router]);
 
     const handleCategoryChange = useCallback((value: string) => {
-        onCategoryChange(value);
-        updateURL(value, selectedCity, selectedRating);
+        // Batch state updates
+        requestAnimationFrame(() => {
+            onCategoryChange(value);
+            updateURL(value, selectedCity, selectedRating);
+        });
     }, [onCategoryChange, selectedCity, selectedRating, updateURL]);
 
     const handleCityChange = useCallback((value: string) => {
-        onCityChange(value);
-        updateURL(selectedCategory, value, selectedRating);
+        requestAnimationFrame(() => {
+            onCityChange(value);
+            updateURL(selectedCategory, value, selectedRating);
+        });
     }, [onCityChange, selectedCategory, selectedRating, updateURL]);
 
     const handleRatingChange = useCallback((value: string) => {
-        onRatingChange(value);
-        updateURL(selectedCategory, selectedCity, value);
+        requestAnimationFrame(() => {
+            onRatingChange(value);
+            updateURL(selectedCategory, selectedCity, value);
+        });
     }, [onRatingChange, selectedCategory, selectedCity, updateURL]);
 
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,19 +232,23 @@ export default function FilterBar({
     }, []);
 
     const resetAll = useCallback(() => {
-        onCategoryChange("");
-        onCityChange("");
-        onRatingChange("");
-        setUrutkan("");
-        onResetFilters();
-        setSheetOpen(false);
-        router.push('/jasa', { scroll: false });
+        // Batch all resets together
+        requestAnimationFrame(() => {
+            onCategoryChange("");
+            onCityChange("");
+            onRatingChange("");
+            setUrutkan("");
+            onResetFilters();
+            setSheetOpen(false);
+            router.replace('/jasa', { scroll: false });
+        });
     }, [onCategoryChange, onCityChange, onRatingChange, onResetFilters, router]);
 
     const handleSaveFilters = useCallback(() => {
         setSheetOpen(false);
     }, []);
 
+    // Active chips - memoized to prevent unnecessary recalculations
     const activeChips = useMemo(() => {
         const chips: { key: "kategori" | "kota" | "rating" | "urutkan"; label: string }[] = [];
 
@@ -249,23 +284,26 @@ export default function FilterBar({
     }, [selectedCategory, selectedCity, selectedRating, urutkan, getCategoryLabel]);
 
     const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "urutkan") => {
-        switch (key) {
-            case "kategori":
-                handleCategoryChange("");
-                break;
-            case "kota":
-                handleCityChange("");
-                break;
-            case "rating":
-                handleRatingChange("");
-                break;
-            case "urutkan":
-                setUrutkan("");
-                break;
-        }
+        requestAnimationFrame(() => {
+            switch (key) {
+                case "kategori":
+                    handleCategoryChange("");
+                    break;
+                case "kota":
+                    handleCityChange("");
+                    break;
+                case "rating":
+                    handleRatingChange("");
+                    break;
+                case "urutkan":
+                    setUrutkan("");
+                    break;
+            }
+        });
     }, [handleCategoryChange, handleCityChange, handleRatingChange]);
 
-    const Chips = useMemo(() => {
+    // Memoized chips component
+    const ChipsComponent = useMemo(() => {
         if (activeChips.length === 0) return null;
 
         return (
@@ -288,6 +326,9 @@ export default function FilterBar({
             </div>
         );
     }, [activeChips, removeChip, resetAll]);
+
+    // Memoized city names
+    const cityNames = useMemo(() => cities.map(c => c.name), [cities]);
 
     return (
         <section aria-label="Filter jasa" className="mt-4 mb-6">
@@ -318,7 +359,7 @@ export default function FilterBar({
                     <CitySelect
                         value={selectedCity}
                         onValueChange={handleCityChange}
-                        cities={cities.map(c => c.name)}
+                        cities={cityNames}
                         placeholder={isLoadingCities ? "Loading..." : "Pilih kota"}
                         triggerClassName="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                         contentClassName="z-[100]"
@@ -400,7 +441,7 @@ export default function FilterBar({
                     <CitySelect
                         value={selectedCity}
                         onValueChange={handleCityChange}
-                        cities={cities.map(c => c.name)}
+                        cities={cityNames}
                         placeholder={isLoadingCities ? "..." : "Kota"}
                         triggerClassName="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                         contentClassName="z-[100]"
@@ -456,7 +497,7 @@ export default function FilterBar({
 
             {/* Chips desktop/tablet */}
             <div className="hidden md:block">
-                {Chips}
+                {ChipsComponent}
             </div>
 
             {/* MOBILE (di bawah 768px) */}
@@ -526,7 +567,7 @@ export default function FilterBar({
                                 <CitySelect
                                     value={selectedCity}
                                     onValueChange={handleCityChange}
-                                    cities={cities.map(c => c.name)}
+                                    cities={cityNames}
                                     placeholder={isLoadingCities ? "Loading..." : "Pilih kota"}
                                     triggerClassName="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
                                     contentClassName="z-[9999]"
@@ -602,7 +643,7 @@ export default function FilterBar({
 
             {/* Chips mobile */}
             <div className="md:hidden">
-                {Chips}
+                {ChipsComponent}
             </div>
 
             <style jsx global>{`
