@@ -184,7 +184,6 @@ export default function DashboardLayout({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [showLogoutRedirectLoader, setShowLogoutRedirectLoader] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -339,22 +338,21 @@ export default function DashboardLayout({
       });
 
       if (response.ok) {
-        setShowLogoutRedirectLoader(true);
-        
-        setTimeout(() => {
-          router.push('/mitra/login');
-        }, 1500);
+        // PERBAIKAN: Langsung redirect setelah logout sukses
+        // Tidak perlu timeout atau loader tambahan
+        window.location.href = '/mitra/login';
       } else {
         toast.error('Gagal logout');
+        setIsLoggingOut(false);
+        setLogoutModalOpen(false);
       }
     } catch (error) {
       console.error('Logout error:', error);
       toast.error('Terjadi kesalahan saat logout');
-    } finally {
       setIsLoggingOut(false);
       setLogoutModalOpen(false);
     }
-  }, [router]);
+  }, []);
 
   // Show loading state until mounted and profile loaded
   if (!mounted || isLoading) {
@@ -362,7 +360,7 @@ export default function DashboardLayout({
       <div className="flex items-center justify-center h-screen bg-white dark:bg-neutral-900">
         <div className="text-center">
           <LoaderTwo />
-          <p className="text-neutral-600 dark:text-neutral-400 mt-6 text-sm">Memuat aplikasi...</p>
+          <p className="text-neutral-600 dark:text-neutral-400 mt-6 text-sm">Memuat halaman admin...</p>
         </div>
       </div>
     );
@@ -375,67 +373,6 @@ export default function DashboardLayout({
         {isNavigating && <PageNavigationLoader />}
       </AnimatePresence>
 
-      {/* Logout Redirect Loader */}
-      <AnimatePresence>
-        {showLogoutRedirectLoader && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-white dark:bg-neutral-900 z-[300] flex flex-col items-center justify-center gap-6"
-          >
-            <div className="text-center space-y-3">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-              >
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] flex items-center justify-center">
-                  <svg
-                    className="w-8 h-8 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-              </motion.div>
-              <motion.h2
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="text-xl font-semibold text-neutral-800 dark:text-white"
-              >
-                Logout Berhasil!
-              </motion.h2>
-              <motion.p
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="text-neutral-600 dark:text-neutral-300"
-              >
-                Mengalihkan ke halaman login...
-              </motion.p>
-            </div>
-            <LoaderTwo />
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="text-sm text-neutral-500 dark:text-neutral-400 mt-4"
-            >
-              Sesi Anda telah berakhir
-            </motion.p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar open={open} setOpen={setOpen}>
           <SidebarBody className="justify-between gap-8">
@@ -457,14 +394,14 @@ export default function DashboardLayout({
                   <button
                     key={link.id}
                     onClick={() => handleNavigation(link.href)}
-                    disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
+                    disabled={isLoggingOut || isNavigating}
                     className={cn(
                       "flex items-center group/sidebar py-2 rounded-md transition-all duration-150",
                       open ? "justify-start gap-2 px-2" : "justify-center",
                       activeView === link.id
                         ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white"
                         : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
-                      (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
+                      (isLoggingOut || isNavigating) && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className={cn(
@@ -486,14 +423,14 @@ export default function DashboardLayout({
                 <div className="flex flex-col">
                   <button
                     onClick={toggleSettings}
-                    disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
+                    disabled={isLoggingOut || isNavigating}
                     className={cn(
                       "flex items-center justify-between gap-2 group/sidebar py-2 rounded-md transition-all duration-150 w-full",
                       open ? "px-2" : "px-0 justify-center",
                       (activeView === 'profile' || activeView === 'services')
                         ? "bg-gradient-to-r from-[#7CE0A8] to-[#5DD494] shadow-md shadow-[#7CE0A8]/30 text-white dark:from-[#7CE0A8] dark:to-[#5DD494] dark:text-white"
                         : "hover:bg-neutral-200 dark:hover:bg-neutral-700",
-                      (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
+                      (isLoggingOut || isNavigating) && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className={cn("flex items-center gap-2", !open && "justify-center w-full")}>
@@ -540,13 +477,13 @@ export default function DashboardLayout({
                       >
                         <button
                           onClick={() => handleNavigation('/mitra/settings/profile')}
-                          disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
+                          disabled={isLoggingOut || isNavigating}
                           className={cn(
                             "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-all duration-150",
                             activeView === 'profile'
                               ? "bg-gradient-to-r from-[#7CE0A8]/90 to-[#5DD494]/90 text-white font-medium shadow-sm dark:from-[#7CE0A8]/90 dark:to-[#5DD494]/90 dark:text-white" 
                               : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750",
-                            (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
+                            (isLoggingOut || isNavigating) && "opacity-50 cursor-not-allowed"
                           )}
                         >
                           <IconUser className="h-4 w-4 flex-shrink-0" />
@@ -554,13 +491,13 @@ export default function DashboardLayout({
                         </button>
                         <button
                           onClick={() => handleNavigation('/mitra/settings/services')}
-                          disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
+                          disabled={isLoggingOut || isNavigating}
                           className={cn(
                             "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-all duration-150",
                             activeView === 'services'
                               ? "bg-gradient-to-r from-[#7CE0A8]/90 to-[#5DD494]/90 text-white font-medium shadow-sm dark:from-[#7CE0A8]/90 dark:to-[#5DD494]/90 dark:text-white" 
                               : "text-neutral-600 hover:bg-gradient-to-r hover:from-neutral-100 hover:to-neutral-50 dark:text-neutral-300 dark:hover:from-neutral-800 dark:hover:to-neutral-750",
-                            (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
+                            (isLoggingOut || isNavigating) && "opacity-50 cursor-not-allowed"
                           )}
                         >
                           <IconBriefcase className="h-4 w-4 flex-shrink-0" />
@@ -573,12 +510,12 @@ export default function DashboardLayout({
 
                 <button
                   onClick={handleLogoutClick}
-                  disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
+                  disabled={isLoggingOut || isNavigating}
                   className={cn(
                     "flex items-center group/sidebar py-2 rounded-md transition-all duration-150",
                     open ? "justify-start gap-2 px-2" : "justify-center",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
-                    (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
+                    (isLoggingOut || isNavigating) && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   <div className="flex-shrink-0">
@@ -595,11 +532,11 @@ export default function DashboardLayout({
             <div className="mt-auto">
               <button
                 onClick={() => handleNavigation('/mitra/settings/profile')}
-                disabled={isLoggingOut || showLogoutRedirectLoader || isNavigating}
+                disabled={isLoggingOut || isNavigating}
                 className={cn(
                   "flex items-center rounded-md transition-all duration-150 hover:bg-neutral-200 dark:hover:bg-neutral-700",
                   open ? "justify-start gap-2 py-2 px-2" : "justify-center py-2",
-                  (isLoggingOut || showLogoutRedirectLoader || isNavigating) && "opacity-50 cursor-not-allowed"
+                  (isLoggingOut || isNavigating) && "opacity-50 cursor-not-allowed"
                 )}
               >
                 <motion.img

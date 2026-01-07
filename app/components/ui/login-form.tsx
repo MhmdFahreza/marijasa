@@ -1,4 +1,3 @@
-
 // app/components/ui/login-form.tsx
 "use client";
 
@@ -292,7 +291,7 @@ export function LoginForm({
       return;
     }
 
-    // Mitra validation - FIXED
+    // Mitra validation - FIXED: Hapus showRedirectLoader dari sini
     if (userType === "mitra") {
       setIsLoading(true);
 
@@ -332,19 +331,14 @@ export function LoginForm({
           return;
         }
 
-        // Show success loader
-        setShowRedirectLoader(true);
-        
-        // Redirect after a short delay
-        setTimeout(() => {
-          console.log('[Mitra Login] Redirecting to dashboard...');
-          window.location.href = "/mitra/dashboard";
-        }, 1500);
+        // PERBAIKAN: Langsung redirect tanpa loader tambahan
+        // Layout akan handle loading state-nya
+        console.log('[Mitra Login] Redirecting to dashboard...');
+        window.location.href = "/mitra/dashboard";
       } catch (error) {
         console.error("Mitra login error:", error);
         setError("Terjadi kesalahan saat login. Silakan coba lagi.");
         setIsLoading(false);
-        setShowRedirectLoader(false);
       }
 
       return;
@@ -485,7 +479,8 @@ export function LoginForm({
 
   return (
     <>
-      {showRedirectLoader && (
+      {/* Redirect Loader - Only for user and admin */}
+      {showRedirectLoader && userType !== "mitra" && (
         <div className="fixed inset-0 bg-gradient-to-br from-white/95 to-white/90 dark:from-neutral-900/95 dark:to-neutral-900/90 z-50 flex flex-col items-center justify-center gap-6 backdrop-blur-sm">
           <div className="text-center">
             <h2 className="text-2xl font-bold bg-gradient-to-r from-[#7CE0A8] to-[#5AB894] bg-clip-text text-transparent mb-2">
