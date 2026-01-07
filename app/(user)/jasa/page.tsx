@@ -33,12 +33,14 @@ const EmptyState = ({
   onResetFilters,
   selectedCategory,
   selectedCity,
-  selectedRating
+  selectedRating,
+  searchQuery
 }: {
   onResetFilters: () => void;
   selectedCategory: string;
   selectedCity: string;
   selectedRating: string;
+  searchQuery: string;
 }) => {
   const getCategoryDisplayName = (category: string) => {
     const names: Record<string, string> = {
@@ -83,7 +85,7 @@ const EmptyState = ({
         Maaf, kami tidak menemukan jasa yang sesuai dengan kriteria pencarian Anda.
       </p>
 
-      {(selectedCategory || selectedCity || (selectedRating && selectedRating !== "semuarating")) && (
+      {(selectedCategory || selectedCity || (selectedRating && selectedRating !== "semuarating") || searchQuery) && (
         <div className="mb-8 p-4 bg-gradient-to-r from-[#7CE0A8]/5 to-transparent rounded-xl border border-[#7CE0A8]/10">
           <p className="text-sm text-foreground/70 mb-2">Filter yang aktif:</p>
           <div className="flex flex-wrap justify-center gap-2">
@@ -107,6 +109,12 @@ const EmptyState = ({
                     selectedRating === "3+" ? "3.0+ Rating" :
                       selectedRating === "2+" ? "2.0+ Rating" :
                         selectedRating === "1+" ? "1.0+ Rating" : selectedRating}
+              </span>
+            )}
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#7CE0A8]/10 text-[#7CE0A8] text-sm font-medium">
+                <Search className="w-3.5 h-3.5" />
+                "{searchQuery}"
               </span>
             )}
           </div>
@@ -162,9 +170,11 @@ export default function JasaPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [displayLimit, setDisplayLimit] = useState<string>("10");
 
   // Load vendors dari API dengan debounce
-  const loadVendors = useCallback(async (category: string, city: string, rating: string) => {
+  const loadVendors = useCallback(async (category: string, city: string, rating: string, search: string) => {
     try {
       setIsFilterLoading(true);
 
@@ -175,6 +185,7 @@ export default function JasaPage() {
       if (rating && rating !== 'semuarating') {
         params.set('rating', rating);
       }
+      if (search) params.set('search', search);
 
       const queryString = params.toString();
       const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
@@ -202,37 +213,53 @@ export default function JasaPage() {
   // Debounce untuk filter changes
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      loadVendors(selectedCategory, selectedCity, selectedRating);
+      loadVendors(selectedCategory, selectedCity, selectedRating, searchQuery);
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedCategory, selectedCity, selectedRating, loadVendors]);
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery, loadVendors]);
 
-  // Set category from URL params
+  // Set filters from URL params
   useEffect(() => {
     const kategori = searchParams?.get('kategori');
-    if (kategori) {
-      setSelectedCategory(kategori);
-    }
+    const kota = searchParams?.get('kota');
+    const rating = searchParams?.get('rating');
+    const search = searchParams?.get('search');
+    const limit = searchParams?.get('limit');
+    
+    if (kategori) setSelectedCategory(kategori);
+    if (kota) setSelectedCity(kota);
+    if (rating) setSelectedRating(rating);
+    if (search) setSearchQuery(search);
+    if (limit) setDisplayLimit(limit);
   }, [searchParams]);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedCategory, selectedCity, selectedRating]);
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit]);
 
   // Listen for favorites update event
   useEffect(() => {
     const handleFavoritesUpdate = () => {
       // Refresh vendors to update favorite status
-      loadVendors(selectedCategory, selectedCity, selectedRating);
+      loadVendors(selectedCategory, selectedCity, selectedRating, searchQuery);
     };
 
     window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
     return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
-  }, [selectedCategory, selectedCity, selectedRating, loadVendors]);
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery, loadVendors]);
 
-  const totalPages = Math.max(1, Math.ceil(vendors.length / ITEMS_PER_PAGE));
+  // Calculate display based on limit
+  const displayedVendors = useMemo(() => {
+    if (displayLimit === 'all') {
+      return vendors;
+    }
+    const limit = parseInt(displayLimit);
+    return vendors.slice(0, limit);
+  }, [vendors, displayLimit]);
+
+  const totalPages = Math.max(1, Math.ceil(displayedVendors.length / ITEMS_PER_PAGE));
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -242,7 +269,7 @@ export default function JasaPage() {
 
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentVendors = vendors.slice(startIndex, endIndex);
+  const currentVendors = displayedVendors.slice(startIndex, endIndex);
 
   const handleHomeClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -260,6 +287,8 @@ export default function JasaPage() {
     setSelectedCategory("");
     setSelectedCity("");
     setSelectedRating("");
+    setSearchQuery("");
+    setDisplayLimit("10");
     setCurrentPage(1);
     router.push('/jasa', { scroll: false });
   };
@@ -396,6 +425,10 @@ export default function JasaPage() {
                 onCityChange={setSelectedCity}
                 selectedRating={selectedRating}
                 onRatingChange={setSelectedRating}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                displayLimit={displayLimit}
+                onDisplayLimitChange={setDisplayLimit}
                 onResetFilters={handleResetFilters}
               />
             </motion.div>
@@ -410,17 +443,18 @@ export default function JasaPage() {
               </div>
             )}
 
-            {!isFilterLoading && vendors.length === 0 ? (
+            {!isFilterLoading && displayedVendors.length === 0 ? (
               <EmptyState
                 onResetFilters={handleResetFilters}
                 selectedCategory={selectedCategory}
                 selectedCity={selectedCity}
                 selectedRating={selectedRating}
+                searchQuery={searchQuery}
               />
             ) : !isFilterLoading ? (
               <>
                 <motion.section
-                  key={`${selectedCategory}-${selectedCity}-${selectedRating}-${currentPage}`}
+                  key={`${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}`}
                   className="mt-6 space-y-4"
                   initial="hidden"
                   animate="show"
@@ -472,6 +506,14 @@ export default function JasaPage() {
                       </PaginationContent>
                     </Pagination>
                   </motion.div>
+                )}
+
+                {/* Display info */}
+                {displayedVendors.length > 0 && (
+                  <div className="mt-4 text-center text-sm text-muted-foreground">
+                    Menampilkan {currentVendors.length} dari {displayedVendors.length} vendor
+                    {vendors.length !== displayedVendors.length && ` (Total: ${vendors.length} vendor)`}
+                  </div>
                 )}
               </>
             ) : null}

@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, memo, useEffect, useRef } from "react";
-import { SlidersHorizontal, X, RotateCcw, Loader2 } from "lucide-react";
+import { SlidersHorizontal, X, RotateCcw, Loader2, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -39,6 +39,15 @@ const RATING_LABELS: Record<string, string> = {
     "semuarating": "Semua Rating",
 };
 
+const DISPLAY_LIMITS = [
+    { value: "5", label: "5 Vendor" },
+    { value: "10", label: "10 Vendor" },
+    { value: "20", label: "20 Vendor" },
+    { value: "50", label: "50 Vendor" },
+    { value: "100", label: "100 Vendor" },
+    { value: "all", label: "Semua Vendor" },
+];
+
 interface FilterBarProps {
     selectedCategory: string;
     onCategoryChange: (value: string) => void;
@@ -46,6 +55,10 @@ interface FilterBarProps {
     onCityChange: (value: string) => void;
     selectedRating: string;
     onRatingChange: (value: string) => void;
+    searchQuery: string;
+    onSearchChange: (value: string) => void;
+    displayLimit: string;
+    onDisplayLimitChange: (value: string) => void;
     onResetFilters: () => void;
 }
 
@@ -73,11 +86,11 @@ const Chip = memo(({
 Chip.displayName = "Chip";
 
 const PLACEHOLDERS = [
-    "Cari jasa kebersihan rumah",
-    "Teknisi AC terdekat",
-    "Tukang listrik 24 jam",
-    "Jasa Pindahan",
-    "Jasa perbaikan atap bocor",
+    "Cari nama vendor atau layanan...",
+    "Contoh: Tukang AC Profesional",
+    "Contoh: Service AC 24 Jam",
+    "Contoh: Perbaikan Listrik",
+    "Cari berdasarkan jangkauan layanan...",
 ];
 
 export default function FilterBar({
@@ -87,13 +100,17 @@ export default function FilterBar({
     onCityChange,
     selectedRating,
     onRatingChange,
+    searchQuery,
+    onSearchChange,
+    displayLimit,
+    onDisplayLimitChange,
     onResetFilters,
 }: FilterBarProps) {
     const router = useRouter();
-    const [urutkan, setUrutkan] = useState<string>("");
     const [isSmallMobile, setIsSmallMobile] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const sheetContentRef = useRef<HTMLDivElement>(null);
+    const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
     // Master data state
     const [cities, setCities] = useState<City[]>([]);
@@ -200,70 +217,75 @@ export default function FilterBar({
         return categoryMap[slug] || slug;
     }, [categoryMap]);
 
-    // Update URL function - debounced
-    const updateURL = useCallback((category: string, city: string, rating: string) => {
+    // Update URL function
+    const updateURL = useCallback((category: string, city: string, rating: string, search: string, limit: string) => {
         const params = new URLSearchParams();
 
-        if (category) {
-            params.set('kategori', category);
-        }
-        if (city) {
-            params.set('kota', city);
-        }
-        if (rating && rating !== 'semuarating') {
-            params.set('rating', rating);
-        }
+        if (category) params.set('kategori', category);
+        if (city) params.set('kota', city);
+        if (rating && rating !== 'semuarating') params.set('rating', rating);
+        if (search) params.set('search', search);
+        if (limit && limit !== '10') params.set('limit', limit);
 
         const queryString = params.toString();
         const newURL = queryString ? `/jasa?${queryString}` : '/jasa';
 
-        // Use replace instead of push to avoid history pollution
         router.replace(newURL, { scroll: false });
     }, [router]);
 
     const handleCategoryChange = useCallback((value: string) => {
-        // Batch state updates
         requestAnimationFrame(() => {
             onCategoryChange(value);
-            updateURL(value, selectedCity, selectedRating);
+            updateURL(value, selectedCity, selectedRating, searchQuery, displayLimit);
         });
-    }, [onCategoryChange, selectedCity, selectedRating, updateURL]);
+    }, [onCategoryChange, selectedCity, selectedRating, searchQuery, displayLimit, updateURL]);
 
     const handleCityChange = useCallback((value: string) => {
         requestAnimationFrame(() => {
             onCityChange(value);
-            updateURL(selectedCategory, value, selectedRating);
+            updateURL(selectedCategory, value, selectedRating, searchQuery, displayLimit);
         });
-    }, [onCityChange, selectedCategory, selectedRating, updateURL]);
+    }, [onCityChange, selectedCategory, selectedRating, searchQuery, displayLimit, updateURL]);
 
     const handleRatingChange = useCallback((value: string) => {
         requestAnimationFrame(() => {
             onRatingChange(value);
-            updateURL(selectedCategory, selectedCity, value);
+            updateURL(selectedCategory, selectedCity, value, searchQuery, displayLimit);
         });
-    }, [onRatingChange, selectedCategory, selectedCity, updateURL]);
+    }, [onRatingChange, selectedCategory, selectedCity, searchQuery, displayLimit, updateURL]);
+
+    const handleDisplayLimitChange = useCallback((value: string) => {
+        requestAnimationFrame(() => {
+            onDisplayLimitChange(value);
+            updateURL(selectedCategory, selectedCity, selectedRating, searchQuery, value);
+        });
+    }, [onDisplayLimitChange, selectedCategory, selectedCity, selectedRating, searchQuery, updateURL]);
 
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        console.log("query:", e.target.value);
+        setLocalSearchQuery(e.target.value);
     }, []);
 
     const handleSearchSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        console.log("submitted search");
-    }, []);
+        requestAnimationFrame(() => {
+            onSearchChange(localSearchQuery);
+            updateURL(selectedCategory, selectedCity, selectedRating, localSearchQuery, displayLimit);
+        });
+    }, [localSearchQuery, onSearchChange, selectedCategory, selectedCity, selectedRating, displayLimit, updateURL]);
 
     const resetAll = useCallback(() => {
-        // Batch all resets together
         requestAnimationFrame(() => {
             onCategoryChange("");
             onCityChange("");
             onRatingChange("");
-            setUrutkan("");
+            onSearchChange("");
+            onDisplayLimitChange("10");
+            setLocalSearchQuery("");
             onResetFilters();
             setSheetOpen(false);
             router.replace('/jasa', { scroll: false });
         });
-    }, [onCategoryChange, onCityChange, onRatingChange, onResetFilters, router]);
+    }, [onCategoryChange, onCityChange, onRatingChange, onSearchChange, onDisplayLimitChange, onResetFilters, router]);
 
     const handleSaveFilters = useCallback(() => {
         setSheetOpen(false);
@@ -271,7 +293,7 @@ export default function FilterBar({
 
     // Active chips - memoized to prevent unnecessary recalculations
     const activeChips = useMemo(() => {
-        const chips: { key: "kategori" | "kota" | "rating" | "urutkan"; label: string }[] = [];
+        const chips: { key: "kategori" | "kota" | "rating" | "search" | "limit"; label: string }[] = [];
 
         if (selectedCategory) {
             chips.push({
@@ -294,17 +316,25 @@ export default function FilterBar({
             });
         }
 
-        if (urutkan) {
+        if (searchQuery) {
             chips.push({
-                key: "urutkan",
-                label: `Urutkan: ${urutkan}`
+                key: "search",
+                label: `Pencarian: ${searchQuery}`
+            });
+        }
+
+        if (displayLimit && displayLimit !== "10") {
+            const limitLabel = DISPLAY_LIMITS.find(l => l.value === displayLimit)?.label || displayLimit;
+            chips.push({
+                key: "limit",
+                label: `Tampilkan: ${limitLabel}`
             });
         }
 
         return chips;
-    }, [selectedCategory, selectedCity, selectedRating, urutkan, getCategoryLabel]);
+    }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit, getCategoryLabel]);
 
-    const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "urutkan") => {
+    const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "search" | "limit") => {
         requestAnimationFrame(() => {
             switch (key) {
                 case "kategori":
@@ -316,12 +346,17 @@ export default function FilterBar({
                 case "rating":
                     handleRatingChange("");
                     break;
-                case "urutkan":
-                    setUrutkan("");
+                case "search":
+                    setLocalSearchQuery("");
+                    onSearchChange("");
+                    updateURL(selectedCategory, selectedCity, selectedRating, "", displayLimit);
+                    break;
+                case "limit":
+                    handleDisplayLimitChange("10");
                     break;
             }
         });
-    }, [handleCategoryChange, handleCityChange, handleRatingChange]);
+    }, [handleCategoryChange, handleCityChange, handleRatingChange, handleDisplayLimitChange, onSearchChange, updateURL, selectedCategory, selectedCity, selectedRating, displayLimit]);
 
     // Memoized chips component
     const ChipsComponent = useMemo(() => {
@@ -427,25 +462,28 @@ export default function FilterBar({
                         placeholders={PLACEHOLDERS}
                         onChange={handleSearchChange}
                         onSubmit={handleSearchSubmit}
+                        value={localSearchQuery}
                         className="h-12 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all duration-200"
                         inputClassName="pl-4 pr-10 text-sm lg:text-base"
                         buttonClassName="h-8 w-8 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-colors"
                     />
                 </div>
 
-                {/* Urutkan Select */}
+                {/* Tampilkan Select */}
                 <div className="lg:col-span-2">
                     <Select
-                        value={urutkan}
-                        onValueChange={setUrutkan}
+                        value={displayLimit}
+                        onValueChange={handleDisplayLimitChange}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                            <SelectValue placeholder="Urutkan" />
+                            <SelectValue placeholder="Tampilkan" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
-                            <SelectItem value="terbaru">Terbaru</SelectItem>
-                            <SelectItem value="terdekat">Terdekat</SelectItem>
-                            <SelectItem value="rating">Rating Tertinggi</SelectItem>
+                            {DISPLAY_LIMITS.map((limit) => (
+                                <SelectItem key={limit.value} value={limit.value}>
+                                    {limit.label}
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -514,6 +552,7 @@ export default function FilterBar({
                         placeholders={PLACEHOLDERS}
                         onChange={handleSearchChange}
                         onSubmit={handleSearchSubmit}
+                        value={localSearchQuery}
                         className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all duration-200"
                         inputClassName="pl-3 pr-9 text-sm"
                         buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-colors"
@@ -522,16 +561,18 @@ export default function FilterBar({
 
                 <div className="col-span-2">
                     <Select
-                        value={urutkan}
-                        onValueChange={setUrutkan}
+                        value={displayLimit}
+                        onValueChange={handleDisplayLimitChange}
                     >
                         <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                            <SelectValue placeholder="Urutkan" />
+                            <SelectValue placeholder="Tampilkan" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
-                            <SelectItem value="terbaru">Terbaru</SelectItem>
-                            <SelectItem value="terdekat">Terdekat</SelectItem>
-                            <SelectItem value="rating">Rating</SelectItem>
+                            {DISPLAY_LIMITS.map((limit) => (
+                                <SelectItem key={limit.value} value={limit.value}>
+                                    {limit.label}
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -549,6 +590,7 @@ export default function FilterBar({
                         placeholders={PLACEHOLDERS}
                         onChange={handleSearchChange}
                         onSubmit={handleSearchSubmit}
+                        value={localSearchQuery}
                         className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all duration-200"
                         inputClassName="pl-3 pr-9 text-sm"
                         buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-colors"
@@ -651,20 +693,22 @@ export default function FilterBar({
                                 </Select>
                             </div>
 
-                            {/* Urutkan */}
+                            {/* Tampilkan */}
                             <div className="space-y-1.5">
-                                <div className="text-sm font-medium text-gray-700">Urutkan</div>
+                                <div className="text-sm font-medium text-gray-700">Tampilkan</div>
                                 <Select
-                                    value={urutkan}
-                                    onValueChange={setUrutkan}
+                                    value={displayLimit}
+                                    onValueChange={handleDisplayLimitChange}
                                 >
                                     <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                                        <SelectValue placeholder="Urutkan" />
+                                        <SelectValue placeholder="Tampilkan" />
                                     </SelectTrigger>
                                     <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
-                                        <SelectItem value="terbaru">Terbaru</SelectItem>
-                                        <SelectItem value="terdekat">Terdekat</SelectItem>
-                                        <SelectItem value="rating">Rating Tertinggi</SelectItem>
+                                        {DISPLAY_LIMITS.map((limit) => (
+                                            <SelectItem key={limit.value} value={limit.value}>
+                                                {limit.label}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

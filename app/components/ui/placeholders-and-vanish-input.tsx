@@ -1,14 +1,16 @@
+// app/components/ui/placeholders-and-vanish-input.tsx
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, X } from "lucide-react"; 
-import { cn } from "@/app/components/lib/utils";
+import { cn } from "../lib/utils";
+import { Search } from "lucide-react";
 
 export function PlaceholdersAndVanishInput({
   placeholders,
   onChange,
   onSubmit,
+  value,
   className,
   inputClassName,
   buttonClassName,
@@ -16,26 +18,18 @@ export function PlaceholdersAndVanishInput({
   placeholders: string[];
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  value?: string;
   className?: string;
   inputClassName?: string;
   buttonClassName?: string;
 }) {
   const [currentPlaceholder, setCurrentPlaceholder] = useState(0);
-  const [value, setValue] = useState("");
-  const [animating, setAnimating] = useState(false);
-
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const newDataRef = useRef<any[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const formRef = useRef<HTMLFormElement>(null); // Tambahkan ref untuk form
-
   const startAnimation = () => {
     intervalRef.current = setInterval(() => {
       setCurrentPlaceholder((prev) => (prev + 1) % placeholders.length);
     }, 3000);
   };
-
   const handleVisibilityChange = () => {
     if (document.visibilityState !== "visible" && intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -48,17 +42,25 @@ export function PlaceholdersAndVanishInput({
   useEffect(() => {
     startAnimation();
     document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [placeholders]);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const newDataRef = useRef<any[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [animating, setAnimating] = useState(false);
 
   const draw = useCallback(() => {
     if (!inputRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
     canvas.width = 800;
@@ -69,7 +71,7 @@ export function PlaceholdersAndVanishInput({
     const fontSize = parseFloat(computedStyles.getPropertyValue("font-size"));
     ctx.font = `${fontSize * 2}px ${computedStyles.fontFamily}`;
     ctx.fillStyle = "#FFF";
-    ctx.fillText(value, 16, 40);
+    ctx.fillText(value || "", 16, 40);
 
     const imageData = ctx.getImageData(0, 0, 800, 800);
     const pixelData = imageData.data;
@@ -78,14 +80,19 @@ export function PlaceholdersAndVanishInput({
     for (let t = 0; t < 800; t++) {
       let i = 4 * t * 800;
       for (let n = 0; n < 800; n++) {
-        let e = i + 4 * n;
-        if (pixelData[e] !== 0 && pixelData[e + 1] !== 0 && pixelData[e + 2] !== 0) {
+        if (pixelData[i] !== 0) {
           newData.push({
             x: n,
             y: t,
-            color: [pixelData[e], pixelData[e + 1], pixelData[e + 2], pixelData[e + 3]],
+            color: [
+              pixelData[i],
+              pixelData[i + 1],
+              pixelData[i + 2],
+              pixelData[i + 3],
+            ],
           });
         }
+        i += 4;
       }
     }
 
@@ -125,7 +132,7 @@ export function PlaceholdersAndVanishInput({
         if (ctx) {
           ctx.clearRect(pos, 0, 800, 800);
           newDataRef.current.forEach((t) => {
-            const { x: n, y: i, r: s, color } = t;
+            const { x: n, y: i, r: s, color: color } = t;
             if (n > pos) {
               ctx.beginPath();
               ctx.rect(n, i, s, s);
@@ -138,6 +145,9 @@ export function PlaceholdersAndVanishInput({
         if (newDataRef.current.length > 0) {
           animateFrame(pos - 8);
         } else {
+          if (inputRef.current) {
+            inputRef.current.value = "";
+          }
           setAnimating(false);
         }
       });
@@ -145,143 +155,95 @@ export function PlaceholdersAndVanishInput({
     animateFrame(start);
   };
 
-  // ANIMASI HAPUS - Trigger animasi serpihan saat menghapus
-  const vanishAndDelete = useCallback(() => {
-    if (!value.trim() || animating) return;
-    
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !animating) {
+      vanishAndSubmit();
+    }
+  };
+
+  const vanishAndSubmit = () => {
     setAnimating(true);
     draw();
-    
-    const currentValue = value;
-    if (currentValue && inputRef.current) {
+
+    if (value && inputRef.current) {
       const maxX = newDataRef.current.reduce(
         (prev, current) => (current.x > prev ? current.x : prev),
         0
       );
-      
-      // Animasi serpihan
       animate(maxX);
-      
-      // Setelah animasi selesai, baru kosongkan input
-      setTimeout(() => {
-        setValue("");
-        const event = {
-          target: { value: "" }
-        } as React.ChangeEvent<HTMLInputElement>;
-        onChange(event);
-      }, 500); // Delay sedikit untuk sinkron dengan animasi
-    }
-  }, [value, animating, draw, onChange]);
-
-  // Handle tombol X (delete) - trigger animasi
-  const handleClearInput = useCallback(() => {
-    if (animating) return;
-    vanishAndDelete();
-  }, [animating, vanishAndDelete]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !animating) {
-      // Cukup submit form saja tanpa melewatkan event keyboard
-      formRef.current?.requestSubmit();
-      e.preventDefault(); // Mencegah reload halaman
     }
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!value.trim() || animating) return;
+    vanishAndSubmit();
     onSubmit && onSubmit(e);
-  };
-
-  // Handle perubahan input
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!animating) {
-      setValue(e.target.value);
-      onChange && onChange(e);
-    }
   };
 
   return (
     <form
-      ref={formRef} // Tambahkan ref ke form
       className={cn(
-        "w-full relative h-12 rounded-xl border border-input bg-background text-foreground shadow-none transition duration-200",
-        "px-0",
+        "w-full relative overflow-hidden bg-white dark:bg-zinc-800 rounded-full transition duration-200",
         className
       )}
       onSubmit={handleSubmit}
     >
-      {/* Canvas untuk animasi - hanya muncul saat delete */}
       <canvas
         className={cn(
-          "absolute pointer-events-none text-base transform scale-50 top-[18%] left-2 sm:left-3 origin-top-left filter invert dark:invert-0 pr-16",
+          "absolute pointer-events-none text-base transform scale-50 top-[20%] left-2 sm:left-8 origin-top-left filter invert dark:invert-0 pr-20",
           !animating ? "opacity-0" : "opacity-100"
         )}
         ref={canvasRef}
       />
-
       <input
-        onChange={handleInputChange}
+        onChange={(e) => {
+          if (!animating) {
+            onChange && onChange(e);
+          }
+        }}
         onKeyDown={handleKeyDown}
         ref={inputRef}
         value={value}
         type="text"
         className={cn(
-          "w-full h-full border-none bg-transparent focus:outline-none focus:ring-0",
-          "text-sm sm:text-base dark:text-foreground text-foreground",
-          "pl-4 sm:pl-4",
-          // Sesuaikan padding kanan berdasarkan apakah ada nilai
-          value ? "pr-24" : "pr-20",
-          inputClassName,
-          animating && "text-transparent dark:text-transparent"
+          "w-full relative text-sm sm:text-base z-50 border-none dark:text-white bg-transparent text-black h-full rounded-full focus:outline-none focus:ring-0 pl-4 sm:pl-10 pr-20",
+          inputClassName
         )}
       />
 
-      {/* Container untuk tombol aksi di kanan */}
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-        {/* Tombol Clear (X) - Muncul hanya ketika ada teks */}
-        {value && !animating && (
-          <button
-            type="button"
-            onClick={handleClearInput}
-            className="h-8 w-8 rounded-md bg-gray-100 dark:bg-gray-800 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7CE0A8]"
-            aria-label="Hapus pencarian"
-            title="Hapus"
-          >
-            <X className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-          </button>
+      <button
+        disabled={!value}
+        type="submit"
+        className={cn(
+          "absolute right-2 top-1/2 z-50 -translate-y-1/2 h-8 w-8 rounded-full disabled:bg-gray-100 transition duration-200 flex items-center justify-center",
+          buttonClassName
         )}
+      >
+        <Search className="h-4 w-4" />
+      </button>
 
-        {/* Tombol Submit (Search) */}
-        <button
-          disabled={!value || animating}
-          type="submit"
-          className={cn(
-            "h-8 w-8 rounded-md",
-            "disabled:bg-muted bg-muted/70 hover:bg-muted",
-            "dark:disabled:bg-zinc-800 dark:bg-zinc-800/70 dark:hover:bg-zinc-800",
-            "flex items-center justify-center transition",
-            buttonClassName
-          )}
-          aria-label="Cari"
-          title="Cari"
-        >
-          <motion.div whileTap={{ scale: 0.95 }}>
-            <Search className="h-4 w-4 text-muted-foreground" />
-          </motion.div>
-        </button>
-      </div>
-
-      <div className="absolute inset-0 flex items-center pointer-events-none">
+      <div className="absolute inset-0 flex items-center rounded-full pointer-events-none">
         <AnimatePresence mode="wait">
-          {!value && !animating && (
+          {!value && (
             <motion.p
-              initial={{ y: 5, opacity: 0 }}
+              initial={{
+                y: 5,
+                opacity: 0,
+              }}
               key={`current-placeholder-${currentPlaceholder}`}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -15, opacity: 0 }}
-              transition={{ duration: 0.3, ease: "linear" }}
-              className="dark:text-muted-foreground text-sm sm:text-base font-normal text-muted-foreground pl-4 text-left w-[calc(100%-4rem)] truncate"
+              animate={{
+                y: 0,
+                opacity: 1,
+              }}
+              exit={{
+                y: -15,
+                opacity: 0,
+              }}
+              transition={{
+                duration: 0.3,
+                ease: "linear",
+              }}
+              className="dark:text-zinc-500 text-sm sm:text-base font-normal text-neutral-500 pl-4 sm:pl-12 text-left w-[calc(100%-2rem)] truncate"
             >
               {placeholders[currentPlaceholder]}
             </motion.p>

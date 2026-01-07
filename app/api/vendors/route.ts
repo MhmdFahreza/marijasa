@@ -10,26 +10,84 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('kategori');
     const city = searchParams.get('kota');
     const rating = searchParams.get('rating');
+    const search = searchParams.get('search');
 
     const where: any = {
       status: 'ACTIVE',
     };
 
+    // Filter by category
     if (category) {
       where.category = category;
     }
 
+    // Filter by city (service areas)
     if (city) {
       where.service_areas = {
         has: city,
       };
     }
 
+    // Filter by rating
     if (rating && rating !== 'semuarating') {
-      const ratingValue = parseFloat(rating.replace('+', ''));
-      where.rating = {
-        gte: ratingValue,
-      };
+      if (rating === '5') {
+        where.rating = 5;
+      } else {
+        const ratingValue = parseFloat(rating.replace('+', ''));
+        where.rating = {
+          gte: ratingValue,
+        };
+      }
+    }
+
+    // Search functionality - nama vendor, layanan, dan jangkauan layanan
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      
+      where.OR = [
+        // Search by vendor name (case insensitive)
+        {
+          name: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+        // Search by description
+        {
+          description: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+        // Search by service areas
+        {
+          service_areas: {
+            hasSome: [searchTerm],
+          },
+        },
+        // Search by services name
+        {
+          services: {
+            some: {
+              name: {
+                contains: searchTerm,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+        // Search by services description
+        {
+          services: {
+            some: {
+              description: {
+                contains: searchTerm,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      ];
     }
 
     const vendors = await prisma.vendor.findMany({
@@ -47,6 +105,7 @@ export async function GET(request: NextRequest) {
           },
           select: {
             name: true,
+            description: true,
           },
         },
       },
@@ -76,6 +135,7 @@ export async function GET(request: NextRequest) {
         src: img.image_url,
         alt: img.caption || vendor.name,
       })),
+      services: vendor.services,
       serviceCount: vendor.services.length,
       joinDate: vendor.join_date,
     }));
