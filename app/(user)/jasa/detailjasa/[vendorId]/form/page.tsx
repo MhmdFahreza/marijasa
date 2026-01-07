@@ -83,7 +83,7 @@ interface Vendor {
   review_count: number;
   service_areas: string[];
   specialties: string[];
-  tags: string[];
+  tags: string[]; // Tags diupdate otomatis dari nama layanan
   category?: string;
   join_date: string;
   services?: Service[];
@@ -820,7 +820,7 @@ function OrderForm({
     setFormData({ ...formData, minute: minute.toString() });
   };
 
-  const activeServices = vendor.services?.filter((s: any) => s.is_active) || [];
+  const activeServices = vendor.services?.filter((s: any) => s.isActive) || [];
 
   return (
     <>
@@ -959,36 +959,36 @@ function OrderForm({
               ) : (
                 <div className="space-y-3">
                   {activeServices.map((service: any) => (
-                    <Card key={service.service_id} className="border hover:border-[#7CE0A8] transition-colors">
+                    <Card key={service.id} className="border hover:border-[#7CE0A8] transition-colors">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-start gap-3 flex-1">
                             <Checkbox
-                              id={service.service_id}
-                              checked={(formData.selectedServices || []).includes(service.service_id)}
+                              id={service.id}
+                              checked={(formData.selectedServices || []).includes(service.id)}
                               onCheckedChange={(checked) => {
-                                handleServiceToggle(service.service_id, checked as boolean);
+                                handleServiceToggle(service.id, checked as boolean);
                               }}
                             />
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <Label htmlFor={service.service_id} className="font-medium cursor-pointer">
+                                <Label htmlFor={service.id} className="font-medium cursor-pointer">
                                   {service.name}
                                 </Label>
                                 <Badge variant="outline" className="text-xs">
-                                  {service.price_type === 'FIXED' ? 'Harga Tetap' :
-                                   service.price_type === 'HOURLY' ? 'Per Jam' :
+                                  {service.priceType === 'FIXED' ? 'Harga Tetap' :
+                                   service.priceType === 'HOURLY' ? 'Per Jam' :
                                    'Per Unit'}
                                 </Badge>
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {service.description}
                               </p>
-                              {service.estimated_time && (
+                              {service.estimatedTime && (
                                 <div className="flex items-center gap-1 mt-2">
                                   <Calendar className="h-3 w-3 text-muted-foreground" />
                                   <span className="text-xs text-muted-foreground">
-                                    {service.estimated_time}
+                                    {service.estimatedTime}
                                   </span>
                                 </div>
                               )}
@@ -997,10 +997,10 @@ function OrderForm({
 
                           <div className="text-right">
                             <div className="font-semibold text-primary">
-                              {formatPrice(service.price, service.price_type)}
+                              {formatPrice(service.price, service.priceType)}
                             </div>
 
-                            {(formData.selectedServices || []).includes(service.service_id) && (
+                            {(formData.selectedServices || []).includes(service.id) && (
                               <div className="mt-3 flex items-center gap-2">
                                 <Button
                                   type="button"
@@ -1008,9 +1008,9 @@ function OrderForm({
                                   size="sm"
                                   className="h-8 w-8"
                                   onClick={() => {
-                                    const currentQty = formData.quantities?.[service.service_id] || 1;
+                                    const currentQty = formData.quantities?.[service.id] || 1;
                                     if (currentQty > 1) {
-                                      handleQuantityChange(service.service_id, currentQty - 1);
+                                      handleQuantityChange(service.id, currentQty - 1);
                                     }
                                   }}
                                 >
@@ -1019,11 +1019,11 @@ function OrderForm({
                                 <Input
                                   type="number"
                                   min="1"
-                                  value={formData.quantities?.[service.service_id] || 1}
+                                  value={formData.quantities?.[service.id] || 1}
                                   className="w-16 text-center"
                                   onChange={(e) => {
                                     const qty = parseInt(e.target.value) || 1;
-                                    handleQuantityChange(service.service_id, qty);
+                                    handleQuantityChange(service.id, qty);
                                   }}
                                 />
                                 <Button
@@ -1032,8 +1032,8 @@ function OrderForm({
                                   size="sm"
                                   className="h-8 w-8"
                                   onClick={() => {
-                                    const currentQty = formData.quantities?.[service.service_id] || 1;
-                                    handleQuantityChange(service.service_id, currentQty + 1);
+                                    const currentQty = formData.quantities?.[service.id] || 1;
+                                    handleQuantityChange(service.id, currentQty + 1);
                                   }}
                                 >
                                   +
@@ -1063,7 +1063,7 @@ function OrderForm({
                           const selectedServices = formData.selectedServices || [];
                           let total = 0;
                           selectedServices.forEach((serviceId: string) => {
-                            const service = activeServices.find((s: any) => s.service_id === serviceId);
+                            const service = activeServices.find((s: any) => s.id === serviceId);
                             if (service) {
                               const quantity = formData.quantities?.[serviceId] || 1;
                               total += service.price * quantity;
@@ -1242,7 +1242,7 @@ function ConfirmationStep({
     if (!vendor || !vendor.services) return [];
     
     return formData.selectedServices.map((serviceId: string) => {
-      const service = vendor.services.find((s: any) => s.service_id === serviceId);
+      const service = vendor.services.find((s: any) => s.id === serviceId);
       const quantity = formData.quantities?.[serviceId] || 1;
       return {
         ...service,
@@ -1304,13 +1304,13 @@ function ConfirmationStep({
             </div>
             <div className="space-y-3">
               {selectedServicesDetails.map((service: any) => (
-                <div key={service.service_id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div key={service.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-medium">{service.name}</p>
                     <p className="text-sm text-muted-foreground">Qty: {service.quantity}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{formatPrice(service.price, service.price_type)}</p>
+                    <p className="font-medium">{formatPrice(service.price, service.priceType)}</p>
                     <p className="text-sm text-muted-foreground">Total: Rp {(service.total).toLocaleString('id-ID')}</p>
                   </div>
                 </div>
