@@ -138,7 +138,7 @@ export default function JasaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isAuthenticated } = useAuth();
-  
+
   const [leaving, setLeaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -155,7 +155,7 @@ export default function JasaPage() {
     const loadVendors = async () => {
       try {
         setIsLoading(true);
-        
+
         // Build query params
         const params = new URLSearchParams();
         if (selectedCategory) params.set('kategori', selectedCategory);
@@ -166,7 +166,7 @@ export default function JasaPage() {
 
         const queryString = params.toString();
         const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
-        
+
         const response = await fetch(url, {
           credentials: 'include',
         });
@@ -236,11 +236,11 @@ export default function JasaPage() {
 
   const handleLoginSuccess = async (email: string) => {
     setIsTransitioning(true);
-    
+
     if (typeof window !== 'undefined') {
       localStorage.setItem('pendingLoginEmail', email);
     }
-    
+
     await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
     router.push(`/login/otp?email=${encodeURIComponent(email)}`);
   };
@@ -448,19 +448,30 @@ export default function JasaPage() {
       </motion.main>
 
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-              Login Diperlukan
-            </DialogTitle>
-            <DialogDescription>
-              Anda perlu login untuk mengakses fitur ini. Silakan masuk ke akun Anda terlebih dahulu.
-            </DialogDescription>
+        <DialogContent className="sm:max-w-[440px] md:max-w-[480px] p-0 overflow-hidden border-0 bg-gradient-to-br from-white to-slate-50 dark:from-neutral-900 dark:to-neutral-950 max-h-[90vh] overflow-y-auto">
+          {/* Decorative gradient background */}
+          <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
+          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-gradient-to-tr from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
+
+          <DialogHeader className="relative z-10 p-4 sm:p-5 md:p-6 pb-3 sm:pb-4">
+            <div className="flex items-start gap-2.5 sm:gap-3">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10 flex-shrink-0">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-[#7CE0A8]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-base sm:text-lg md:text-xl font-bold bg-gradient-to-r from-neutral-900 via-neutral-800 to-neutral-700 dark:from-white dark:via-neutral-100 dark:to-neutral-300 bg-clip-text text-transparent">
+                  Login Diperlukan
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 mt-0.5 sm:mt-1">
+                  Silakan masuk untuk mengakses fitur ini
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="py-4">
-            <LoginForm 
-              userType="user" 
+
+          <div className="relative z-10 px-4 sm:px-5 md:px-6 pb-4 sm:pb-5 md:pb-6">
+            <LoginForm
+              userType="user"
               onSuccess={handleLoginSuccess}
               onRegisterClick={handleRegisterClick}
             />

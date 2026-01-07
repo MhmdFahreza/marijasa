@@ -10,12 +10,21 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("[Refresh] Starting token refresh process...");
+    
     // Get tokens from cookies
     const sessionId = request.cookies.get("session_id")?.value;
     const accessToken = request.cookies.get("access_token")?.value;
     const refreshToken = request.cookies.get("refresh_token")?.value;
 
-    if (!sessionId || !accessToken || !refreshToken) {
+    console.log("[Refresh] Cookies present:", {
+      sessionId: !!sessionId,
+      accessToken: !!accessToken,
+      refreshToken: !!refreshToken,
+    });
+
+    if (!sessionId || !refreshToken) {
+      console.error("[Refresh] Missing required cookies");
       return NextResponse.json(
         { success: false, message: "Token tidak ditemukan" },
         { status: 401 }
@@ -25,6 +34,7 @@ export async function POST(request: NextRequest) {
     // Verify session still exists
     const session = await getSession(sessionId);
     if (!session) {
+      console.error("[Refresh] Session not found:", sessionId);
       const response = NextResponse.json(
         { success: false, message: "Sesi telah kedaluwarsa" },
         { status: 401 }
@@ -37,10 +47,13 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    // Refresh access token
-    const refreshResult = await refreshAccessToken(accessToken, refreshToken);
+    console.log("[Refresh] Session found for user:", session.userId);
+
+    // Refresh access token - only need refresh token, not old access token
+    const refreshResult = await refreshAccessToken(sessionId, refreshToken);
 
     if (!refreshResult.success || !refreshResult.accessToken) {
+      console.error("[Refresh] Failed to refresh:", refreshResult.error);
       const response = NextResponse.json(
         { success: false, message: refreshResult.error || "Gagal refresh token" },
         { status: 401 }
@@ -56,11 +69,14 @@ export async function POST(request: NextRequest) {
     // Verify new access token
     const newTokenPayload = verifyToken(refreshResult.accessToken);
     if (!newTokenPayload) {
+      console.error("[Refresh] New token verification failed");
       return NextResponse.json(
         { success: false, message: "Token baru tidak valid" },
         { status: 500 }
       );
     }
+
+    console.log("[Refresh] Successfully refreshed token for user:", newTokenPayload.userId);
 
     // Create response
     const response = NextResponse.json(
@@ -85,11 +101,9 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
-    console.log(`[Refresh] Access token refreshed for session: ${sessionId}`);
-
     return response;
   } catch (error) {
-    console.error("Refresh token error:", error);
+    console.error("[Refresh] Unexpected error:", error);
     return NextResponse.json(
       { success: false, message: "Terjadi kesalahan server" },
       { status: 500 }

@@ -55,7 +55,7 @@ export default function VendorDetailPage() {
   const router = useRouter()
   const prefersReduced = useReducedMotion()
   const { user, isAuthenticated } = useAuth()
-  
+
   const [leaving, setLeaving] = useState(false)
   const [activeTab, setActiveTab] = useState<string>('layanan')
   const [showLoginModal, setShowLoginModal] = useState(false)
@@ -141,18 +141,19 @@ export default function VendorDetailPage() {
   }
 
   const handleLoginSuccess = async (email: string) => {
-    setShowLoginModal(false)
-    setIsTransitioning(true)
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500))
-    router.push(`/login/otp?email=${encodeURIComponent(email)}`)
-  }
+    setShowLoginModal(false);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    window.location.reload();
+  };
 
   const handleRegisterClick = async () => {
-    setShowLoginModal(false)
-    setIsTransitioning(true)
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500))
-    router.push('/register')
-  }
+    setShowLoginModal(false);
+    setIsTransitioning(true);
+    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
+    router.push('/register');
+  };
 
   const handleFavoriteClick = async () => {
     if (!isAuthenticated || !user) {
@@ -164,7 +165,7 @@ export default function VendorDetailPage() {
 
     try {
       const endpoint = isFavorite ? '/api/user/favorites/remove' : '/api/user/favorites/add'
-      
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -176,7 +177,7 @@ export default function VendorDetailPage() {
 
       if (response.ok) {
         setIsFavorite(!isFavorite)
-        
+
         // Dispatch event untuk update favorites page
         window.dispatchEvent(new CustomEvent('favoritesUpdated'))
       } else {
@@ -331,9 +332,8 @@ export default function VendorDetailPage() {
                   disabled={isTogglingFavorite}
                 >
                   <Heart
-                    className={`h-5 w-5 transition-all duration-200 ${
-                      isFavorite ? 'text-[#7CE0A8] fill-[#7CE0A8]' : ''
-                    }`}
+                    className={`h-5 w-5 transition-all duration-200 ${isFavorite ? 'text-[#7CE0A8] fill-[#7CE0A8]' : ''
+                      }`}
                   />
                 </Button>
               </div>
@@ -351,11 +351,10 @@ export default function VendorDetailPage() {
                 <button
                   key={tab.id}
                   onClick={() => scrollToSection(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-[#7CE0A8] text-[#7CE0A8]'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
+                    ? 'border-[#7CE0A8] text-[#7CE0A8]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   {tab.label}
                   {tab.id === 'ulasan' && reviews.length > 0 && (
@@ -651,30 +650,30 @@ export default function VendorDetailPage() {
 
       {/* Login Modal - Updated Design */}
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-0 bg-gradient-to-br from-white to-slate-50 dark:from-neutral-900 dark:to-neutral-950">
+        <DialogContent className="sm:max-w-[440px] md:max-w-[480px] p-0 overflow-hidden border-0 bg-gradient-to-br from-white to-slate-50 dark:from-neutral-900 dark:to-neutral-950 max-h-[90vh] overflow-y-auto">
           {/* Decorative gradient background */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
-          <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-gradient-to-tr from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
+          <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
+          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-gradient-to-tr from-[#7CE0A8]/10 to-transparent rounded-full -z-0 blur-3xl"></div>
 
-          <DialogHeader className="relative z-10 p-6 pb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
-                <AlertCircle className="h-6 w-6 text-[#7CE0A8]" />
+          <DialogHeader className="relative z-10 p-4 sm:p-5 md:p-6 pb-3 sm:pb-4">
+            <div className="flex items-start gap-2.5 sm:gap-3">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10 flex-shrink-0">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-[#7CE0A8]" />
               </div>
-              <div>
-                <DialogTitle className="text-xl font-bold bg-gradient-to-r from-neutral-900 via-neutral-800 to-neutral-700 dark:from-white dark:via-neutral-100 dark:to-neutral-300 bg-clip-text text-transparent">
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-base sm:text-lg md:text-xl font-bold bg-gradient-to-r from-neutral-900 via-neutral-800 to-neutral-700 dark:from-white dark:via-neutral-100 dark:to-neutral-300 bg-clip-text text-transparent">
                   Login Diperlukan
                 </DialogTitle>
-                <DialogDescription className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                <DialogDescription className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 mt-0.5 sm:mt-1">
                   Silakan masuk untuk mengakses fitur ini
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          
-          <div className="relative z-10 px-6 pb-6">
-            <LoginForm 
-              userType="user" 
+
+          <div className="relative z-10 px-4 sm:px-5 md:px-6 pb-4 sm:pb-5 md:pb-6">
+            <LoginForm
+              userType="user"
               onSuccess={handleLoginSuccess}
               onRegisterClick={handleRegisterClick}
             />

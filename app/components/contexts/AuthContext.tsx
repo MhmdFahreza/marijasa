@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const { data: session, status } = useSession();
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isRefreshingRef = useRef(false);
 
   // Fetch current user from API
   const fetchCurrentUser = useCallback(async () => {
@@ -60,14 +61,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return null;
     } catch (error) {
-      console.error("Error fetching current user:", error);
+      console.error("[Auth] Error fetching current user:", error);
       return null;
     }
   }, []);
 
   // Refresh access token
   const refreshAccessToken = useCallback(async () => {
+    // Prevent multiple simultaneous refresh attempts
+    if (isRefreshingRef.current) {
+      console.log("[Auth] Token refresh already in progress, skipping...");
+      return false;
+    }
+
+    isRefreshingRef.current = true;
+
     try {
+      console.log("[Auth] Attempting to refresh access token...");
+      
       const response = await fetch("/api/auth/refresh", {
         method: "POST",
         credentials: "include",
@@ -79,14 +90,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetchCurrentUser();
         return true;
       } else {
-        console.error("[Auth] Failed to refresh access token");
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[Auth] Failed to refresh access token:", {
+          status: response.status,
+          message: errorData.message
+        });
+        
         // If refresh fails, logout user
         setUser(null);
+        clearTokenRefresh();
         return false;
       }
     } catch (error) {
       console.error("[Auth] Error refreshing access token:", error);
+      setUser(null);
+      clearTokenRefresh();
       return false;
+    } finally {
+      isRefreshingRef.current = false;
     }
   }, [fetchCurrentUser]);
 
@@ -99,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Set up new interval
     refreshIntervalRef.current = setInterval(() => {
-      console.log("[Auth] Auto-refreshing access token...");
+      console.log("[Auth] Auto-refreshing access token (scheduled)...");
       refreshAccessToken();
     }, TOKEN_REFRESH_INTERVAL);
 
@@ -122,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // First check if we have a session from NextAuth (Google OAuth)
       if (status === "authenticated" && session?.user) {
+        console.log("[Auth] NextAuth session detected");
         const userFromSession: User = {
           id: (session.user as any).id || "",
           name: session.user.name || "",
@@ -140,11 +162,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // If no NextAuth session, check JWT cookie via API
       if (status !== "loading") {
+        console.log("[Auth] Checking JWT cookie authentication...");
         const fetchedUser = await fetchCurrentUser();
         if (fetchedUser) {
+          console.log("[Auth] JWT authentication successful");
           // Setup auto token refresh
           setupTokenRefresh();
         } else {
+          console.log("[Auth] No valid authentication found");
           setUser(null);
           clearTokenRefresh();
         }
@@ -163,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Login function - set user after successful login
   const login = useCallback(
     (userData: User) => {
+      console.log("[Auth] User logged in:", userData.email);
       setUser(userData);
       // Setup auto token refresh
       setupTokenRefresh();
@@ -173,6 +199,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Logout function
   const logout = useCallback(async () => {
     try {
+      console.log("[Auth] Logging out...");
+      
       // Clear token refresh interval
       clearTokenRefresh();
 
@@ -192,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log("[Auth] Logout successful");
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error("[Auth] Logout error:", error);
       // Clear user state even if API fails
       setUser(null);
       clearTokenRefresh();
@@ -202,6 +230,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Refresh user data from database
   const refreshUser = useCallback(async () => {
     try {
+      console.log("[Auth] Refreshing user data...");
+      
       // Fetch fresh profile data from API
       const response = await fetch("/api/user/profile", {
         method: "GET",

@@ -27,7 +27,6 @@ interface SessionData {
 }
 
 // Helper to safely handle Upstash Redis data
-// Upstash may return data as objects or strings depending on how it was stored
 function parseRedisData<T>(data: any): T | null {
   if (!data) return null;
   
@@ -68,12 +67,24 @@ export function generateRefreshToken(payload: Omit<TokenPayload, "type">): strin
   );
 }
 
-// Verify Token
-export function verifyToken(token: string): TokenPayload | null {
+// Verify Token - now allows expired tokens for refresh flow
+export function verifyToken(token: string, ignoreExpiration: boolean = false): TokenPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, JWT_SECRET, { 
+      ignoreExpiration 
+    }) as TokenPayload;
     return decoded;
   } catch (error) {
+    if (error instanceof jwt.TokenExpiredError && ignoreExpiration) {
+      // If we're ignoring expiration, decode without verification
+      try {
+        const decoded = jwt.decode(token) as TokenPayload;
+        return decoded;
+      } catch (decodeError) {
+        console.error("[Token] Decode failed:", decodeError);
+        return null;
+      }
+    }
     console.error("[Token] Verification failed:", error);
     return null;
   }
@@ -97,9 +108,8 @@ export async function storeSession(
   try {
     const key = `session:${sessionId}`;
     
-    // For Upstash Redis, we can store objects directly
-    // Upstash will handle the serialization
-    await redis!.set(key, sessionData, { ex: SESSION_EXPIRES_IN });
+    // Store as JSON string to ensure consistency
+    await redis!.set(key, JSON.stringify(sessionData), { ex: SESSION_EXPIRES_IN });
     
     console.log(`[Session] Created: ${sessionId} for user ${sessionData.userId}`);
     return { success: true };
@@ -112,6 +122,7 @@ export async function storeSession(
 // Get Session from Redis
 export async function getSession(sessionId: string): Promise<SessionData | null> {
   if (!isRedisAvailable()) {
+    console.warn("[Session] Redis not available");
     return null;
   }
 
@@ -124,7 +135,7 @@ export async function getSession(sessionId: string): Promise<SessionData | null>
       return null;
     }
 
-    // Upstash returns the data, handle both object and string cases
+    // Parse the data
     const parsed = parseRedisData<SessionData>(data);
     
     if (!parsed) {
@@ -154,7 +165,7 @@ export async function updateSessionActivity(sessionId: string): Promise<boolean>
     session.lastActivity = Date.now();
     
     const key = `session:${sessionId}`;
-    await redis!.set(key, session, { ex: SESSION_EXPIRES_IN });
+    await redis!.set(key, JSON.stringify(session), { ex: SESSION_EXPIRES_IN });
     
     return true;
   } catch (error) {
@@ -262,29 +273,61 @@ export async function deleteTokens(sessionId: string): Promise<boolean> {
   }
 }
 
-// Refresh Access Token
+// Refresh Access Token - UPDATED SIGNATURE
 export async function refreshAccessToken(
-  oldAccessToken: string,
+  sessionId: string,
   refreshToken: string
 ): Promise<{ success: boolean; accessToken?: string; error?: string }> {
+  console.log("[Token Refresh] Starting refresh process for session:", sessionId);
+  
+  if (!isRedisAvailable()) {
+    console.error("[Token Refresh] Redis not available");
+    return { success: false, error: "Redis not available" };
+  }
+
   try {
     // Verify refresh token
     const refreshPayload = verifyToken(refreshToken);
     if (!refreshPayload || refreshPayload.type !== "refresh") {
+      console.error("[Token Refresh] Invalid refresh token type");
       return { success: false, error: "Invalid refresh token" };
     }
 
+    console.log("[Token Refresh] Refresh token payload:", {
+      userId: refreshPayload.userId,
+      sessionId: refreshPayload.sessionId,
+      type: refreshPayload.type
+    });
+
+    // Verify session ID matches
+    if (refreshPayload.sessionId !== sessionId) {
+      console.error("[Token Refresh] Session ID mismatch:", {
+        fromToken: refreshPayload.sessionId,
+        fromCookie: sessionId
+      });
+      return { success: false, error: "Session ID mismatch" };
+    }
+
     // Check if refresh token exists in Redis
-    const storedRefreshToken = await getRefreshToken(refreshPayload.sessionId);
-    if (!storedRefreshToken || storedRefreshToken !== refreshToken) {
-      return { success: false, error: "Refresh token not found or invalid" };
+    const storedRefreshToken = await getRefreshToken(sessionId);
+    if (!storedRefreshToken) {
+      console.error("[Token Refresh] Refresh token not found in Redis for session:", sessionId);
+      return { success: false, error: "Refresh token not found" };
+    }
+
+    if (storedRefreshToken !== refreshToken) {
+      console.error("[Token Refresh] Refresh token mismatch");
+      return { success: false, error: "Invalid refresh token" };
     }
 
     // Check if session is still valid
-    const session = await getSession(refreshPayload.sessionId);
+    const session = await getSession(sessionId);
     if (!session) {
+      console.error("[Token Refresh] Session not found or expired:", sessionId);
       return { success: false, error: "Session expired" };
     }
+
+    console.log("[Token Refresh] Session validated for user:", session.userId);
 
     // Generate new access token
     const newAccessToken = generateAccessToken({
@@ -295,17 +338,17 @@ export async function refreshAccessToken(
     });
 
     // Store new access token in Redis
-    const accessKey = `access_token:${refreshPayload.sessionId}`;
+    const accessKey = `access_token:${sessionId}`;
     await redis!.set(accessKey, newAccessToken, { ex: 60 * 60 });
 
     // Update session activity
-    await updateSessionActivity(refreshPayload.sessionId);
+    await updateSessionActivity(sessionId);
 
-    console.log(`[Tokens] Refreshed access token for session: ${refreshPayload.sessionId}`);
+    console.log(`[Token Refresh] Successfully refreshed token for session: ${sessionId}`);
 
     return { success: true, accessToken: newAccessToken };
   } catch (error) {
-    console.error("[Tokens] Refresh error:", error);
+    console.error("[Token Refresh] Unexpected error:", error);
     return { success: false, error: "Failed to refresh token" };
   }
 }
