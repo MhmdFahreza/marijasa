@@ -4,16 +4,13 @@ import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
 
-// GET - Get vendor by ID with details
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await params (Next.js 15+ requirement)
     const { id: vendorId } = await params;
 
-    // Get vendor with gallery and reviews
     const vendor = await prisma.vendor.findUnique({
       where: {
         vendor_id: vendorId,
@@ -42,6 +39,9 @@ export async function GET(
           where: {
             is_active: true,
           },
+          orderBy: {
+            created_at: 'asc',
+          },
         },
       },
     });
@@ -67,7 +67,7 @@ export async function GET(
       reviewCount: vendor.review_count,
       serviceAreas: vendor.service_areas,
       specialties: vendor.specialties,
-      tags: vendor.tags,
+      tags: vendor.tags, // Tags diupdate otomatis dari nama layanan
       category: vendor.category,
       summary: vendor.description,
       gallery: vendor.gallery.map(img => ({
@@ -81,6 +81,7 @@ export async function GET(
         price: service.price,
         priceType: service.price_type,
         estimatedTime: service.estimated_time,
+        isActive: service.is_active,
       })),
       reviews: vendor.reviews.map(review => ({
         id: review.review_id,

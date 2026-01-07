@@ -19,11 +19,12 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2 } from "lucide-react";
+import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2, Tag, AlertCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
+import { Badge } from "@/app/components/ui/badge";
 
 const PAYMENT_FEES = {
   "dana": 1440,
@@ -41,7 +42,6 @@ const PAYMENT_FEES = {
 
 const SERVICE_FEE = 10000;
 
-// Interface untuk data order
 interface OrderData {
   id?: string;
   orderId: string;
@@ -83,7 +83,7 @@ interface Vendor {
   review_count: number;
   service_areas: string[];
   specialties: string[];
-  tags: string[];
+  tags: string[]; // Tags diupdate otomatis dari nama layanan
   category?: string;
   join_date: string;
   services?: Service[];
@@ -113,7 +113,11 @@ interface UserProfile {
 export default function VendorFormPage() {
   const params = useParams();
   const router = useRouter();
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<any>({
+    selectedServices: [],
+    quantities: {},
+    notes: ""
+  });
   const [mounted, setMounted] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [navigationUrl, setNavigationUrl] = useState<string>("");
@@ -133,7 +137,6 @@ export default function VendorFormPage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch user profile from API
   const fetchUserProfile = async () => {
     try {
       const response = await fetch('/api/user/profile', {
@@ -164,7 +167,6 @@ export default function VendorFormPage() {
     }
   };
 
-  // Fetch vendor data from API
   const fetchVendor = async (vendorId: string) => {
     try {
       const response = await fetch(`/api/vendors/${vendorId}`, {
@@ -202,10 +204,8 @@ export default function VendorFormPage() {
   useEffect(() => {
     setMounted(true);
 
-    // Check authentication and load data
     const checkAuthAndLoadData = async () => {
       try {
-        // Check authentication
         const response = await fetch('/api/auth/session', {
           method: 'GET',
           credentials: 'include',
@@ -217,10 +217,8 @@ export default function VendorFormPage() {
           return;
         }
 
-        // Load user profile
         await fetchUserProfile();
 
-        // Load vendor data
         const vendorId = params.vendorId as string;
         if (!vendorId) {
           toast.error("ID vendor tidak valid");
@@ -230,7 +228,6 @@ export default function VendorFormPage() {
 
         const vendorData = await fetchVendor(vendorId);
         if (!vendorData) {
-          // Vendor not found, we'll handle in the render
           setIsLoading(false);
           return;
         }
@@ -272,7 +269,6 @@ export default function VendorFormPage() {
     }
   };
 
-  // Fungsi untuk menyimpan order ke database
   const saveOrderToDatabase = async (orderData: OrderData): Promise<{ success: boolean; orderId?: string; error?: string }> => {
     try {
       const response = await fetch('/api/bookings', {
@@ -297,7 +293,6 @@ export default function VendorFormPage() {
     }
   };
 
-  // Fungsi untuk update payment status
   const updatePaymentStatus = async (orderId: string, paymentData: {
     paymentMethod: string;
     paymentStatus: string;
@@ -361,7 +356,6 @@ export default function VendorFormPage() {
 
     const vendorId = params.vendorId as string;
 
-    // Buat data pesanan untuk database
     const orderData: OrderData = {
       orderId: orderId,
       customerName: formData.name || "",
@@ -387,7 +381,6 @@ export default function VendorFormPage() {
       totalAmount: servicePrice + SERVICE_FEE
     };
 
-    // Simpan ke database
     const result = await saveOrderToDatabase(orderData);
     
     if (!result.success) {
@@ -434,7 +427,6 @@ export default function VendorFormPage() {
 
     setIsProcessingPayment(true);
 
-    // Update payment status di database
     const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
     const totalPrice = calculateTotalPrice();
 
@@ -472,7 +464,7 @@ export default function VendorFormPage() {
 
     selectedServices.forEach((serviceId: string) => {
       const service = vendor.services?.find((s: Service) => s.service_id === serviceId);
-      if (service && service.is_active) {
+      if (service) {
         const quantity = formData.quantities?.[serviceId] || 1;
         total += service.price * quantity;
       }
@@ -517,6 +509,49 @@ export default function VendorFormPage() {
     }).filter(Boolean).join(", ");
 
     return serviceNames || "Layanan";
+  };
+
+  const formatPrice = (price: number, priceType: string) => {
+    const formattedPrice = new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(price);
+
+    switch (priceType) {
+      case 'HOURLY':
+        return `${formattedPrice}/jam`;
+      case 'UNIT':
+        return `${formattedPrice}/unit`;
+      default:
+        return formattedPrice;
+    }
+  };
+
+  const handleServiceToggle = (serviceId: string, checked: boolean) => {
+    const current = formData.selectedServices || [];
+    if (checked) {
+      setFormData({
+        ...formData,
+        selectedServices: [...current, serviceId],
+        quantities: { ...formData.quantities, [serviceId]: 1 }
+      });
+    } else {
+      const newQuantities = { ...formData.quantities };
+      delete newQuantities[serviceId];
+      setFormData({
+        ...formData,
+        selectedServices: current.filter((id: string) => id !== serviceId),
+        quantities: newQuantities
+      });
+    }
+  };
+
+  const handleQuantityChange = (serviceId: string, quantity: number) => {
+    setFormData({
+      ...formData,
+      quantities: { ...formData.quantities, [serviceId]: Math.max(1, quantity) }
+    });
   };
 
   if (!mounted || isLoading) {
@@ -616,6 +651,9 @@ export default function VendorFormPage() {
             handleUseProfileLocation={handleUseProfileLocation}
             gettingLocation={gettingLocation}
             userProfile={userProfile}
+            handleServiceToggle={handleServiceToggle}
+            handleQuantityChange={handleQuantityChange}
+            formatPrice={formatPrice}
           />
         ) : (
           <ConfirmationStep
@@ -633,6 +671,7 @@ export default function VendorFormPage() {
             onConfirm={handleFinalSubmit}
             isProcessingPayment={isProcessingPayment}
             getServiceDescription={getServiceDescription}
+            formatPrice={formatPrice}
           />
         )}
       </motion.main>
@@ -732,7 +771,10 @@ function OrderForm({
   handleCancel,
   handleUseProfileLocation,
   gettingLocation,
-  userProfile
+  userProfile,
+  handleServiceToggle,
+  handleQuantityChange,
+  formatPrice
 }: any) {
   const getTomorrowDate = () => {
     const tomorrow = new Date();
@@ -778,7 +820,7 @@ function OrderForm({
     setFormData({ ...formData, minute: minute.toString() });
   };
 
-  const activeServices = vendor.services?.filter((s: any) => s.is_active) || [];
+  const activeServices = vendor.services?.filter((s: any) => s.isActive) || [];
 
   return (
     <>
@@ -793,7 +835,14 @@ function OrderForm({
             </Avatar>
             <div>
               <h2 className="text-xl font-bold">{vendor.name}</h2>
-              <p className="text-sm text-muted-foreground">{vendor.tags?.join(" • ") || "Layanan profesional"}</p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {vendor.tags?.map((tag: string, i: number) => (
+                  <Badge key={i} variant="outline" className="px-2 py-1">
+                    <Tag className="h-3 w-3 mr-1" />
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </div>
         </CardContent>
@@ -803,7 +852,7 @@ function OrderForm({
         <CardHeader>
           <CardTitle>Form Pemesanan Layanan</CardTitle>
           <CardDescription>
-            Lengkapi formulir di bawah untuk memesan layanan {vendor.tags?.[0] || vendor.name}
+            Lengkapi formulir di bawah untuk memesan layanan dari {vendor.name}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -899,108 +948,133 @@ function OrderForm({
               </h3>
 
               {activeServices.length === 0 ? (
-                <div className="text-center py-8 border-2 border-dashed rounded-lg">
-                  <p className="text-muted-foreground">
-                    Vendor belum menambahkan layanan aktif.
-                  </p>
-                </div>
+                <Card className="border-2 border-dashed">
+                  <CardContent className="py-8 text-center">
+                    <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-muted-foreground">
+                      Vendor belum menambahkan layanan aktif.
+                    </p>
+                  </CardContent>
+                </Card>
               ) : (
                 <div className="space-y-3">
                   {activeServices.map((service: any) => (
-                    <div key={service.service_id} className="border rounded-lg p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-3 flex-1">
-                          <Checkbox
-                            id={service.service_id}
-                            checked={(formData.selectedServices || []).includes(service.service_id)}
-                            onCheckedChange={(checked) => {
-                              const current = formData.selectedServices || [];
-                              if (checked) {
-                                setFormData({
-                                  ...formData,
-                                  selectedServices: [...current, service.service_id],
-                                  quantities: { ...(formData.quantities || {}), [service.service_id]: 1 }
-                                });
-                              } else {
-                                const newQuantities = { ...(formData.quantities || {}) };
-                                delete newQuantities[service.service_id];
-                                setFormData({
-                                  ...formData,
-                                  selectedServices: current.filter((i: string) => i !== service.service_id),
-                                  quantities: newQuantities
-                                });
-                              }
-                            }}
-                          />
-                          <div className="flex-1">
-                            <Label htmlFor={service.service_id} className="font-medium cursor-pointer">
-                              {service.name}
-                            </Label>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {service.description}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="font-semibold text-primary">
-                            Rp {service.price.toLocaleString('id-ID')}
-                            {service.price_type === 'HOURLY' && '/jam'}
-                            {service.price_type === 'UNIT' && '/unit'}
-                          </div>
-
-                          {(formData.selectedServices || []).includes(service.service_id) && (
-                            <div className="mt-2">
-                              <Label htmlFor={`qty-${service.service_id}`} className="text-xs">Jumlah:</Label>
-                              <Input
-                                id={`qty-${service.service_id}`}
-                                type="number"
-                                min="1"
-                                defaultValue="1"
-                                className="w-20 mt-1"
-                                onChange={(e) => {
-                                  const qty = parseInt(e.target.value) || 1;
-                                  setFormData({
-                                    ...formData,
-                                    quantities: {
-                                      ...(formData.quantities || {}),
-                                      [service.service_id]: qty
-                                    }
-                                  });
-                                }}
-                              />
+                    <Card key={service.service_id} className="border hover:border-[#7CE0A8] transition-colors">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 flex-1">
+                            <Checkbox
+                              id={service.service_id}
+                              checked={(formData.selectedServices || []).includes(service.service_id)}
+                              onCheckedChange={(checked) => {
+                                handleServiceToggle(service.service_id, checked as boolean);
+                              }}
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={service.service_id} className="font-medium cursor-pointer">
+                                  {service.name}
+                                </Label>
+                                <Badge variant="outline" className="text-xs">
+                                  {service.priceType === 'FIXED' ? 'Harga Tetap' :
+                                   service.priceType === 'HOURLY' ? 'Per Jam' :
+                                   'Per Unit'}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {service.description}
+                              </p>
+                              {service.estimatedTime && (
+                                <div className="flex items-center gap-1 mt-2">
+                                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">
+                                    {service.estimatedTime}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
+
+                          <div className="text-right">
+                            <div className="font-semibold text-primary">
+                              {formatPrice(service.price, service.priceType)}
+                            </div>
+
+                            {(formData.selectedServices || []).includes(service.service_id) && (
+                              <div className="mt-3 flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    const currentQty = formData.quantities?.[service.service_id] || 1;
+                                    if (currentQty > 1) {
+                                      handleQuantityChange(service.service_id, currentQty - 1);
+                                    }
+                                  }}
+                                >
+                                  -
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={formData.quantities?.[service.service_id] || 1}
+                                  className="w-16 text-center"
+                                  onChange={(e) => {
+                                    const qty = parseInt(e.target.value) || 1;
+                                    handleQuantityChange(service.service_id, qty);
+                                  }}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    const currentQty = formData.quantities?.[service.service_id] || 1;
+                                    handleQuantityChange(service.service_id, currentQty + 1);
+                                  }}
+                                >
+                                  +
+                                </Button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               )}
 
               {activeServices.length > 0 && (
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Total Estimasi Layanan:</span>
-                    <span className="text-xl font-bold text-primary">
-                      Rp {(() => {
-                        const selectedServices = formData.selectedServices || [];
-                        let total = 0;
-                        selectedServices.forEach((serviceId: string) => {
-                          const service = activeServices.find((s: any) => s.service_id === serviceId);
-                          if (service) {
-                            const quantity = formData.quantities?.[serviceId] || 1;
-                            total += service.price * quantity;
-                          }
-                        });
-                        return total.toLocaleString('id-ID');
-                      })()}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    * Harga belum termasuk biaya layanan dan biaya transaksi
-                  </p>
-                </div>
+                <Card className="bg-gradient-to-r from-[#7CE0A8]/5 to-[#7CE0A8]/10">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="font-medium">Total Estimasi Layanan:</span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          * Harga belum termasuk biaya layanan dan biaya transaksi
+                        </p>
+                      </div>
+                      <span className="text-xl font-bold text-primary">
+                        Rp {(() => {
+                          const selectedServices = formData.selectedServices || [];
+                          let total = 0;
+                            selectedServices.forEach((serviceId: string) => {
+                              const service = activeServices.find((s: any) => s.service_id === serviceId);
+                              if (service) {
+                                const quantity = formData.quantities?.[serviceId] || 1;
+                                total += service.price * quantity;
+                              }
+                            });
+                          return total.toLocaleString('id-ID');
+                        })()}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </div>
 
@@ -1057,7 +1131,7 @@ function OrderForm({
               <Label htmlFor="notes">Catatan Tambahan</Label>
               <Textarea
                 id="notes"
-                placeholder="Informasi tambahan..."
+                placeholder="Informasi tambahan untuk vendor..."
                 rows={4}
                 value={formData.notes || ""}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -1106,7 +1180,8 @@ function ConfirmationStep({
   onBack,
   onConfirm,
   isProcessingPayment,
-  getServiceDescription
+  getServiceDescription,
+  formatPrice
 }: any) {
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -1162,6 +1237,23 @@ function ConfirmationStep({
     }));
   };
 
+  // Dapatkan detail layanan yang dipilih
+  const getSelectedServicesDetails = () => {
+    if (!vendor || !vendor.services) return [];
+    
+    return formData.selectedServices.map((serviceId: string) => {
+      const service = vendor.services.find((s: any) => s.service_id === serviceId);
+      const quantity = formData.quantities?.[serviceId] || 1;
+      return {
+        ...service,
+        quantity,
+        total: service ? service.price * quantity : 0
+      };
+    });
+  };
+
+  const selectedServicesDetails = getSelectedServicesDetails();
+
   return (
     <div className="space-y-6">
       <Card>
@@ -1210,16 +1302,19 @@ function ConfirmationStep({
             <div className="flex justify-between items-center mb-3">
               <h4 className="font-semibold">Detail Layanan</h4>
             </div>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="font-medium">{getServiceDescription()}</p>
-                  <p className="text-sm text-muted-foreground">{vendor.name}</p>
+            <div className="space-y-3">
+              {selectedServicesDetails.map((service: any) => (
+                <div key={service.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{service.name}</p>
+                    <p className="text-sm text-muted-foreground">Qty: {service.quantity}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium">{formatPrice(service.price, service.priceType)}</p>
+                    <p className="text-sm text-muted-foreground">Total: Rp {(service.total).toLocaleString('id-ID')}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium">Rp {servicePrice.toLocaleString('id-ID')}</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -1228,7 +1323,7 @@ function ConfirmationStep({
             <h4 className="font-semibold mb-3">Ringkasan Harga</h4>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>Subtotal</span>
+                <span>Subtotal Layanan</span>
                 <span>Rp {servicePrice.toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between">

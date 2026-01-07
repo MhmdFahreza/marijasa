@@ -4,7 +4,6 @@ import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
 
-// GET - Get all vendors with optional filters
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -12,7 +11,6 @@ export async function GET(request: NextRequest) {
     const city = searchParams.get('kota');
     const rating = searchParams.get('rating');
 
-    // Build where clause
     const where: any = {
       status: 'ACTIVE',
     };
@@ -34,13 +32,21 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Get vendors with their gallery
     const vendors = await prisma.vendor.findMany({
       where,
       include: {
         gallery: {
           orderBy: {
             sort_order: 'asc',
+          },
+          take: 3,
+        },
+        services: {
+          where: {
+            is_active: true,
+          },
+          select: {
+            name: true,
           },
         },
       },
@@ -49,7 +55,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Format the response
+    // Format response - tags diambil dari services.name
     const formattedVendors = vendors.map(vendor => ({
       id: vendor.vendor_id,
       name: vendor.name,
@@ -63,13 +69,14 @@ export async function GET(request: NextRequest) {
       reviewCount: vendor.review_count,
       serviceAreas: vendor.service_areas,
       specialties: vendor.specialties,
-      tags: vendor.tags,
+      tags: vendor.tags, // Tags sudah diupdate otomatis dari layanan
       category: vendor.category,
-      summary: vendor.description, // Use description as summary
+      summary: vendor.description?.substring(0, 150) + '...',
       gallery: vendor.gallery.map(img => ({
         src: img.image_url,
         alt: img.caption || vendor.name,
       })),
+      serviceCount: vendor.services.length,
       joinDate: vendor.join_date,
     }));
 
