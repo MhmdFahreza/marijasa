@@ -1,9 +1,6 @@
 // app/api/bookings/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma';
-import { withAccelerate } from '@prisma/extension-accelerate';
-
-const prisma = new PrismaClient().$extends(withAccelerate());
+import prisma from '@/app/components/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,10 +66,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate service IDs exist
+    if (serviceDetails?.selectedServices?.length > 0) {
+      const existingServices = await prisma.service.findMany({
+        where: {
+          service_id: {
+            in: serviceDetails.selectedServices
+          }
+        },
+        select: { service_id: true }
+      });
+
+      const existingIds = existingServices.map(s => s.service_id);
+      const missingIds = serviceDetails.selectedServices.filter(
+        (id: string) => !existingIds.includes(id)
+      );
+
+      if (missingIds.length > 0) {
+        return NextResponse.json(
+          { error: 'Validation Error', message: `Beberapa layanan tidak ditemukan: ${missingIds.join(', ')}` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Combine date and time for scheduled_date
     const scheduledDateTime = new Date(`${workDate}T${workTime}:00`);
+    
+    // Ensure date is valid
+    if (isNaN(scheduledDateTime.getTime())) {
+      return NextResponse.json(
+        { error: 'Validation Error', message: 'Tanggal dan waktu tidak valid' },
+        { status: 400 }
+      );
+    }
 
-    // Create booking with items
+    // Get service prices
+    const selectedServices = serviceDetails?.selectedServices || [];
+    const serviceItems = [];
+    
+    for (const serviceId of selectedServices) {
+      const service = await prisma.service.findUnique({
+        where: { service_id: serviceId }
+      });
+      
+      if (service) {
+        const quantity = serviceDetails.quantities?.[serviceId] || 1;
+        serviceItems.push({
+          service_id: serviceId,
+          quantity: quantity,
+          price: service.price,
+          subtotal: service.price * quantity
+        });
+      }
+    }
+
+    // Calculate total from service items
+    const calculatedSubtotal = serviceItems.reduce((sum, item) => sum + item.subtotal, 0);
+    
+    // Use provided subtotal or calculated
+    const finalSubtotal = subtotal || calculatedSubtotal;
+    const finalTotal = totalAmount || (finalSubtotal + serviceFee);
+
+    // Create booking
     const booking = await prisma.booking.create({
       data: {
         booking_number: orderId,
@@ -82,18 +138,13 @@ export async function POST(request: NextRequest) {
         scheduled_time: workTime,
         location: `${customerAddress}\nGPS: ${gpsLink}`,
         notes: additionalNotes || null,
-        status: status.toUpperCase() as any,
-        payment_status: paymentStatus.toUpperCase() as any,
-        subtotal: subtotal,
+        status: status.toUpperCase(),
+        payment_status: paymentStatus.toUpperCase(),
+        subtotal: finalSubtotal,
         service_fee: serviceFee,
-        total: totalAmount,
+        total: finalTotal,
         items: {
-          create: serviceDetails.selectedServices.map((serviceId: string) => ({
-            service_id: serviceId,
-            quantity: serviceDetails.quantities[serviceId] || 1,
-            price: 0, // Will be updated below
-            subtotal: 0 // Will be updated below
-          }))
+          create: serviceItems
         }
       },
       include: {
@@ -101,37 +152,53 @@ export async function POST(request: NextRequest) {
           include: {
             service: true
           }
+        },
+        vendor: {
+          select: {
+            name: true,
+            phone: true
+          }
         }
       }
     });
-
-    // Update booking items with actual prices
-    for (const item of booking.items) {
-      const service = item.service;
-      const quantity = item.quantity;
-      const itemSubtotal = service.price * quantity;
-
-      await prisma.bookingItem.update({
-        where: { booking_item_id: item.booking_item_id },
-        data: {
-          price: service.price,
-          subtotal: itemSubtotal
-        }
-      });
-    }
 
     return NextResponse.json(
       {
         success: true,
         message: 'Pemesanan berhasil dibuat',
         orderId: booking.booking_number,
-        bookingId: booking.booking_id
+        bookingId: booking.booking_id,
+        booking: {
+          id: booking.booking_id,
+          orderId: booking.booking_number,
+          status: booking.status,
+          paymentStatus: booking.payment_status,
+          total: booking.total,
+          scheduledDate: booking.scheduled_date,
+          vendor: booking.vendor
+        }
       },
       { status: 201 }
     );
 
   } catch (error: any) {
     console.error('Error creating booking:', error);
+    
+    // Handle specific Prisma errors
+    if (error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'Duplicate Entry', message: 'Order ID sudah digunakan' },
+        { status: 409 }
+      );
+    }
+    
+    if (error.code === 'P2025') {
+      return NextResponse.json(
+        { error: 'Not Found', message: 'Data terkait tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: 'Internal Server Error',

@@ -11,6 +11,7 @@ import {
 } from "@/app/components/lib/token-service";
 
 export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 // Normalize phone number to +62 format
 function normalizePhone(phone: string): string {
@@ -30,6 +31,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { identifier, password, isEmail } = body;
 
+    console.log("[Login] Attempt:", { identifier: identifier?.substring(0, 10) + "...", isEmail });
+
     // Validation
     if (!identifier || !password) {
       return NextResponse.json(
@@ -47,6 +50,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (!user) {
+        console.log("[Login] Email not found:", identifier);
         return NextResponse.json(
           {
             message: "Email belum terdaftar. Silakan daftar terlebih dahulu.",
@@ -63,6 +67,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (!user) {
+        console.log("[Login] Phone not found:", normalizedPhone);
         return NextResponse.json(
           {
             message: "Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.",
@@ -75,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Check if account is Google OAuth only (no password)
     if (!user.password) {
+      console.log("[Login] Google OAuth account, no password:", user.email);
       return NextResponse.json(
         {
           message: "Akun ini terdaftar melalui Google. Silakan login dengan Google.",
@@ -86,6 +92,7 @@ export async function POST(request: NextRequest) {
 
     // Check if email is verified
     if (!user.email_verified) {
+      console.log("[Login] Email not verified:", user.email);
       return NextResponse.json(
         {
           message: "Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.",
@@ -97,6 +104,7 @@ export async function POST(request: NextRequest) {
 
     // Check if account is active
     if (!user.is_active) {
+      console.log("[Login] Account inactive:", user.email);
       return NextResponse.json(
         {
           message: "Akun Anda tidak aktif. Silakan hubungi admin.",
@@ -109,6 +117,7 @@ export async function POST(request: NextRequest) {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
+      console.log("[Login] Invalid password for:", user.email);
       return NextResponse.json(
         {
           message: "Password salah. Silakan coba lagi.",
@@ -125,6 +134,8 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get("user-agent") || undefined;
     const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
 
+    console.log("[Login] Creating session for:", user.email);
+
     // Store session in Redis
     const sessionResult = await storeSession(sessionId, {
       userId: user.user_id,
@@ -137,6 +148,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!sessionResult.success) {
+      console.error("[Login] Failed to store session");
       return NextResponse.json(
         { message: "Gagal membuat sesi. Silakan coba lagi." },
         { status: 500 }
@@ -161,11 +173,14 @@ export async function POST(request: NextRequest) {
     // Store tokens in Redis
     const tokensResult = await storeTokens(sessionId, accessToken, refreshToken);
     if (!tokensResult.success) {
+      console.error("[Login] Failed to store tokens");
       return NextResponse.json(
         { message: "Gagal menyimpan token. Silakan coba lagi." },
         { status: 500 }
       );
     }
+
+    console.log("[Login] Success for:", user.email, "| Session:", sessionId);
 
     // Create response
     const response = NextResponse.json(
@@ -184,7 +199,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
 
-    // Set cookies
+    // Set cookies with proper configuration
     // Session ID cookie (30 days)
     response.cookies.set("session_id", sessionId, {
       httpOnly: true,
@@ -212,11 +227,9 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
-    console.log(`[Login] Success for user: ${user.email} | Session: ${sessionId}`);
-
     return response;
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("[Login] Error:", error);
     return NextResponse.json(
       { message: "Terjadi kesalahan server. Silakan coba lagi." },
       { status: 500 }

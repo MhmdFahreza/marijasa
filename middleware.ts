@@ -33,6 +33,7 @@ export async function middleware(request: NextRequest) {
       const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
 
       if (mitraSessionId && mitraAccessToken) {
+        console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
         return NextResponse.redirect(new URL("/mitra/dashboard", request.url));
       }
       
@@ -79,6 +80,7 @@ export async function middleware(request: NextRequest) {
   // Get session ID and tokens from cookies
   const sessionId = request.cookies.get("session_id")?.value;
   const accessToken = request.cookies.get("access_token")?.value;
+  const refreshToken = request.cookies.get("refresh_token")?.value;
 
   // Get NextAuth session token
   const sessionToken = await getToken({
@@ -91,16 +93,19 @@ export async function middleware(request: NextRequest) {
 
   // Check NextAuth session first (for Google OAuth)
   if (sessionToken) {
+    console.log("[Middleware] User authenticated via NextAuth");
     isAuthenticated = true;
   }
-  // Check custom auth (session + access token)
-  else if (sessionId && accessToken) {
+  // Check custom auth (session + access/refresh token)
+  else if (sessionId && (accessToken || refreshToken)) {
+    console.log("[Middleware] User authenticated via JWT session");
     isAuthenticated = true;
   }
 
   // Check if accessing protected route without auth
   if (protectedRoutes.some((route) => pathname.startsWith(route))) {
     if (!isAuthenticated) {
+      console.log("[Middleware] Unauthenticated user trying to access protected route:", pathname);
       const url = new URL("/login", request.url);
       url.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(url);
@@ -110,6 +115,7 @@ export async function middleware(request: NextRequest) {
   // Check if accessing auth routes while authenticated
   if (authRoutes.some((route) => pathname === route)) {
     if (isAuthenticated) {
+      console.log("[Middleware] Authenticated user trying to access auth route, redirecting to home");
       return NextResponse.redirect(new URL("/", request.url));
     }
   }

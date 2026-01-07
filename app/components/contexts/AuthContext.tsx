@@ -11,7 +11,7 @@ import React, {
   useRef,
 } from "react";
 import { useSession, signOut as nextAuthSignOut } from "next-auth/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 interface User {
   id: string;
@@ -41,38 +41,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRefreshingRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
   // Check if current path is mitra route
   const isMitraRoute = pathname?.startsWith('/mitra') || false;
 
   // Fetch current user from API
-  const fetchCurrentUser = useCallback(async () => {
+  const fetchCurrentUser = useCallback(async (skipLoadingState = false) => {
     // Skip if on mitra routes
     if (isMitraRoute) {
       return null;
     }
 
+    // Prevent multiple simultaneous fetch attempts
+    if (isFetchingRef.current) {
+      console.log("[Auth] Fetch already in progress, skipping...");
+      return null;
+    }
+
+    isFetchingRef.current = true;
+
     try {
+      console.log("[Auth] Fetching current user...");
+      
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch("/api/auth/me", {
         credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
         if (data.authenticated && data.user) {
+          console.log("[Auth] User authenticated:", data.user.email);
           setUser(data.user);
           return data.user;
         }
       } else if (response.status === 401) {
         // Unauthorized - clear user
+        console.log("[Auth] User not authenticated (401)");
         setUser(null);
       }
       return null;
     } catch (error) {
-      console.error("[Auth] Error fetching current user:", error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error("[Auth] Request timeout");
+      } else {
+        console.error("[Auth] Error fetching current user:", error);
+      }
       return null;
+    } finally {
+      isFetchingRef.current = false;
+      if (!skipLoadingState) {
+        setIsLoading(false);
+      }
     }
   }, [isMitraRoute]);
 
@@ -97,12 +128,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/auth/refresh", {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
       });
 
       if (response.ok) {
         console.log("[Auth] Access token refreshed successfully");
         // Fetch user to ensure we have latest data
-        await fetchCurrentUser();
+        await fetchCurrentUser(true);
         return true;
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -180,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: (session.user as any).role || "USER",
         };
         setUser(userFromSession);
+        setupTokenRefresh();
         setIsLoading(false);
         return;
       }
@@ -211,13 +244,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Login function - set user after successful login
   const login = useCallback(
-    (userData: User) => {
+    async (userData: User) => {
       console.log("[Auth] User logged in:", userData.email);
       setUser(userData);
+      
       // Setup auto token refresh
       setupTokenRefresh();
+      
+      // Fetch fresh user data asynchronously without blocking
+      Promise.resolve().then(() => {
+        fetchCurrentUser(true);
+      });
     },
-    [setupTokenRefresh]
+    [setupTokenRefresh, fetchCurrentUser]
   );
 
   // Logout function
@@ -243,13 +282,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       
       console.log("[Auth] Logout successful");
+      
+      // Redirect to home
+      router.push("/");
     } catch (error) {
       console.error("[Auth] Logout error:", error);
       // Clear user state even if API fails
       setUser(null);
       clearTokenRefresh();
     }
-  }, [session, clearTokenRefresh]);
+  }, [session, clearTokenRefresh, router]);
 
   // Refresh user data from database
   const refreshUser = useCallback(async () => {
@@ -260,6 +302,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/user/profile", {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
 
       if (response.ok) {

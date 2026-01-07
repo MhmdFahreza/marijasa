@@ -10,6 +10,7 @@ import {
 import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,14 @@ export async function GET(request: NextRequest) {
     const accessToken = request.cookies.get("access_token")?.value;
     const refreshToken = request.cookies.get("refresh_token")?.value;
 
+    console.log("[Auth Me] Request received", {
+      hasSessionId: !!sessionId,
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+    });
+
     if (!sessionId) {
+      console.log("[Auth Me] No session ID found");
       return NextResponse.json(
         { message: "No session found", authenticated: false },
         { status: 401 }
@@ -28,11 +36,18 @@ export async function GET(request: NextRequest) {
     // Verify session exists in Redis
     const session = await getSession(sessionId);
     if (!session) {
+      console.log("[Auth Me] Session not found in Redis:", sessionId);
       return NextResponse.json(
         { message: "Session expired", authenticated: false },
         { status: 401 }
       );
     }
+
+    console.log("[Auth Me] Session found:", {
+      sessionId,
+      userId: session.userId,
+      email: session.email,
+    });
 
     let currentAccessToken = accessToken;
 
@@ -41,21 +56,52 @@ export async function GET(request: NextRequest) {
       const tokenPayload = verifyToken(accessToken);
       
       if (!tokenPayload || tokenPayload.sessionId !== sessionId) {
+        console.log("[Auth Me] Access token invalid or expired, attempting refresh");
+        
         // Access token expired, try to refresh
         if (refreshToken) {
           const refreshResult = await refreshAccessToken(accessToken, refreshToken);
           
           if (refreshResult.success && refreshResult.accessToken) {
             currentAccessToken = refreshResult.accessToken;
+            console.log("[Auth Me] Access token refreshed successfully");
             
-            // Update cookie with new access token
+            // Get user data
+            const user = await prisma.user.findUnique({
+              where: { user_id: session.userId },
+              select: {
+                user_id: true,
+                email: true,
+                name: true,
+                phone: true,
+                avatar: true,
+                role: true,
+                is_active: true,
+              },
+            });
+
+            if (!user || !user.is_active) {
+              console.log("[Auth Me] User not found or inactive");
+              return NextResponse.json(
+                { message: "User not found or inactive", authenticated: false },
+                { status: 404 }
+              );
+            }
+
+            // Update session activity
+            await updateSessionActivity(sessionId);
+
+            // Return response with new access token
             const response = NextResponse.json(
               {
                 authenticated: true,
                 user: {
-                  id: session.userId,
-                  email: session.email,
-                  role: session.role,
+                  id: user.user_id,
+                  name: user.name,
+                  email: user.email,
+                  phone: user.phone,
+                  avatar: user.avatar || "/profile.svg",
+                  role: user.role,
                 },
                 refreshed: true,
               },
@@ -72,6 +118,7 @@ export async function GET(request: NextRequest) {
 
             return response;
           } else {
+            console.log("[Auth Me] Refresh token failed");
             // Refresh failed, session is invalid
             return NextResponse.json(
               { message: "Session expired", authenticated: false },
@@ -79,6 +126,7 @@ export async function GET(request: NextRequest) {
             );
           }
         } else {
+          console.log("[Auth Me] No refresh token available");
           return NextResponse.json(
             { message: "Token expired", authenticated: false },
             { status: 401 }
@@ -89,26 +137,58 @@ export async function GET(request: NextRequest) {
       // Verify token exists in Redis
       const storedToken = await getAccessToken(sessionId);
       if (!storedToken || storedToken !== accessToken) {
+        console.log("[Auth Me] Token mismatch in Redis");
         return NextResponse.json(
           { message: "Invalid token", authenticated: false },
           { status: 401 }
         );
       }
     } else if (refreshToken) {
+      console.log("[Auth Me] No access token but has refresh token, attempting refresh");
+      
       // No access token but has refresh token, try to refresh
       const refreshResult = await refreshAccessToken("", refreshToken);
       
       if (refreshResult.success && refreshResult.accessToken) {
         currentAccessToken = refreshResult.accessToken;
+        console.log("[Auth Me] Access token created from refresh token");
         
-        // Update cookie with new access token
+        // Get user data
+        const user = await prisma.user.findUnique({
+          where: { user_id: session.userId },
+          select: {
+            user_id: true,
+            email: true,
+            name: true,
+            phone: true,
+            avatar: true,
+            role: true,
+            is_active: true,
+          },
+        });
+
+        if (!user || !user.is_active) {
+          console.log("[Auth Me] User not found or inactive");
+          return NextResponse.json(
+            { message: "User not found or inactive", authenticated: false },
+            { status: 404 }
+          );
+        }
+
+        // Update session activity
+        await updateSessionActivity(sessionId);
+
+        // Return response with new access token
         const response = NextResponse.json(
           {
             authenticated: true,
             user: {
-              id: session.userId,
-              email: session.email,
-              role: session.role,
+              id: user.user_id,
+              name: user.name,
+              email: user.email,
+              phone: user.phone,
+              avatar: user.avatar || "/profile.svg",
+              role: user.role,
             },
             refreshed: true,
           },
@@ -125,12 +205,14 @@ export async function GET(request: NextRequest) {
 
         return response;
       } else {
+        console.log("[Auth Me] Refresh token failed");
         return NextResponse.json(
           { message: "Session expired", authenticated: false },
           { status: 401 }
         );
       }
     } else {
+      console.log("[Auth Me] No tokens found");
       return NextResponse.json(
         { message: "No tokens found", authenticated: false },
         { status: 401 }
@@ -152,6 +234,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !user.is_active) {
+      console.log("[Auth Me] User not found or inactive");
       return NextResponse.json(
         { message: "User not found or inactive", authenticated: false },
         { status: 404 }
@@ -160,6 +243,8 @@ export async function GET(request: NextRequest) {
 
     // Update session activity
     await updateSessionActivity(sessionId);
+
+    console.log("[Auth Me] Authentication successful for:", user.email);
 
     return NextResponse.json(
       {
