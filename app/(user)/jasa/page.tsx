@@ -1,7 +1,7 @@
 // app/jasa/page.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -21,15 +21,7 @@ import {
   PaginationNext,
   PaginationEllipsis,
 } from "@/app/components/ui/pagination";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/app/components/ui/dialog";
-import { LoginForm } from "@/app/components/ui/login-form";
-import { Search, Filter, MapPin, Star, AlertCircle } from "lucide-react";
+import { Search, Filter, MapPin, Star, Loader2 } from "lucide-react";
 import { useAuth } from "@/app/components/contexts/AuthContext";
 import { PopupLoginModal } from "@/app/components/ui/popup-login-modal";
 
@@ -134,6 +126,25 @@ const EmptyState = ({
   );
 };
 
+// Loading skeleton component
+const VendorSkeleton = () => (
+  <div className="w-full overflow-hidden rounded-2xl md:rounded-3xl border border-gray-200 dark:border-gray-800">
+    <div className="p-3 sm:p-5 md:p-6">
+      <div className="flex flex-col gap-3 md:grid md:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)] md:gap-4 md:items-start">
+        <div className="flex items-start gap-2 md:gap-4 min-w-0">
+          <div className="h-9 w-9 sm:h-12 sm:w-12 md:h-14 md:w-14 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/2" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-full" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-5/6" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function JasaPage() {
   const prefersReduced = useReducedMotion();
   const router = useRouter();
@@ -142,6 +153,7 @@ export default function JasaPage() {
 
   const [leaving, setLeaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFilterLoading, setIsFilterLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -151,44 +163,50 @@ export default function JasaPage() {
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [selectedRating, setSelectedRating] = useState<string>("");
 
-  // Load vendors dari API
-  useEffect(() => {
-    const loadVendors = async () => {
-      try {
-        setIsLoading(true);
+  // Load vendors dari API dengan debounce
+  const loadVendors = useCallback(async (category: string, city: string, rating: string) => {
+    try {
+      setIsFilterLoading(true);
 
-        // Build query params
-        const params = new URLSearchParams();
-        if (selectedCategory) params.set('kategori', selectedCategory);
-        if (selectedCity) params.set('kota', selectedCity);
-        if (selectedRating && selectedRating !== 'semuarating') {
-          params.set('rating', selectedRating);
-        }
-
-        const queryString = params.toString();
-        const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
-
-        const response = await fetch(url, {
-          credentials: 'include',
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setVendors(data.vendors || []);
-        } else {
-          console.error('Error loading vendors:', await response.text());
-          setVendors([]);
-        }
-      } catch (error) {
-        console.error('Error loading vendors:', error);
-        setVendors([]);
-      } finally {
-        setIsLoading(false);
+      // Build query params
+      const params = new URLSearchParams();
+      if (category) params.set('kategori', category);
+      if (city) params.set('kota', city);
+      if (rating && rating !== 'semuarating') {
+        params.set('rating', rating);
       }
-    };
 
-    loadVendors();
-  }, [selectedCategory, selectedCity, selectedRating]);
+      const queryString = params.toString();
+      const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
+
+      const response = await fetch(url, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setVendors(data.vendors || []);
+      } else {
+        console.error('Error loading vendors:', await response.text());
+        setVendors([]);
+      }
+    } catch (error) {
+      console.error('Error loading vendors:', error);
+      setVendors([]);
+    } finally {
+      setIsFilterLoading(false);
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Debounce untuk filter changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      loadVendors(selectedCategory, selectedCity, selectedRating);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedCategory, selectedCity, selectedRating, loadVendors]);
 
   // Set category from URL params
   useEffect(() => {
@@ -202,6 +220,17 @@ export default function JasaPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategory, selectedCity, selectedRating]);
+
+  // Listen for favorites update event
+  useEffect(() => {
+    const handleFavoritesUpdate = () => {
+      // Refresh vendors to update favorite status
+      loadVendors(selectedCategory, selectedCity, selectedRating);
+    };
+
+    window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
+    return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
+  }, [selectedCategory, selectedCity, selectedRating, loadVendors]);
 
   const totalPages = Math.max(1, Math.ceil(vendors.length / ITEMS_PER_PAGE));
 
@@ -371,14 +400,24 @@ export default function JasaPage() {
               />
             </motion.div>
 
-            {vendors.length === 0 ? (
+            {/* Loading indicator saat filter berubah */}
+            {isFilterLoading && (
+              <div className="mt-6 flex justify-center items-center py-8">
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#7CE0A8]" />
+                  <p className="text-sm text-muted-foreground">Memuat data...</p>
+                </div>
+              </div>
+            )}
+
+            {!isFilterLoading && vendors.length === 0 ? (
               <EmptyState
                 onResetFilters={handleResetFilters}
                 selectedCategory={selectedCategory}
                 selectedCity={selectedCity}
                 selectedRating={selectedRating}
               />
-            ) : (
+            ) : !isFilterLoading ? (
               <>
                 <motion.section
                   key={`${selectedCategory}-${selectedCity}-${selectedRating}-${currentPage}`}
@@ -435,7 +474,7 @@ export default function JasaPage() {
                   </motion.div>
                 )}
               </>
-            )}
+            ) : null}
 
             <div className="mt-10">
               <SiteFooter />

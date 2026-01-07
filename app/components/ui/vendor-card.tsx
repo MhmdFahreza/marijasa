@@ -1,3 +1,4 @@
+// app/components/ui/vendor-card.tsx
 "use client";
 
 import Image from "next/image";
@@ -48,26 +49,39 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
   const [isLoading, setIsLoading] = useState(false);
 
   // Check if vendor is in favorites dari database
-  useEffect(() => {
-    const checkFavorite = async () => {
-      if (!isLoggedIn || !userId) return;
+  const checkFavorite = useCallback(async () => {
+    if (!isLoggedIn || !userId) {
+      setIsFavorite(false);
+      return;
+    }
 
-      try {
-        const response = await fetch(`/api/user/favorites/check?vendorId=${id}`, {
-          credentials: 'include',
-        });
+    try {
+      const response = await fetch(`/api/user/favorites/check?vendorId=${id}`, {
+        credentials: 'include',
+      });
 
-        if (response.ok) {
-          const data = await response.json();
-          setIsFavorite(data.isFavorite);
-        }
-      } catch (error) {
-        console.error('Error checking favorite:', error);
+      if (response.ok) {
+        const data = await response.json();
+        setIsFavorite(data.isFavorite);
       }
+    } catch (error) {
+      console.error('Error checking favorite:', error);
+    }
+  }, [id, isLoggedIn, userId]);
+
+  useEffect(() => {
+    checkFavorite();
+  }, [checkFavorite]);
+
+  // Listen for favorites update event from other components
+  useEffect(() => {
+    const handleFavoritesUpdate = () => {
+      checkFavorite();
     };
 
-    checkFavorite();
-  }, [id, isLoggedIn, userId]);
+    window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
+    return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
+  }, [checkFavorite]);
 
   const handleToggleFavorite = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -94,9 +108,10 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
       });
 
       if (response.ok) {
+        // Update local state immediately for smooth UI
         setIsFavorite(!isFavorite);
         
-        // Dispatch event untuk update favorites page
+        // Dispatch event untuk update components lain
         window.dispatchEvent(new CustomEvent('favoritesUpdated'));
       } else {
         const error = await response.json();
@@ -179,15 +194,25 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
                           className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative disabled:opacity-50"
                           aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                         >
-                          <Heart
-                            className={`h-3 w-3 transition-all duration-200 ${
-                              isFavorite
-                                ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
-                                : "text-muted-foreground scale-100"
-                            }`}
-                          />
+                          <motion.div
+                            animate={isAnimating ? { scale: [1, 1.2, 1] } : {}}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <Heart
+                              className={`h-3 w-3 transition-all duration-200 ${
+                                isFavorite
+                                  ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
+                                  : "text-muted-foreground scale-100"
+                              }`}
+                            />
+                          </motion.div>
                           {isAnimating && (
-                            <span className="absolute inset-0 rounded-full bg-[#7CE0A8]/20 animate-ping" />
+                            <motion.span
+                              initial={{ opacity: 0.6, scale: 0.8 }}
+                              animate={{ opacity: 0, scale: 2 }}
+                              transition={{ duration: 0.4 }}
+                              className="absolute inset-0 rounded-full bg-[#7CE0A8]/20"
+                            />
                           )}
                         </button>
                       </TooltipTrigger>
@@ -282,15 +307,25 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
                       className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95 disabled:opacity-50"
                       aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                     >
-                      <Heart
-                        className={`h-5 w-5 transition-all duration-200 ${
-                          isFavorite
-                            ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
-                            : "text-muted-foreground scale-100"
-                        }`}
-                      />
+                      <motion.div
+                        animate={isAnimating ? { scale: [1, 1.2, 1] } : {}}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <Heart
+                          className={`h-5 w-5 transition-all duration-200 ${
+                            isFavorite
+                              ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
+                              : "text-muted-foreground scale-100"
+                          }`}
+                        />
+                      </motion.div>
                       {isAnimating && (
-                        <span className="absolute inset-0 rounded-full bg-[#7CE0A8]/20 animate-ping" />
+                        <motion.span
+                          initial={{ opacity: 0.6, scale: 0.8 }}
+                          animate={{ opacity: 0, scale: 2 }}
+                          transition={{ duration: 0.4 }}
+                          className="absolute inset-0 rounded-full bg-[#7CE0A8]/20"
+                        />
                       )}
                     </button>
                   </TooltipTrigger>

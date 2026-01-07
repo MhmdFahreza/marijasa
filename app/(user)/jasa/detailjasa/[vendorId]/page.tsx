@@ -1,7 +1,7 @@
 // app/jasa/detailjasa/[vendorId]/page.tsx
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { motion, useReducedMotion, AnimatePresence } from 'framer-motion'
@@ -21,17 +21,9 @@ import {
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/app/components/ui/dialog'
-import { Send, CheckCircle2, Heart, MessageCircle, AlertCircle, ImageIcon, User, Eye, X as CloseIcon, ThumbsUp, Star } from 'lucide-react'
+import { Send, CheckCircle2, Heart, MessageCircle, ImageIcon, User, X as CloseIcon, Star } from 'lucide-react'
 import SiteFooter from '@/app/footer'
 import { LoaderTwo } from '@/app/components/transition/loader'
-import { LoginForm } from '@/app/components/ui/login-form'
 import { RatingStars } from '@/app/components/ui/rating-stars'
 import { useAuth } from '@/app/components/contexts/AuthContext'
 import { PopupLoginModal } from '@/app/components/ui/popup-login-modal'
@@ -72,55 +64,78 @@ export default function VendorDetailPage() {
   const vendorId = params.vendorId as string
 
   // Load vendor data dari API
-  useEffect(() => {
-    const loadVendor = async () => {
-      try {
-        setIsLoadingVendor(true)
-        const response = await fetch(`/api/vendors/${vendorId}`, {
-          credentials: 'include',
-        })
+  const loadVendor = useCallback(async () => {
+    try {
+      setIsLoadingVendor(true)
+      const response = await fetch(`/api/vendors/${vendorId}`, {
+        credentials: 'include',
+      })
 
-        if (response.ok) {
-          const data = await response.json()
-          setVendor(data.vendor)
-          setReviews(data.vendor.reviews || [])
-        } else {
-          console.error('Error loading vendor:', await response.text())
-          setVendor(null)
-        }
-      } catch (error) {
-        console.error('Error loading vendor:', error)
+      if (response.ok) {
+        const data = await response.json()
+        setVendor(data.vendor)
+        setReviews(data.vendor.reviews || [])
+      } else {
+        console.error('Error loading vendor:', await response.text())
         setVendor(null)
-      } finally {
-        setIsLoadingVendor(false)
-        setIsLoadingReviews(false)
       }
+    } catch (error) {
+      console.error('Error loading vendor:', error)
+      setVendor(null)
+    } finally {
+      setIsLoadingVendor(false)
+      setIsLoadingReviews(false)
     }
-
-    loadVendor()
   }, [vendorId])
 
-  // Check if vendor is favorite
   useEffect(() => {
-    const checkFavorite = async () => {
-      if (!isAuthenticated || !user) return
+    loadVendor()
+  }, [loadVendor])
 
-      try {
-        const response = await fetch(`/api/user/favorites/check?vendorId=${vendorId}`, {
-          credentials: 'include',
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setIsFavorite(data.isFavorite)
-        }
-      } catch (error) {
-        console.error('Error checking favorite:', error)
-      }
+  // Check if vendor is favorite
+  const checkFavorite = useCallback(async () => {
+    if (!isAuthenticated || !user) {
+      setIsFavorite(false)
+      return
     }
 
-    checkFavorite()
+    try {
+      const response = await fetch(`/api/user/favorites/check?vendorId=${vendorId}`, {
+        credentials: 'include',
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setIsFavorite(data.isFavorite)
+      }
+    } catch (error) {
+      console.error('Error checking favorite:', error)
+    }
   }, [vendorId, isAuthenticated, user])
+
+  useEffect(() => {
+    checkFavorite()
+  }, [checkFavorite])
+
+  // Listen for favorites update event
+  useEffect(() => {
+    const handleFavoritesUpdate = () => {
+      checkFavorite()
+    }
+
+    window.addEventListener('favoritesUpdated', handleFavoritesUpdate)
+    return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate)
+  }, [checkFavorite])
+
+  // Listen for reviews update event
+  useEffect(() => {
+    const handleReviewsUpdate = () => {
+      loadVendor()
+    }
+
+    window.addEventListener('reviewsUpdated', handleReviewsUpdate)
+    return () => window.removeEventListener('reviewsUpdated', handleReviewsUpdate)
+  }, [loadVendor])
 
   const handleNavigation = async (path: string) => {
     setLeaving(true)
@@ -145,7 +160,7 @@ export default function VendorDetailPage() {
     setShowLoginModal(false);
     setIsTransitioning(true);
     await new Promise((r) => setTimeout(r, 500));
-    window.location.reload(); // Refresh auth state
+    window.location.reload();
   };
 
   const handleRegisterClick = async () => {
@@ -648,7 +663,7 @@ export default function VendorDetailPage() {
         </div>
       </div>
 
-      {/* Login Modal - Updated Design */}
+      {/* Login Modal */}
       <PopupLoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
