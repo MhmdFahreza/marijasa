@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   verifyToken,
   getSession,
-  getAccessToken,
   refreshAccessToken,
   updateSessionActivity,
 } from "@/app/components/lib/token-service";
@@ -11,6 +10,19 @@ import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
+
+// Helper to clear cookies
+function clearAuthCookies(response: NextResponse) {
+  const cookieOptions = {
+    path: "/",
+    maxAge: 0,
+    expires: new Date(0),
+  };
+
+  response.cookies.set("session_id", "", cookieOptions);
+  response.cookies.set("access_token", "", cookieOptions);
+  response.cookies.set("refresh_token", "", cookieOptions);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,6 +33,7 @@ export async function GET(request: NextRequest) {
 
     console.log("[Auth Me] Request received", {
       hasSessionId: !!sessionId,
+      sessionId: sessionId?.substring(0, 8) + "...",
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
     });
@@ -37,22 +50,47 @@ export async function GET(request: NextRequest) {
     const session = await getSession(sessionId);
     if (!session) {
       console.log("[Auth Me] Session not found in Redis:", sessionId);
-      return NextResponse.json(
+      console.log("[Auth Me] Clearing stale cookies");
+      
+      const response = NextResponse.json(
         { message: "Session expired", authenticated: false, user: null },
         { status: 401 }
       );
+      
+      clearAuthCookies(response);
+      return response;
     }
 
     console.log("[Auth Me] Session found:", {
-      sessionId,
+      sessionId: sessionId.substring(0, 8) + "...",
       userId: session.userId,
       email: session.email,
     });
 
     let currentAccessToken = accessToken;
 
-    // Verify access token
-    if (accessToken) {
+    // Handle token refresh scenarios
+    if (!accessToken && refreshToken) {
+      // No access token but has refresh token
+      console.log("[Auth Me] No access token, attempting refresh with refresh token");
+      
+      const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+      
+      if (refreshResult.success && refreshResult.accessToken) {
+        currentAccessToken = refreshResult.accessToken;
+        console.log("[Auth Me] Access token created from refresh token");
+      } else {
+        console.log("[Auth Me] Refresh failed:", refreshResult.error);
+        const response = NextResponse.json(
+          { message: "Session expired", authenticated: false, user: null },
+          { status: 401 }
+        );
+        
+        clearAuthCookies(response);
+        return response;
+      }
+    } else if (accessToken) {
+      // Verify access token
       const tokenPayload = verifyToken(accessToken);
       
       if (!tokenPayload || tokenPayload.sessionId !== sessionId) {
@@ -60,174 +98,42 @@ export async function GET(request: NextRequest) {
         
         // Access token expired, try to refresh
         if (refreshToken) {
-          const refreshResult = await refreshAccessToken(accessToken, refreshToken);
+          const refreshResult = await refreshAccessToken(sessionId, refreshToken);
           
           if (refreshResult.success && refreshResult.accessToken) {
             currentAccessToken = refreshResult.accessToken;
             console.log("[Auth Me] Access token refreshed successfully");
-            
-            // Get user data
-            const user = await prisma.user.findUnique({
-              where: { user_id: session.userId },
-              select: {
-                user_id: true,
-                email: true,
-                name: true,
-                phone: true,
-                avatar: true,
-                role: true,
-                is_active: true,
-              },
-            });
-
-            if (!user || !user.is_active) {
-              console.log("[Auth Me] User not found or inactive");
-              return NextResponse.json(
-                { message: "User not found or inactive", authenticated: false, user: null },
-                { status: 404 }
-              );
-            }
-
-            // Update session activity
-            await updateSessionActivity(sessionId);
-
-            console.log("[Auth Me] Returning user data (refreshed):", {
-              user_id: user.user_id,
-              email: user.email
-            });
-
-            // Return response with new access token
-            const response = NextResponse.json(
-              {
-                authenticated: true,
-                user: {
-                  user_id: user.user_id, // Make sure we use user_id
-                  id: user.user_id, // Also include id for compatibility
-                  name: user.name,
-                  email: user.email,
-                  phone: user.phone,
-                  avatar: user.avatar || "/profile.svg",
-                  role: user.role,
-                },
-                refreshed: true,
-              },
-              { status: 200 }
-            );
-
-            response.cookies.set("access_token", refreshResult.accessToken, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === "production",
-              sameSite: "lax",
-              maxAge: 60 * 60, // 1 hour
-              path: "/",
-            });
-
-            return response;
           } else {
-            console.log("[Auth Me] Refresh token failed");
-            return NextResponse.json(
+            console.log("[Auth Me] Refresh failed:", refreshResult.error);
+            const response = NextResponse.json(
               { message: "Session expired", authenticated: false, user: null },
               { status: 401 }
             );
+            
+            clearAuthCookies(response);
+            return response;
           }
         } else {
           console.log("[Auth Me] No refresh token available");
-          return NextResponse.json(
+          const response = NextResponse.json(
             { message: "Token expired", authenticated: false, user: null },
             { status: 401 }
           );
+          
+          clearAuthCookies(response);
+          return response;
         }
-      }
-
-      // Verify token exists in Redis
-      const storedToken = await getAccessToken(sessionId);
-      if (!storedToken || storedToken !== accessToken) {
-        console.log("[Auth Me] Token mismatch in Redis");
-        return NextResponse.json(
-          { message: "Invalid token", authenticated: false, user: null },
-          { status: 401 }
-        );
-      }
-    } else if (refreshToken) {
-      console.log("[Auth Me] No access token but has refresh token, attempting refresh");
-      
-      // No access token but has refresh token, try to refresh
-      const refreshResult = await refreshAccessToken("", refreshToken);
-      
-      if (refreshResult.success && refreshResult.accessToken) {
-        currentAccessToken = refreshResult.accessToken;
-        console.log("[Auth Me] Access token created from refresh token");
-        
-        // Get user data
-        const user = await prisma.user.findUnique({
-          where: { user_id: session.userId },
-          select: {
-            user_id: true,
-            email: true,
-            name: true,
-            phone: true,
-            avatar: true,
-            role: true,
-            is_active: true,
-          },
-        });
-
-        if (!user || !user.is_active) {
-          console.log("[Auth Me] User not found or inactive");
-          return NextResponse.json(
-            { message: "User not found or inactive", authenticated: false, user: null },
-            { status: 404 }
-          );
-        }
-
-        // Update session activity
-        await updateSessionActivity(sessionId);
-
-        console.log("[Auth Me] Returning user data (from refresh):", {
-          user_id: user.user_id,
-          email: user.email
-        });
-
-        // Return response with new access token
-        const response = NextResponse.json(
-          {
-            authenticated: true,
-            user: {
-              user_id: user.user_id, // Make sure we use user_id
-              id: user.user_id, // Also include id for compatibility
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              avatar: user.avatar || "/profile.svg",
-              role: user.role,
-            },
-            refreshed: true,
-          },
-          { status: 200 }
-        );
-
-        response.cookies.set("access_token", refreshResult.accessToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 60 * 60, // 1 hour
-          path: "/",
-        });
-
-        return response;
-      } else {
-        console.log("[Auth Me] Refresh token failed");
-        return NextResponse.json(
-          { message: "Session expired", authenticated: false, user: null },
-          { status: 401 }
-        );
       }
     } else {
+      // No tokens at all
       console.log("[Auth Me] No tokens found");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { message: "No tokens found", authenticated: false, user: null },
         { status: 401 }
       );
+      
+      clearAuthCookies(response);
+      return response;
     }
 
     // Get full user data from database
@@ -246,32 +152,50 @@ export async function GET(request: NextRequest) {
 
     if (!user || !user.is_active) {
       console.log("[Auth Me] User not found or inactive");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { message: "User not found or inactive", authenticated: false, user: null },
         { status: 404 }
       );
+      
+      clearAuthCookies(response);
+      return response;
     }
 
     // Update session activity
     await updateSessionActivity(sessionId);
 
-    console.log("[Auth Me] Authentication successful for:", user.email, "- user_id:", user.user_id);
+    console.log("[Auth Me] Authentication successful for:", user.email);
 
-    return NextResponse.json(
-      {
-        authenticated: true,
-        user: {
-          user_id: user.user_id, // Make sure we use user_id
-          id: user.user_id, // Also include id for compatibility
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          avatar: user.avatar || "/profile.svg",
-          role: user.role,
-        },
+    // Prepare response
+    const responseData = {
+      authenticated: true,
+      user: {
+        user_id: user.user_id,
+        id: user.user_id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        avatar: user.avatar || "/profile.svg",
+        role: user.role,
       },
-      { status: 200 }
-    );
+      refreshed: currentAccessToken !== accessToken,
+    };
+
+    const response = NextResponse.json(responseData, { status: 200 });
+
+    // If token was refreshed, set new access token cookie
+    if (currentAccessToken && currentAccessToken !== accessToken) {
+      response.cookies.set("access_token", currentAccessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60, // 1 hour
+        path: "/",
+      });
+      console.log("[Auth Me] New access token cookie set");
+    }
+
+    return response;
   } catch (error) {
     console.error("[Auth Me] Error:", error);
     return NextResponse.json(

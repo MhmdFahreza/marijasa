@@ -4,10 +4,13 @@ import prisma from '@/app/components/lib/prisma';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    console.log('[Payment API] PUT request received for orderId:', params.orderId);
+    // Await params to get the actual values
+    const { orderId } = await params;
+    
+    console.log('[Payment API] PUT request received for orderId:', orderId);
     
     // Get user ID from session
     let userId: string | null = null;
@@ -55,8 +58,6 @@ export async function PUT(
     }
 
     console.log('[Payment API] Authenticated user ID:', userId);
-
-    const { orderId } = params;
 
     // Parse request body
     const body = await request.json();

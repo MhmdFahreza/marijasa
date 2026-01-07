@@ -2,65 +2,148 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from "@/app/components/lib/auth.config";
+import { getSession } from "@/app/components/lib/token-service";
+
+export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('[Session Check] Starting session verification...');
+
     // Check NextAuth session first (Google OAuth)
     try {
       const session = await getServerSession(authOptions);
       if (session?.user) {
+        console.log('[Session Check] Valid NextAuth session found for:', session.user.email);
         return NextResponse.json({
           authenticated: true,
           user: {
             user_id: (session.user as any).id,
+            id: (session.user as any).id,
             email: session.user.email,
             name: session.user.name,
-            avatar: session.user.image
+            phone: (session.user as any).phone,
+            avatar: session.user.image || "/profile.svg",
+            role: (session.user as any).role || "USER"
           }
         }, { status: 200 });
       }
     } catch (error) {
-      console.log('[Session] NextAuth check failed, trying custom session');
+      console.log('[Session Check] NextAuth check failed:', error);
     }
 
     // Check custom session cookies
     const sessionId = request.cookies.get('session_id')?.value;
     const accessToken = request.cookies.get('access_token')?.value;
+    const refreshToken = request.cookies.get('refresh_token')?.value;
 
-    if (sessionId && accessToken) {
-      // Verify with /api/auth/me endpoint
-      try {
-        const meResponse = await fetch(`${request.nextUrl.origin}/api/auth/me`, {
-          headers: {
-            Cookie: `session_id=${sessionId}; access_token=${accessToken}`
-          }
-        });
+    console.log('[Session Check] Cookie status:', {
+      hasSessionId: !!sessionId,
+      sessionId: sessionId?.substring(0, 8) + '...',
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken
+    });
 
-        if (meResponse.ok) {
-          const meData = await meResponse.json();
-          if (meData.authenticated && meData.user) {
-            return NextResponse.json({
-              authenticated: true,
-              user: meData.user
-            }, { status: 200 });
-          }
-        }
-      } catch (error) {
-        console.log('[Session] Custom session verification failed');
-      }
+    // If no session cookies at all
+    if (!sessionId) {
+      console.log('[Session Check] No session cookies found');
+      return NextResponse.json({
+        authenticated: false,
+        message: 'No session found'
+      }, { status: 401 });
     }
 
-    // No valid session found
-    return NextResponse.json({
-      authenticated: false,
-      message: 'No valid session found'
-    }, { status: 401 });
+    // Verify session exists in Redis
+    try {
+      const redisSession = await getSession(sessionId);
+      
+      if (!redisSession) {
+        console.log('[Session Check] Session not found in Redis:', sessionId);
+        console.log('[Session Check] Clearing stale cookies...');
+        
+        // Clear invalid/stale cookies
+        const response = NextResponse.json({
+          authenticated: false,
+          message: 'Session expired'
+        }, { status: 401 });
+
+        // Clear cookies properly
+        const cookieOptions = {
+          path: "/",
+          maxAge: 0,
+          expires: new Date(0),
+        };
+
+        response.cookies.set('session_id', '', cookieOptions);
+        response.cookies.set('access_token', '', cookieOptions);
+        response.cookies.set('refresh_token', '', cookieOptions);
+
+        return response;
+      }
+
+      console.log('[Session Check] Valid Redis session found for user:', redisSession.userId);
+
+      // If we have a valid session but no tokens, session is incomplete
+      if (!accessToken && !refreshToken) {
+        console.log('[Session Check] Session valid but no tokens found, clearing session');
+        
+        const response = NextResponse.json({
+          authenticated: false,
+          message: 'Incomplete session, please login again'
+        }, { status: 401 });
+
+        const cookieOptions = {
+          path: "/",
+          maxAge: 0,
+          expires: new Date(0),
+        };
+
+        response.cookies.set('session_id', '', cookieOptions);
+        response.cookies.set('access_token', '', cookieOptions);
+        response.cookies.set('refresh_token', '', cookieOptions);
+
+        return response;
+      }
+
+      // Return authenticated response with session data
+      return NextResponse.json({
+        authenticated: true,
+        user: {
+          user_id: redisSession.userId,
+          id: redisSession.userId,
+          email: redisSession.email,
+          role: redisSession.role
+        }
+      }, { status: 200 });
+
+    } catch (error) {
+      console.error('[Session Check] Redis verification failed:', error);
+      
+      // Clear cookies on error
+      const response = NextResponse.json({
+        authenticated: false,
+        message: 'Session verification failed'
+      }, { status: 500 });
+
+      const cookieOptions = {
+        path: "/",
+        maxAge: 0,
+        expires: new Date(0),
+      };
+
+      response.cookies.set('session_id', '', cookieOptions);
+      response.cookies.set('access_token', '', cookieOptions);
+      response.cookies.set('refresh_token', '', cookieOptions);
+
+      return response;
+    }
 
   } catch (error: any) {
-    console.error('[Session] Error checking session:', error);
+    console.error('[Session Check] Unexpected error:', error);
     return NextResponse.json({
       authenticated: false,
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 }

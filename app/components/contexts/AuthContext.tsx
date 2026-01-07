@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRefreshingRef = useRef(false);
   const isFetchingRef = useRef(false);
+  const lastFetchAttemptRef = useRef<number>(0);
 
   // Check if current path is mitra route
   const isMitraRoute = pathname?.startsWith('/mitra') || false;
@@ -62,6 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
+    // Prevent rapid consecutive fetches (debounce)
+    const now = Date.now();
+    if (now - lastFetchAttemptRef.current < 1000) {
+      console.log("[Auth] Debouncing fetch attempt");
+      return null;
+    }
+    lastFetchAttemptRef.current = now;
+
     isFetchingRef.current = true;
 
     try {
@@ -69,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch("/api/auth/me", {
         credentials: "include",
@@ -85,11 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[Auth] User authenticated:", data.user.email);
           setUser(data.user);
           return data.user;
+        } else {
+          console.log("[Auth] Response OK but not authenticated");
+          setUser(null);
         }
       } else if (response.status === 401) {
-        // Unauthorized - clear user
         console.log("[Auth] User not authenticated (401)");
         setUser(null);
+      } else {
+        console.log("[Auth] Unexpected response status:", response.status);
       }
       return null;
     } catch (error) {
@@ -98,6 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         console.error("[Auth] Error fetching current user:", error);
       }
+      // On error, clear user state
+      setUser(null);
       return null;
     } finally {
       isFetchingRef.current = false;
@@ -137,13 +152,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetchCurrentUser(true);
         return true;
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("[Auth] Failed to refresh access token:", {
-          status: response.status,
-          message: errorData.message
-        });
+        console.error("[Auth] Failed to refresh access token");
         
         // If refresh fails, logout user
+        console.log("[Auth] Clearing user due to failed refresh");
         setUser(null);
         clearTokenRefresh();
         return false;
@@ -199,10 +211,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setIsLoading(true);
+      console.log("[Auth] Initializing authentication...");
 
       // First check if we have a session from NextAuth (Google OAuth)
       if (status === "authenticated" && session?.user) {
-        console.log("[Auth] NextAuth session detected");
+        console.log("[Auth] NextAuth session detected for:", session.user.email);
         const userFromSession: User = {
           id: (session.user as any).id || "",
           name: session.user.name || "",
@@ -223,7 +236,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const fetchedUser = await fetchCurrentUser();
         if (fetchedUser) {
           console.log("[Auth] JWT authentication successful");
-          // Setup auto token refresh
           setupTokenRefresh();
         } else {
           console.log("[Auth] No valid authentication found");
@@ -242,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [session, status, fetchCurrentUser, setupTokenRefresh, clearTokenRefresh, isMitraRoute]);
 
-  // Login function - set user after successful login
+  // Login function
   const login = useCallback(
     async (userData: User) => {
       console.log("[Auth] User logged in:", userData.email);
@@ -251,10 +263,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Setup auto token refresh
       setupTokenRefresh();
       
-      // Fetch fresh user data asynchronously without blocking
-      Promise.resolve().then(() => {
+      // Fetch fresh user data asynchronously
+      setTimeout(() => {
         fetchCurrentUser(true);
-      });
+      }, 100);
     },
     [setupTokenRefresh, fetchCurrentUser]
   );
@@ -267,19 +279,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear token refresh interval
       clearTokenRefresh();
 
+      // Clear user state immediately
+      setUser(null);
+
       // If using NextAuth (Google OAuth), sign out from there
       if (session) {
         await nextAuthSignOut({ redirect: false });
       }
 
       // Call our logout API to clear the cookies and Redis data
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-
-      // Clear user state
-      setUser(null);
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (error) {
+        console.error("[Auth] Error calling logout API:", error);
+      }
       
       console.log("[Auth] Logout successful");
       
@@ -290,6 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear user state even if API fails
       setUser(null);
       clearTokenRefresh();
+      router.push("/");
     }
   }, [session, clearTokenRefresh, router]);
 
@@ -308,7 +325,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         if (data.profile) {
-          // Update user state with fresh data
           setUser({
             id: data.profile.user_id,
             name: data.profile.name,
