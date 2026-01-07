@@ -236,14 +236,10 @@ export default function JasaPage() {
   };
 
   const handleLoginSuccess = async (email: string) => {
+    setShowLoginModal(false);
     setIsTransitioning(true);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pendingLoginEmail', email);
-    }
-
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-    router.push(`/login/otp?email=${encodeURIComponent(email)}`);
+    await new Promise((r) => setTimeout(r, 500));
+    window.location.reload(); 
   };
 
   const handleRegisterClick = async () => {

@@ -143,10 +143,9 @@ export default function VendorDetailPage() {
 
   const handleLoginSuccess = async (email: string) => {
     setShowLoginModal(false);
-
+    setIsTransitioning(true);
     await new Promise((r) => setTimeout(r, 500));
-
-    window.location.reload();
+    window.location.reload(); // Refresh auth state
   };
 
   const handleRegisterClick = async () => {
@@ -658,7 +657,7 @@ export default function VendorDetailPage() {
         title="Hubungi Vendor"
         description="Login untuk mengirim pesanan atau chat langsung dengan vendor"
       />
-      
+
       {/* Transition Loader */}
       <AnimatePresence>
         {(leaving || isTransitioning) && (
