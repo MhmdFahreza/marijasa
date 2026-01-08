@@ -1,7 +1,7 @@
 // app/jasa/page.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -21,7 +21,7 @@ import {
   PaginationNext,
   PaginationEllipsis,
 } from "@/app/components/ui/pagination";
-import { Search, Filter, MapPin, Star, Loader2 } from "lucide-react";
+import { Search, Filter, MapPin, Star } from "lucide-react";
 import { useAuth } from "@/app/components/contexts/AuthContext";
 import { PopupLoginModal } from "@/app/components/ui/popup-login-modal";
 
@@ -154,52 +154,68 @@ export default function JasaPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState<string>("10");
 
-  // Debounce untuk filter changes - Load vendors dari API
-  useEffect(() => {
-    const loadVendors = async () => {
-      try {
-        setIsFilterLoading(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-        // Build query params
-        const params = new URLSearchParams();
-        if (selectedCategory) params.set('kategori', selectedCategory);
-        if (selectedCity) params.set('kota', selectedCity);
-        if (selectedRating && selectedRating !== 'semuarating') {
-          params.set('rating', selectedRating);
-        }
-        if (searchQuery) params.set('search', searchQuery);
+  // Load vendors dari API dengan debounce
+  const loadVendors = useCallback(async (
+    category: string,
+    city: string,
+    rating: string,
+    search: string
+  ) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
-        const queryString = params.toString();
-        const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
+    abortControllerRef.current = new AbortController();
 
-        const response = await fetch(url, {
-          credentials: 'include',
-        });
+    try {
+      setIsFilterLoading(true);
 
-        if (response.ok) {
-          const data = await response.json();
-          setVendors(data.vendors || []);
-        } else {
-          console.error('Error loading vendors:', await response.text());
-          setVendors([]);
-        }
-      } catch (error) {
+      const params = new URLSearchParams();
+      if (category) params.set('kategori', category);
+      if (city) params.set('kota', city);
+      if (rating && rating !== 'semuarating') {
+        params.set('rating', rating);
+      }
+      if (search) params.set('search', search);
+
+      const queryString = params.toString();
+      const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
+
+      const response = await fetch(url, {
+        credentials: 'include',
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setVendors(data.vendors || []);
+      } else {
+        console.error('Error loading vendors:', await response.text());
+        setVendors([]);
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
         console.error('Error loading vendors:', error);
         setVendors([]);
-      } finally {
-        setIsFilterLoading(false);
-        setIsLoading(false);
       }
-    };
+    } finally {
+      setIsFilterLoading(false);
+      setIsLoading(false);
+    }
+  }, []);
 
+  // Debounced load vendors - lebih cepat untuk real-time feel
+  useEffect(() => {
     const timeoutId = setTimeout(() => {
-      loadVendors();
-    }, 300);
+      loadVendors(selectedCategory, selectedCity, selectedRating, searchQuery);
+    }, 150); // Reduced from 300ms to 150ms
 
     return () => clearTimeout(timeoutId);
-  }, [selectedCategory, selectedCity, selectedRating, searchQuery]);
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery, loadVendors]);
 
-  // Set filters from URL params
+  // Set filters from URL params on mount
   useEffect(() => {
     const kategori = searchParams?.get('kategori');
     const kota = searchParams?.get('kota');
@@ -212,19 +228,18 @@ export default function JasaPage() {
     if (rating) setSelectedRating(rating);
     if (search) setSearchQuery(search);
     if (limit) setDisplayLimit(limit);
-  }, [searchParams]);
+  }, []);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit]);
 
-  // Listen for favorite toggle event and update local state
+  // Listen for favorite toggle event
   useEffect(() => {
     const handleFavoriteToggled = (event: CustomEvent) => {
       const { vendorId, isFavorite } = event.detail;
       
-      // Update vendor in local state
       setVendors(prevVendors => 
         prevVendors.map(vendor => 
           vendor.id === vendorId 
@@ -271,15 +286,14 @@ export default function JasaPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setSelectedCategory("");
     setSelectedCity("");
     setSelectedRating("");
     setSearchQuery("");
     setDisplayLimit("10");
     setCurrentPage(1);
-    router.push('/jasa', { scroll: false });
-  };
+  }, []);
 
   const handleLoginSuccess = async (email: string) => {
     setShowLoginModal(false);
@@ -421,89 +435,84 @@ export default function JasaPage() {
               />
             </motion.div>
 
-            {/* Loading indicator saat filter berubah */}
-            {isFilterLoading && (
-              <div className="mt-6 flex justify-center items-center py-8">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#7CE0A8]" />
-                  <p className="text-sm text-muted-foreground">Memuat data...</p>
-                </div>
-              </div>
-            )}
-
-            {!isFilterLoading && displayedVendors.length === 0 ? (
-              <EmptyState
-                onResetFilters={handleResetFilters}
-                selectedCategory={selectedCategory}
-                selectedCity={selectedCity}
-                selectedRating={selectedRating}
-                searchQuery={searchQuery}
-              />
-            ) : !isFilterLoading ? (
-              <>
-                <motion.section
-                  key={`${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}`}
-                  className="mt-6 space-y-4"
-                  initial="hidden"
-                  animate="show"
-                  variants={{
-                    hidden: { opacity: 0 },
-                    show: {
-                      opacity: 1,
-                      transition: { staggerChildren: 0.06, delayChildren: 0.05 },
-                    },
-                  }}
-                >
-                  {currentVendors.map((v) => (
-                    <motion.div
-                      key={v.id}
-                      variants={{
-                        hidden: { opacity: 0, y: 12 },
-                        show: { opacity: 1, y: 0 },
-                      }}
-                      transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
-                    >
-                      <VendorCard
-                        vendor={v}
-                        isLoggedIn={isAuthenticated}
-                        onLoginRequired={() => setShowLoginModal(true)}
-                      />
-                    </motion.div>
-                  ))}
-                </motion.section>
-
-                {totalPages > 1 && (
-                  <motion.div
-                    className="mt-8 mb-6"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
+            {/* Konten dengan smooth opacity transition */}
+            <motion.div
+              animate={{ opacity: isFilterLoading ? 0.5 : 1 }}
+              transition={{ duration: 0.15 }}
+            >
+              {displayedVendors.length === 0 ? (
+                <EmptyState
+                  onResetFilters={handleResetFilters}
+                  selectedCategory={selectedCategory}
+                  selectedCity={selectedCity}
+                  selectedRating={selectedRating}
+                  searchQuery={searchQuery}
+                />
+              ) : (
+                <>
+                  <motion.section
+                    key={`${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}`}
+                    className="mt-6 space-y-4"
+                    initial="hidden"
+                    animate="show"
+                    variants={{
+                      hidden: { opacity: 0 },
+                      show: {
+                        opacity: 1,
+                        transition: { staggerChildren: 0.04, delayChildren: 0.02 },
+                      },
+                    }}
                   >
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationPrevious
-                          onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                    {currentVendors.map((v) => (
+                      <motion.div
+                        key={v.id}
+                        variants={{
+                          hidden: { opacity: 0, y: 8 },
+                          show: { opacity: 1, y: 0 },
+                        }}
+                        transition={{ duration: prefersReduced ? 0 : 0.2, ease: "easeOut" }}
+                      >
+                        <VendorCard
+                          vendor={v}
+                          isLoggedIn={isAuthenticated}
+                          onLoginRequired={() => setShowLoginModal(true)}
                         />
-                        {renderPaginationItems()}
-                        <PaginationNext
-                          onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                        />
-                      </PaginationContent>
-                    </Pagination>
-                  </motion.div>
-                )}
+                      </motion.div>
+                    ))}
+                  </motion.section>
 
-                {/* Display info */}
-                {displayedVendors.length > 0 && (
-                  <div className="mt-4 text-center text-sm text-muted-foreground">
-                    Menampilkan {currentVendors.length} dari {displayedVendors.length} vendor
-                    {vendors.length !== displayedVendors.length && ` (Total: ${vendors.length} vendor)`}
-                  </div>
-                )}
-              </>
-            ) : null}
+                  {totalPages > 1 && (
+                    <motion.div
+                      className="mt-8 mb-6"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationPrevious
+                            onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
+                            className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                          {renderPaginationItems()}
+                          <PaginationNext
+                            onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
+                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationContent>
+                      </Pagination>
+                    </motion.div>
+                  )}
+
+                  {displayedVendors.length > 0 && (
+                    <div className="mt-4 text-center text-sm text-muted-foreground">
+                      Menampilkan {currentVendors.length} dari {displayedVendors.length} vendor
+                      {vendors.length !== displayedVendors.length && ` (Total: ${vendors.length} vendor)`}
+                    </div>
+                  )}
+                </>
+              )}
+            </motion.div>
 
             <div className="mt-10">
               <SiteFooter />

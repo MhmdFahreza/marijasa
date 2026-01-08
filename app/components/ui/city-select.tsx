@@ -1,3 +1,4 @@
+// app/components/ui/city-select.tsx
 "use client";
 
 import * as React from "react";
@@ -18,8 +19,6 @@ type CitySelectProps = {
     cities: string[];
     contentClassName?: string;
     avoidCollisions?: boolean;
-    onFocus?: (e: React.FocusEvent) => void;
-    onTriggerClick?: (e: React.MouseEvent) => void;
 };
 
 const INITIAL_DISPLAY_LIMIT = 100;
@@ -32,8 +31,6 @@ export default function CitySelect({
     cities,
     contentClassName,
     avoidCollisions = true,
-    onFocus,
-    onTriggerClick,
 }: CitySelectProps) {
     const [displayCount, setDisplayCount] = React.useState(INITIAL_DISPLAY_LIMIT);
     const [isMobile, setIsMobile] = React.useState(false);
@@ -70,7 +67,7 @@ export default function CitySelect({
         return [...cities].sort((a, b) => a.localeCompare(b));
     }, [cities]);
 
-    // Group cities based on the first letter for better presentation
+    // Group cities by first letter
     const displayedCities = React.useMemo(() => {
         const citiesToDisplay = sortedCities.slice(0, displayCount);
         const groups: { letter: string; cities: string[] }[] = [];
@@ -100,11 +97,13 @@ export default function CitySelect({
         }
     }, [displayCount, sortedCities.length]);
 
-    // Handle selecting a city
+    // Handle selecting a city - instant update
     const handleSelectCity = React.useCallback((city: string) => {
         if (onValueChange) {
-            onValueChange(city);
+            // Close immediately for instant feel
             setIsOpen(false);
+            // Update value
+            onValueChange(city);
         }
     }, [onValueChange]);
 
@@ -121,22 +120,11 @@ export default function CitySelect({
             open={isOpen}
         >
             <SelectTrigger
-                className={[
-                    "h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all duration-200",
-                    triggerClassName,
-                ]
-                    .filter(Boolean)
-                    .join(" ")}
+                className={`h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all duration-200 ${triggerClassName || ""}`}
                 aria-label="Pilih kota"
-                onClick={(e) => {
-                    if (onTriggerClick) {
-                        onTriggerClick(e);
-                    }
-                    setIsOpen(true);
-                }}
+                onClick={() => setIsOpen(true)}
             >
                 <SelectValue placeholder={placeholder} />
-                {/* Icon dropdown sudah ada dari SelectTrigger, tidak perlu tambahan */}
             </SelectTrigger>
 
             <SelectContent
@@ -169,7 +157,7 @@ export default function CitySelect({
                             <button
                                 type="button"
                                 onClick={() => setIsOpen(false)}
-                                className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+                                className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
                             >
                                 <X className="h-4 w-4" />
                             </button>
@@ -217,11 +205,11 @@ export default function CitySelect({
                             {/* Loading indicator */}
                             {displayCount < sortedCities.length && (
                                 <div className="text-center py-3">
-                                    <div className="inline-flex items-center justify-center text-xs text-muted-foreground animate-pulse">
-                                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="inline-flex items-center justify-center text-xs text-muted-foreground">
+                                        <svg className="w-4 h-4 mr-2 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                         </svg>
-                                        Scroll untuk melihat lebih banyak
+                                        Scroll untuk lebih banyak
                                     </div>
                                 </div>
                             )}

@@ -1,9 +1,8 @@
 // app/components/ui/FilterBar.tsx
 "use client";
 
-import { useMemo, useState, useCallback, memo, useEffect, useRef } from "react";
-import { SlidersHorizontal, X, RotateCcw, Loader2, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState, useCallback, memo, useEffect } from "react";
+import { SlidersHorizontal, X, RotateCcw } from "lucide-react";
 
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -16,7 +15,6 @@ import {
 
 import { PlaceholdersAndVanishInput } from "@/app/components/ui/placeholders-and-vanish-input";
 
-// Types
 interface City {
   city_id: string;
   name: string;
@@ -106,91 +104,44 @@ export default function FilterBar({
     onDisplayLimitChange,
     onResetFilters,
 }: FilterBarProps) {
-    const router = useRouter();
     const [isSmallMobile, setIsSmallMobile] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
-    const sheetContentRef = useRef<HTMLDivElement>(null);
     const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
     // Master data state
     const [cities, setCities] = useState<City[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
-    const [isLoadingCities, setIsLoadingCities] = useState(true);
-    const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+    const [dataReady, setDataReady] = useState(false);
 
-    // Fetch cities from API with abort controller
+    // Fetch master data
     useEffect(() => {
         const abortController = new AbortController();
         
-        const fetchCities = async () => {
-            try {
-                setIsLoadingCities(true);
-                const response = await fetch('/api/master/cities', {
-                    signal: abortController.signal,
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch cities');
-                }
-                
-                const data = await response.json();
-                if (data.success && !abortController.signal.aborted) {
-                    setCities(data.data);
-                }
-            } catch (error: any) {
-                if (error.name !== 'AbortError') {
-                    console.error('Error fetching cities:', error);
-                }
-            } finally {
-                if (!abortController.signal.aborted) {
-                    setIsLoadingCities(false);
-                }
+        Promise.all([
+            fetch('/api/master/cities', { signal: abortController.signal }).then(r => r.json()),
+            fetch('/api/master/categories', { signal: abortController.signal }).then(r => r.json())
+        ])
+        .then(([citiesData, categoriesData]) => {
+            if (!abortController.signal.aborted) {
+                if (citiesData.success) setCities(citiesData.data);
+                if (categoriesData.success) setCategories(categoriesData.data);
+                setDataReady(true);
             }
-        };
-
-        fetchCities();
+        })
+        .catch(error => {
+            if (error.name !== 'AbortError') {
+                console.error('Error fetching master data:', error);
+                setDataReady(true); // Still set ready to show UI
+            }
+        });
         
-        return () => {
-            abortController.abort();
-        };
+        return () => abortController.abort();
     }, []);
 
-    // Fetch categories from API with abort controller
+    // Sync local search with prop
     useEffect(() => {
-        const abortController = new AbortController();
-        
-        const fetchCategories = async () => {
-            try {
-                setIsLoadingCategories(true);
-                const response = await fetch('/api/master/categories', {
-                    signal: abortController.signal,
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch categories');
-                }
-                
-                const data = await response.json();
-                if (data.success && !abortController.signal.aborted) {
-                    setCategories(data.data);
-                }
-            } catch (error: any) {
-                if (error.name !== 'AbortError') {
-                    console.error('Error fetching categories:', error);
-                }
-            } finally {
-                if (!abortController.signal.aborted) {
-                    setIsLoadingCategories(false);
-                }
-            }
-        };
-
-        fetchCategories();
-        
-        return () => {
-            abortController.abort();
-        };
-    }, []);
+        setLocalSearchQuery(searchQuery);
+    }, [searchQuery]);
 
     // Deteksi ukuran layar
     useEffect(() => {
@@ -205,7 +156,7 @@ export default function FilterBar({
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
-    // Get category label from slug - optimized with useMemo
+    // Category map
     const categoryMap = useMemo(() => {
         return categories.reduce((acc, cat) => {
             acc[cat.slug] = cat.name;
@@ -217,7 +168,7 @@ export default function FilterBar({
         return categoryMap[slug] || slug;
     }, [categoryMap]);
 
-    // Update URL function
+    // Update URL without reload
     const updateURL = useCallback((category: string, city: string, rating: string, search: string, limit: string) => {
         const params = new URLSearchParams();
 
@@ -230,35 +181,28 @@ export default function FilterBar({
         const queryString = params.toString();
         const newURL = queryString ? `/jasa?${queryString}` : '/jasa';
 
-        router.replace(newURL, { scroll: false });
-    }, [router]);
+        window.history.replaceState({}, '', newURL);
+    }, []);
 
+    // Direct handlers
     const handleCategoryChange = useCallback((value: string) => {
-        requestAnimationFrame(() => {
-            onCategoryChange(value);
-            updateURL(value, selectedCity, selectedRating, searchQuery, displayLimit);
-        });
+        onCategoryChange(value);
+        updateURL(value, selectedCity, selectedRating, searchQuery, displayLimit);
     }, [onCategoryChange, selectedCity, selectedRating, searchQuery, displayLimit, updateURL]);
 
     const handleCityChange = useCallback((value: string) => {
-        requestAnimationFrame(() => {
-            onCityChange(value);
-            updateURL(selectedCategory, value, selectedRating, searchQuery, displayLimit);
-        });
+        onCityChange(value);
+        updateURL(selectedCategory, value, selectedRating, searchQuery, displayLimit);
     }, [onCityChange, selectedCategory, selectedRating, searchQuery, displayLimit, updateURL]);
 
     const handleRatingChange = useCallback((value: string) => {
-        requestAnimationFrame(() => {
-            onRatingChange(value);
-            updateURL(selectedCategory, selectedCity, value, searchQuery, displayLimit);
-        });
+        onRatingChange(value);
+        updateURL(selectedCategory, selectedCity, value, searchQuery, displayLimit);
     }, [onRatingChange, selectedCategory, selectedCity, searchQuery, displayLimit, updateURL]);
 
     const handleDisplayLimitChange = useCallback((value: string) => {
-        requestAnimationFrame(() => {
-            onDisplayLimitChange(value);
-            updateURL(selectedCategory, selectedCity, selectedRating, searchQuery, value);
-        });
+        onDisplayLimitChange(value);
+        updateURL(selectedCategory, selectedCity, selectedRating, searchQuery, value);
     }, [onDisplayLimitChange, selectedCategory, selectedCity, selectedRating, searchQuery, updateURL]);
 
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -267,31 +211,27 @@ export default function FilterBar({
 
     const handleSearchSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        requestAnimationFrame(() => {
-            onSearchChange(localSearchQuery);
-            updateURL(selectedCategory, selectedCity, selectedRating, localSearchQuery, displayLimit);
-        });
+        onSearchChange(localSearchQuery);
+        updateURL(selectedCategory, selectedCity, selectedRating, localSearchQuery, displayLimit);
     }, [localSearchQuery, onSearchChange, selectedCategory, selectedCity, selectedRating, displayLimit, updateURL]);
 
     const resetAll = useCallback(() => {
-        requestAnimationFrame(() => {
-            onCategoryChange("");
-            onCityChange("");
-            onRatingChange("");
-            onSearchChange("");
-            onDisplayLimitChange("10");
-            setLocalSearchQuery("");
-            onResetFilters();
-            setSheetOpen(false);
-            router.replace('/jasa', { scroll: false });
-        });
-    }, [onCategoryChange, onCityChange, onRatingChange, onSearchChange, onDisplayLimitChange, onResetFilters, router]);
+        onCategoryChange("");
+        onCityChange("");
+        onRatingChange("");
+        onSearchChange("");
+        onDisplayLimitChange("10");
+        setLocalSearchQuery("");
+        onResetFilters();
+        setSheetOpen(false);
+        window.history.replaceState({}, '', '/jasa');
+    }, [onCategoryChange, onCityChange, onRatingChange, onSearchChange, onDisplayLimitChange, onResetFilters]);
 
     const handleSaveFilters = useCallback(() => {
         setSheetOpen(false);
     }, []);
 
-    // Active chips - memoized to prevent unnecessary recalculations
+    // Active chips
     const activeChips = useMemo(() => {
         const chips: { key: "kategori" | "kota" | "rating" | "search" | "limit"; label: string }[] = [];
 
@@ -335,30 +275,28 @@ export default function FilterBar({
     }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit, getCategoryLabel]);
 
     const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "search" | "limit") => {
-        requestAnimationFrame(() => {
-            switch (key) {
-                case "kategori":
-                    handleCategoryChange("");
-                    break;
-                case "kota":
-                    handleCityChange("");
-                    break;
-                case "rating":
-                    handleRatingChange("");
-                    break;
-                case "search":
-                    setLocalSearchQuery("");
-                    onSearchChange("");
-                    updateURL(selectedCategory, selectedCity, selectedRating, "", displayLimit);
-                    break;
-                case "limit":
-                    handleDisplayLimitChange("10");
-                    break;
-            }
-        });
+        switch (key) {
+            case "kategori":
+                handleCategoryChange("");
+                break;
+            case "kota":
+                handleCityChange("");
+                break;
+            case "rating":
+                handleRatingChange("");
+                break;
+            case "search":
+                setLocalSearchQuery("");
+                onSearchChange("");
+                updateURL(selectedCategory, selectedCity, selectedRating, "", displayLimit);
+                break;
+            case "limit":
+                handleDisplayLimitChange("10");
+                break;
+        }
     }, [handleCategoryChange, handleCityChange, handleRatingChange, handleDisplayLimitChange, onSearchChange, updateURL, selectedCategory, selectedCity, selectedRating, displayLimit]);
 
-    // Memoized chips component
+    // Chips component
     const ChipsComponent = useMemo(() => {
         if (activeChips.length === 0) return null;
 
@@ -383,66 +321,77 @@ export default function FilterBar({
         );
     }, [activeChips, removeChip, resetAll]);
 
-    // Memoized city names
+    // City names
     const cityNames = useMemo(() => cities.map(c => c.name), [cities]);
 
-    // Loading placeholder component
-    const LoadingSelect = () => (
-        <div className="flex items-center justify-center h-11 rounded-xl border border-input bg-muted px-4">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        </div>
-    );
+    // Show skeleton/placeholder saat data belum ready
+    if (!dataReady) {
+        return (
+            <section aria-label="Filter jasa" className="mt-4 mb-6">
+                <div className="hidden lg:grid lg:grid-cols-12 items-center gap-2 lg:gap-3">
+                    {[...Array(5)].map((_, i) => (
+                        <div key={i} className={`${i === 3 ? 'lg:col-span-4' : 'lg:col-span-2'}`}>
+                            <div className="h-11 rounded-xl bg-muted animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+                <div className="hidden md:grid lg:hidden grid-cols-12 items-center gap-2">
+                    {[...Array(5)].map((_, i) => (
+                        <div key={i} className={`${i === 3 ? 'col-span-4' : 'col-span-2'}`}>
+                            <div className="h-11 rounded-xl bg-muted animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+                <div className="md:hidden mt-2 flex items-center gap-2">
+                    <div className="flex-1 h-11 rounded-xl bg-muted animate-pulse" />
+                    <div className="h-11 w-11 rounded-xl bg-muted animate-pulse" />
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section aria-label="Filter jasa" className="mt-4 mb-6">
-            {/* DESKTOP/TABLET (1024px ke atas) */}
+            {/* DESKTOP/TABLET (1024px+) */}
             <div className="hidden lg:grid lg:grid-cols-12 items-center gap-2 lg:gap-3">
-                {/* Kategori Select */}
+                {/* Kategori */}
                 <div className="lg:col-span-2">
-                    {isLoadingCategories ? (
-                        <LoadingSelect />
-                    ) : (
-                        <Select
-                            value={selectedCategory}
-                            onValueChange={handleCategoryChange}
-                        >
-                            <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                                <SelectValue placeholder="Pilih kategori" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-[300px] overflow-y-auto z-[100]">
-                                {categories.map((cat) => (
-                                    <SelectItem key={cat.category_id} value={cat.slug}>
-                                        {cat.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+                    <Select
+                        value={selectedCategory}
+                        onValueChange={handleCategoryChange}
+                    >
+                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                            <SelectValue placeholder="Pilih kategori" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px] overflow-y-auto z-[100]">
+                            {categories.map((cat) => (
+                                <SelectItem key={cat.category_id} value={cat.slug}>
+                                    {cat.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
 
-                {/* CitySelect */}
+                {/* Kota */}
                 <div className="lg:col-span-2">
-                    {isLoadingCities ? (
-                        <LoadingSelect />
-                    ) : (
-                        <CitySelect
-                            value={selectedCity}
-                            onValueChange={handleCityChange}
-                            cities={cityNames}
-                            placeholder="Pilih kota"
-                            triggerClassName="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
-                            contentClassName="z-[100]"
-                        />
-                    )}
+                    <CitySelect
+                        value={selectedCity}
+                        onValueChange={handleCityChange}
+                        cities={cityNames}
+                        placeholder="Pilih kota"
+                        triggerClassName="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all"
+                        contentClassName="z-[100]"
+                    />
                 </div>
 
-                {/* Rating Select */}
+                {/* Rating */}
                 <div className="lg:col-span-2">
                     <Select
                         value={selectedRating}
                         onValueChange={handleRatingChange}
                     >
-                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
                             <SelectValue placeholder="Pilih rating" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -456,26 +405,26 @@ export default function FilterBar({
                     </Select>
                 </div>
 
-                {/* Search Input */}
+                {/* Search */}
                 <div className="lg:col-span-4">
                     <PlaceholdersAndVanishInput
                         placeholders={PLACEHOLDERS}
                         onChange={handleSearchChange}
                         onSubmit={handleSearchSubmit}
                         value={localSearchQuery}
-                        className="h-12 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all duration-200"
+                        className="h-12 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
                         inputClassName="pl-4 pr-10 text-sm lg:text-base"
-                        buttonClassName="h-8 w-8 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-colors"
+                        buttonClassName="h-8 w-8 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
                     />
                 </div>
 
-                {/* Tampilkan Select */}
+                {/* Tampilkan */}
                 <div className="lg:col-span-2">
                     <Select
                         value={displayLimit}
                         onValueChange={handleDisplayLimitChange}
                     >
-                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
                             <SelectValue placeholder="Tampilkan" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -492,48 +441,34 @@ export default function FilterBar({
             {/* TABLET (768px - 1023px) */}
             <div className="hidden md:grid lg:hidden grid-cols-12 items-center gap-2">
                 <div className="col-span-2">
-                    {isLoadingCategories ? (
-                        <LoadingSelect />
-                    ) : (
-                        <Select
-                            value={selectedCategory}
-                            onValueChange={handleCategoryChange}
-                        >
-                            <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                                <SelectValue placeholder="Kategori" />
-                            </SelectTrigger>
-                            <SelectContent className="z-[100]">
-                                {categories.map((cat) => (
-                                    <SelectItem key={cat.category_id} value={cat.slug}>
-                                        {cat.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+                    <Select value={selectedCategory} onValueChange={handleCategoryChange}>
+                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                            <SelectValue placeholder="Kategori" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100]">
+                            {categories.map((cat) => (
+                                <SelectItem key={cat.category_id} value={cat.slug}>
+                                    {cat.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
 
                 <div className="col-span-2">
-                    {isLoadingCities ? (
-                        <LoadingSelect />
-                    ) : (
-                        <CitySelect
-                            value={selectedCity}
-                            onValueChange={handleCityChange}
-                            cities={cityNames}
-                            placeholder="Kota"
-                            triggerClassName="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
-                            contentClassName="z-[100]"
-                        />
-                    )}
+                    <CitySelect
+                        value={selectedCity}
+                        onValueChange={handleCityChange}
+                        cities={cityNames}
+                        placeholder="Kota"
+                        triggerClassName="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all"
+                        contentClassName="z-[100]"
+                    />
                 </div>
 
                 <div className="col-span-2">
-                    <Select
-                        value={selectedRating}
-                        onValueChange={handleRatingChange}
-                    >
-                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                    <Select value={selectedRating} onValueChange={handleRatingChange}>
+                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
                             <SelectValue placeholder="Rating" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -553,18 +488,15 @@ export default function FilterBar({
                         onChange={handleSearchChange}
                         onSubmit={handleSearchSubmit}
                         value={localSearchQuery}
-                        className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all duration-200"
+                        className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
                         inputClassName="pl-3 pr-9 text-sm"
-                        buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-colors"
+                        buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
                     />
                 </div>
 
                 <div className="col-span-2">
-                    <Select
-                        value={displayLimit}
-                        onValueChange={handleDisplayLimitChange}
-                    >
-                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                    <Select value={displayLimit} onValueChange={handleDisplayLimitChange}>
+                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
                             <SelectValue placeholder="Tampilkan" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -583,7 +515,7 @@ export default function FilterBar({
                 {ChipsComponent}
             </div>
 
-            {/* MOBILE (di bawah 768px) */}
+            {/* MOBILE (< 768px) */}
             <div className="md:hidden mt-2 flex items-center gap-2">
                 <div className="flex-1">
                     <PlaceholdersAndVanishInput
@@ -591,9 +523,9 @@ export default function FilterBar({
                         onChange={handleSearchChange}
                         onSubmit={handleSearchSubmit}
                         value={localSearchQuery}
-                        className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all duration-200"
+                        className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
                         inputClassName="pl-3 pr-9 text-sm"
-                        buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-colors"
+                        buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
                     />
                 </div>
 
@@ -602,9 +534,7 @@ export default function FilterBar({
                         <Button
                             variant="outline"
                             size="icon"
-                            className="h-11 w-11 rounded-xl p-0 border-[#7CE0A8]/30 hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors duration-200"
-                            aria-label="Buka filter"
-                            title="Filter"
+                            className="h-11 w-11 rounded-xl p-0 border-[#7CE0A8]/30 hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-all"
                         >
                             <SlidersHorizontal className="h-5 w-5 text-[#7CE0A8]" />
                         </Button>
@@ -617,7 +547,6 @@ export default function FilterBar({
                             height: isSmallMobile ? '85vh' : 'auto',
                             maxHeight: '85vh'
                         }}
-                        ref={sheetContentRef}
                     >
                         <SheetHeader className="flex-shrink-0">
                             <SheetTitle className="text-[#7CE0A8] text-center">Filter</SheetTitle>
@@ -627,59 +556,39 @@ export default function FilterBar({
                             {/* Kategori */}
                             <div className="space-y-1.5">
                                 <div className="text-sm font-medium text-gray-700">Kategori</div>
-                                {isLoadingCategories ? (
-                                    <div className="flex items-center justify-center h-12 rounded-xl border border-input bg-muted">
-                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                        <span className="ml-2 text-sm text-muted-foreground">Memuat...</span>
-                                    </div>
-                                ) : (
-                                    <Select
-                                        value={selectedCategory}
-                                        onValueChange={handleCategoryChange}
-                                    >
-                                        <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
-                                            <SelectValue placeholder="Pilih kategori" />
-                                        </SelectTrigger>
-                                        <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
-                                            {categories.map((cat) => (
-                                                <SelectItem key={cat.category_id} value={cat.slug}>
-                                                    {cat.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
+                                <Select value={selectedCategory} onValueChange={handleCategoryChange}>
+                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]">
+                                        <SelectValue placeholder="Pilih kategori" />
+                                    </SelectTrigger>
+                                    <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
+                                        {categories.map((cat) => (
+                                            <SelectItem key={cat.category_id} value={cat.slug}>
+                                                {cat.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             {/* Lokasi */}
                             <div className="space-y-1.5">
                                 <div className="text-sm font-medium text-gray-700">Lokasi</div>
-                                {isLoadingCities ? (
-                                    <div className="flex items-center justify-center h-12 rounded-xl border border-input bg-muted">
-                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                        <span className="ml-2 text-sm text-muted-foreground">Memuat...</span>
-                                    </div>
-                                ) : (
-                                    <CitySelect
-                                        value={selectedCity}
-                                        onValueChange={handleCityChange}
-                                        cities={cityNames}
-                                        placeholder="Pilih kota"
-                                        triggerClassName="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200"
-                                        contentClassName="z-[9999]"
-                                        avoidCollisions={false}
-                                    />
-                                )}
+                                <CitySelect
+                                    value={selectedCity}
+                                    onValueChange={handleCityChange}
+                                    cities={cityNames}
+                                    placeholder="Pilih kota"
+                                    triggerClassName="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]"
+                                    contentClassName="z-[9999]"
+                                    avoidCollisions={false}
+                                />
                             </div>
 
                             {/* Rating */}
                             <div className="space-y-1.5">
                                 <div className="text-sm font-medium text-gray-700">Rating</div>
-                                <Select
-                                    value={selectedRating}
-                                    onValueChange={handleRatingChange}
-                                >
-                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                                <Select value={selectedRating} onValueChange={handleRatingChange}>
+                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]">
                                         <SelectValue placeholder="Pilih rating" />
                                     </SelectTrigger>
                                     <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
@@ -696,11 +605,8 @@ export default function FilterBar({
                             {/* Tampilkan */}
                             <div className="space-y-1.5">
                                 <div className="text-sm font-medium text-gray-700">Tampilkan</div>
-                                <Select
-                                    value={displayLimit}
-                                    onValueChange={handleDisplayLimitChange}
-                                >
-                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-colors duration-200">
+                                <Select value={displayLimit} onValueChange={handleDisplayLimitChange}>
+                                    <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]">
                                         <SelectValue placeholder="Tampilkan" />
                                     </SelectTrigger>
                                     <SelectContent className="z-[9999]" position="popper" side="bottom" avoidCollisions={false}>
@@ -719,7 +625,7 @@ export default function FilterBar({
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-12 rounded-xl flex-1 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors duration-200"
+                                    className="h-12 rounded-xl flex-1 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-all"
                                     onClick={resetAll}
                                 >
                                     <RotateCcw className="mr-2 h-4 w-4" />
@@ -728,7 +634,7 @@ export default function FilterBar({
                                 <SheetClose asChild>
                                     <Button
                                         type="button"
-                                        className="h-12 rounded-xl flex-1 bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] text-white hover:from-[#6BCF97] hover:to-[#4A8D74] transition-all duration-200"
+                                        className="h-12 rounded-xl flex-1 bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] text-white hover:from-[#6BCF97] hover:to-[#4A8D74] transition-all"
                                         onClick={handleSaveFilters}
                                     >
                                         Simpan

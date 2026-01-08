@@ -47,7 +47,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
   const [isNavigating, setIsNavigating] = useState(false);
   const [isFavorite, setIsFavorite] = useState(vendor.isFavorite || false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Update local state when vendor prop changes
   useEffect(() => {
@@ -64,12 +64,12 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
     }
 
     // Prevent double-click
-    if (isLoading) return;
+    if (isProcessing) return;
 
-    // Optimistic update
+    // Optimistic update - instant UI feedback
     const previousState = isFavorite;
     setIsFavorite(!isFavorite);
-    setIsLoading(true);
+    setIsProcessing(true);
     setIsAnimating(true);
 
     try {
@@ -85,8 +85,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
       });
 
       if (response.ok) {
-        // Success - state already updated optimistically
-        // Dispatch custom event with vendor ID for targeted updates
+        // Dispatch event untuk update vendor lain
         window.dispatchEvent(new CustomEvent('favoriteToggled', { 
           detail: { vendorId: id, isFavorite: !previousState }
         }));
@@ -105,10 +104,10 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
       setIsFavorite(previousState);
       console.error('Network error toggling favorite:', error);
     } finally {
-      setIsLoading(false);
-      setTimeout(() => setIsAnimating(false), 400);
+      setIsProcessing(false);
+      setTimeout(() => setIsAnimating(false), 300);
     }
-  }, [id, isFavorite, isLoggedIn, onLoginRequired, isLoading]);
+  }, [id, isFavorite, isLoggedIn, onLoginRequired, isProcessing]);
 
   const handleViewProfile = useCallback(() => {
     setIsNavigating(true);
@@ -133,7 +132,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
 
   return (
     <>
-      <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl">
+      <Card className="w-full overflow-hidden rounded-2xl md:rounded-3xl transition-all duration-200 hover:shadow-md">
         <CardHeader className="p-3 sm:p-5 md:p-6">
           <div
             className="
@@ -144,7 +143,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
           >
             {/* KIRI: info vendor */}
             <div className="flex items-start gap-2 md:gap-4 min-w-0">
-              <Avatar className="h-9 w-9 sm:h-12 sm:w-12 md:h-14 md:w-14 shrink-0">
+              <Avatar className="h-9 w-9 sm:h-12 sm:w-12 md:h-14 md:w-14 shrink-0 ring-2 ring-offset-2 ring-[#7CE0A8]/20">
                 <AvatarImage src={avatar ?? ""} alt={name} />
                 <AvatarFallback>
                   {(name || "?")
@@ -174,13 +173,13 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                       <TooltipTrigger asChild>
                         <button
                           onClick={handleToggleFavorite}
-                          disabled={isLoading}
-                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={isProcessing}
+                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all duration-200 flex items-center justify-center active:scale-95 relative disabled:opacity-70"
                           aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                         >
                           <motion.div
-                            animate={isAnimating ? { scale: [1, 1.2, 1] } : {}}
-                            transition={{ duration: 0.3 }}
+                            animate={isAnimating ? { scale: [1, 1.3, 1] } : {}}
+                            transition={{ duration: 0.3, ease: "easeOut" }}
                           >
                             <Heart
                               className={`h-3 w-3 transition-all duration-200 ${
@@ -193,9 +192,9 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                           {isAnimating && (
                             <motion.span
                               initial={{ opacity: 0.6, scale: 0.8 }}
-                              animate={{ opacity: 0, scale: 2 }}
+                              animate={{ opacity: 0, scale: 2.5 }}
                               transition={{ duration: 0.4 }}
-                              className="absolute inset-0 rounded-full bg-[#7CE0A8]/20"
+                              className="absolute inset-0 rounded-full bg-[#7CE0A8]/30"
                             />
                           )}
                         </button>
@@ -263,14 +262,14 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                 {/* Aksi mobile */}
                 <div className="mt-2 flex gap-1.5 md:hidden">
                   <Button
-                    className="flex-1 px-1.5 py-1 h-7 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] text-[9px] font-medium whitespace-nowrap"
+                    className="flex-1 px-1.5 py-1 h-7 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] text-[9px] font-medium whitespace-nowrap transition-all"
                     onClick={handleOrderNow}
                   >
                     Pesan Sekarang
                   </Button>
                   <Button
                     variant="outline"
-                    className="flex-1 px-1.5 py-1 h-7 text-[9px] font-medium whitespace-nowrap"
+                    className="flex-1 px-1.5 py-1 h-7 text-[9px] font-medium whitespace-nowrap transition-all"
                     onClick={handleViewProfile}
                   >
                     Lihat Profil
@@ -287,13 +286,13 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleToggleFavorite}
-                      disabled={isLoading}
-                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isProcessing}
+                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all duration-200 relative active:scale-95 disabled:opacity-70"
                       aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                     >
                       <motion.div
-                        animate={isAnimating ? { scale: [1, 1.2, 1] } : {}}
-                        transition={{ duration: 0.3 }}
+                        animate={isAnimating ? { scale: [1, 1.3, 1] } : {}}
+                        transition={{ duration: 0.3, ease: "easeOut" }}
                       >
                         <Heart
                           className={`h-5 w-5 transition-all duration-200 ${
@@ -306,9 +305,9 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                       {isAnimating && (
                         <motion.span
                           initial={{ opacity: 0.6, scale: 0.8 }}
-                          animate={{ opacity: 0, scale: 2 }}
+                          animate={{ opacity: 0, scale: 2.5 }}
                           transition={{ duration: 0.4 }}
-                          className="absolute inset-0 rounded-full bg-[#7CE0A8]/20"
+                          className="absolute inset-0 rounded-full bg-[#7CE0A8]/30"
                         />
                       )}
                     </button>
@@ -327,14 +326,14 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
               {/* Tombol aksi desktop */}
               <div className="flex gap-2 justify-end w-full">
                 <Button
-                  className="min-w-[150px] px-4 bg-[#7CE0A8] text-white hover:bg-[#5CA68A]"
+                  className="min-w-[150px] px-4 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] transition-all"
                   onClick={handleOrderNow}
                 >
                   Pesan Sekarang
                 </Button>
                 <Button
                   variant="outline"
-                  className="min-w-[130px] px-4"
+                  className="min-w-[130px] px-4 transition-all"
                   onClick={handleViewProfile}
                 >
                   Lihat Profil
@@ -354,7 +353,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                       {gallery.map((img, i) => (
                         <div
                           key={i}
-                          className="w-[96px] lg:w-[120px] xl:w-[140px] shrink-0"
+                          className="w-[96px] lg:w-[120px] xl:w-[140px] shrink-0 group"
                         >
                           <AspectRatio ratio={1}>
                             <Image
@@ -362,7 +361,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
                               alt={img.alt}
                               fill
                               unoptimized
-                              className="rounded-md object-cover"
+                              className="rounded-md object-cover transition-transform duration-200 group-hover:scale-105"
                             />
                           </AspectRatio>
                         </div>
