@@ -29,6 +29,7 @@ interface AuthContextType {
   login: (userData: User) => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateUserProfile: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // CRITICAL: Set user with ALL data from database
           const userData: User = {
             id: data.user.id || data.user.user_id,
-            name: data.user.name || "User",
+            name: data.user.name || "user",
             email: data.user.email,
             phone: data.user.phone || null,
             avatar: data.user.avatar || "/profile.svg",
@@ -142,6 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [isMitraRoute]);
+
+  // Update user profile locally
+  const updateUserProfile = useCallback((updates: Partial<User>) => {
+    setUser(prev => prev ? { ...prev, ...updates } : null);
+  }, []);
 
   // Refresh access token
   const refreshAccessToken = useCallback(async () => {
@@ -381,6 +387,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     refreshUser,
+    updateUserProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

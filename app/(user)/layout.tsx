@@ -37,8 +37,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/components/contexts/AuthContext";
-
-const LANG_STORAGE_KEY = "appLanguage";
+import { useNotification } from "@/app/components/contexts/NotificationContext";
+import { useLanguage } from "@/app/components/contexts/LanguageContext";
 
 interface Notification {
   id: string;
@@ -61,26 +61,38 @@ interface Notification {
 
 export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("id");
   const [isLoading, setIsLoading] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-
+  
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
 
-  // CRITICAL: Don't destructure - use authContext directly for reactivity
+  // CRITICAL: Menggunakan context untuk semua fitur
   const authContext = useAuth();
+  const notificationContext = useNotification();
+  const languageContext = useLanguage();
   
-  // Access properties directly from authContext to ensure reactivity
+  // Access properties dari context
   const user = authContext.user;
   const isAuthenticated = authContext.isAuthenticated;
   const authLoading = authContext.isLoading;
   const logout = authContext.logout;
+  
+  // Mengambil notifikasi dari context
+  const notifications = notificationContext.notifications;
+  const unreadCount = notificationContext.unreadCount;
+  const markAllAsRead = notificationContext.markAllAsRead;
+  const markAsRead = notificationContext.markAsRead;
+  const deleteNotification = notificationContext.deleteNotification;
+  const deleteAllNotifications = notificationContext.deleteAllNotifications;
+  
+  // Mengambil bahasa dari context
+  const selectedLanguage = languageContext.language;
+  const setLanguage = languageContext.setLanguage;
 
-  // Log auth state changes for debugging
+  // Log auth state changes untuk debugging
   useEffect(() => {
     console.log("[Layout] Auth state:", {
       isAuthenticated,
@@ -93,25 +105,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     });
   }, [isAuthenticated, user, authLoading]);
 
-  // Calculate unread notifications
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  // Load language preference
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const savedLang = window.localStorage.getItem(LANG_STORAGE_KEY);
-    if (savedLang) {
-      setSelectedLanguage(savedLang);
-    }
-  }, []);
-
   // Reset loading on pathname change
   useEffect(() => {
     setIsLoading(false);
   }, [pathname]);
 
-  // Close notifications when clicking outside
+  // Fetch notifikasi ketika user login
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      notificationContext.fetchNotifications();
+    }
+  }, [isAuthenticated, user]);
+
+  // Close notifications ketika klik di luar
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -139,16 +145,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   }, [isNotificationOpen]);
 
   const handleSelectLanguage = (language: string) => {
-    setSelectedLanguage(language);
-
-    if (typeof document !== "undefined") {
-      document.cookie = `i18next=${language}; path=/; max-age=${60 * 60 * 24 * 30}`;
-      document.documentElement.lang = language;
-    }
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(LANG_STORAGE_KEY, language);
-    }
+    setLanguage(language);
   };
 
   const handleNavigation = useCallback((path: string) => {
@@ -188,26 +185,28 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const handleLogout = useCallback(async () => {
     console.log("[Layout] Logout button clicked");
     
-    // Close all menus immediately for better UX
+    // Tutup semua menu segera
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
     
-    // Show loading immediately
+    // Tampilkan loading
     setIsLoading(true);
     
     try {
-      // Call logout from AuthContext
+      // Panggil logout dari AuthContext
       await logout();
       console.log("[Layout] Logout completed successfully");
+      
+      // Reset notifikasi setelah logout
+      notificationContext.resetNotifications();
     } catch (error) {
       console.error("[Layout] Logout error:", error);
     } finally {
-      // Loading will be cleared by redirect
       setTimeout(() => {
         setIsLoading(false);
       }, 500);
     }
-  }, [logout]);
+  }, [logout, notificationContext]);
 
   const handleProfileClick = () => {
     handleNavigation("/profile");
@@ -227,39 +226,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     if (newState) {
       markAllAsRead();
     }
-  };
-
-  const markAllAsRead = () => {
-    if (notifications.length === 0) return;
-
-    const updatedNotifications = notifications.map((notif) => ({
-      ...notif,
-      read: true,
-    }));
-    setNotifications(updatedNotifications);
-  };
-
-  const markAsRead = (notificationId: string) => {
-    const updatedNotifications = notifications.map((notif) =>
-      notif.id === notificationId ? { ...notif, read: true } : notif
-    );
-    setNotifications(updatedNotifications);
-  };
-
-  const deleteNotification = (notificationId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const updatedNotifications = notifications.filter(
-      (notif) => notif.id !== notificationId
-    );
-    setNotifications(updatedNotifications);
-  };
-
-  const deleteAllNotifications = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setNotifications([]);
   };
 
   const getNotificationIcon = (type: Notification["type"]) => {
@@ -308,10 +274,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  // Get user display values with fallbacks
-  const userName = user?.name || "User";
-  const userAvatar = user?.avatar || defaultAvatar;
-  const userEmail = user?.email || "";
+  // PERBAIKAN: Hanya gunakan data user jika sudah terautentikasi
+  const userName = isAuthenticated && user ? user.name : "";
+  const userAvatar = isAuthenticated && user ? (user.avatar || defaultAvatar) : defaultAvatar;
+  const userEmail = isAuthenticated && user ? user.email : "";
 
   console.log("[Layout] Rendering with user:", { userName, userAvatar, userEmail });
 
@@ -480,16 +446,18 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                         <img
                           src={userAvatar}
-                          alt={userName}
+                          alt={userName || "User"}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.currentTarget.src = defaultAvatar;
                           }}
                         />
                       </div>
-                      <span className="hidden md:inline text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {userName.split(" ")[0]}
-                      </span>
+                      {userName && (
+                        <span className="hidden md:inline text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {userName.split(" ")[0]}
+                        </span>
+                      )}
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56 mt-2">
@@ -624,7 +592,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                       <img
                         src={userAvatar}
-                        alt={userName}
+                        alt={userName || "User"}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           e.currentTarget.src = defaultAvatar;
@@ -633,11 +601,13 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {userName}
+                        {userName || "User"}
                       </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {userEmail}
-                      </p>
+                      {userEmail && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                          {userEmail}
+                        </p>
+                      )}
                     </div>
                   </div>
 

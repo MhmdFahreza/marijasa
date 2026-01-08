@@ -3,6 +3,8 @@
 
 import { SessionProvider } from "next-auth/react";
 import { AuthProvider } from "@/app/components/contexts/AuthContext";
+import { NotificationProvider } from "@/app/components/contexts/NotificationContext";
+import { LanguageProvider } from "@/app/components/contexts/LanguageContext";
 import { ReactNode } from "react";
 
 interface ProvidersProps {
@@ -12,7 +14,13 @@ interface ProvidersProps {
 export default function Providers({ children }: ProvidersProps) {
   return (
     <SessionProvider refetchInterval={0} refetchOnWindowFocus={true}>
-      <AuthProvider>{children}</AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            {children}
+          </NotificationProvider>
+        </AuthProvider>
+      </LanguageProvider>
     </SessionProvider>
   );
 }
