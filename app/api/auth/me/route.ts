@@ -28,17 +28,17 @@ function clearAuthCookies(response: NextResponse) {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[Auth Me] Processing authentication check...");
+    console.log("[Auth Me] 🔍 Processing authentication check...");
 
     // FIRST: Check for NextAuth session (Google OAuth)
     try {
       const nextAuthSession = await getServerSession(authOptions);
-      if (nextAuthSession?.user) {
+      if (nextAuthSession?.user?.email) {
         console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
         
-        // Get fresh user data from database
+        // CRITICAL: ALWAYS get fresh user data from database
         const user = await prisma.user.findUnique({
-          where: { email: nextAuthSession.user.email!.toLowerCase() },
+          where: { email: nextAuthSession.user.email.toLowerCase() },
           select: {
             user_id: true,
             email: true,
@@ -51,22 +51,37 @@ export async function GET(request: NextRequest) {
         });
 
         if (user && user.is_active) {
+          console.log("[Auth Me] ✅ Returning fresh user data from database:", {
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar
+          });
+          
           return NextResponse.json({
             authenticated: true,
             user: {
               user_id: user.user_id,
               id: user.user_id,
-              name: user.name,
+              name: user.name, // Fresh from DB
               email: user.email,
               phone: user.phone,
-              avatar: user.avatar || "/profile.svg",
+              avatar: user.avatar || "/profile.svg", // Fresh from DB
               role: user.role,
             },
-          }, { status: 200 });
+          }, { 
+            status: 200,
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
+        } else {
+          console.log("[Auth Me] ⚠️ User not found or inactive in database");
         }
       }
     } catch (error) {
-      console.log("[Auth Me] NextAuth session check failed or not found:", error);
+      console.log("[Auth Me] NextAuth session check failed or not found (this is normal)");
     }
 
     // SECOND: Check custom JWT session
@@ -82,7 +97,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!sessionId) {
-      console.log("[Auth Me] No session ID found");
+      console.log("[Auth Me] ❌ No session ID found");
       return NextResponse.json(
         { message: "No session found", authenticated: false, user: null },
         { status: 401 }
@@ -92,7 +107,7 @@ export async function GET(request: NextRequest) {
     // Verify session exists in Redis
     const session = await getSession(sessionId);
     if (!session) {
-      console.log("[Auth Me] Session not found in Redis:", sessionId);
+      console.log("[Auth Me] ❌ Session not found in Redis:", sessionId);
       console.log("[Auth Me] Clearing stale cookies");
       
       const response = NextResponse.json(
@@ -104,21 +119,23 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    console.log("[Auth Me] Redis session found for user:", session.userId);
+    console.log("[Auth Me] ✅ Redis session found for user:", session.userId);
 
     let currentAccessToken = accessToken;
+    let tokenWasRefreshed = false;
 
     // Handle token refresh scenarios
     if (!accessToken && refreshToken) {
-      console.log("[Auth Me] No access token, attempting refresh");
+      console.log("[Auth Me] 🔄 No access token, attempting refresh");
       
       const refreshResult = await refreshAccessToken(sessionId, refreshToken);
       
       if (refreshResult.success && refreshResult.accessToken) {
         currentAccessToken = refreshResult.accessToken;
-        console.log("[Auth Me] Access token created from refresh token");
+        tokenWasRefreshed = true;
+        console.log("[Auth Me] ✅ Access token created from refresh token");
       } else {
-        console.log("[Auth Me] Refresh failed:", refreshResult.error);
+        console.log("[Auth Me] ❌ Refresh failed:", refreshResult.error);
         const response = NextResponse.json(
           { message: "Session expired", authenticated: false, user: null },
           { status: 401 }
@@ -131,16 +148,17 @@ export async function GET(request: NextRequest) {
       const tokenPayload = verifyToken(accessToken);
       
       if (!tokenPayload || tokenPayload.sessionId !== sessionId) {
-        console.log("[Auth Me] Access token invalid or expired, attempting refresh");
+        console.log("[Auth Me] 🔄 Access token invalid or expired, attempting refresh");
         
         if (refreshToken) {
           const refreshResult = await refreshAccessToken(sessionId, refreshToken);
           
           if (refreshResult.success && refreshResult.accessToken) {
             currentAccessToken = refreshResult.accessToken;
-            console.log("[Auth Me] Access token refreshed successfully");
+            tokenWasRefreshed = true;
+            console.log("[Auth Me] ✅ Access token refreshed successfully");
           } else {
-            console.log("[Auth Me] Refresh failed:", refreshResult.error);
+            console.log("[Auth Me] ❌ Refresh failed:", refreshResult.error);
             const response = NextResponse.json(
               { message: "Session expired", authenticated: false, user: null },
               { status: 401 }
@@ -150,7 +168,7 @@ export async function GET(request: NextRequest) {
             return response;
           }
         } else {
-          console.log("[Auth Me] No refresh token available");
+          console.log("[Auth Me] ❌ No refresh token available");
           const response = NextResponse.json(
             { message: "Token expired", authenticated: false, user: null },
             { status: 401 }
@@ -161,7 +179,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      console.log("[Auth Me] No tokens found");
+      console.log("[Auth Me] ❌ No tokens found");
       const response = NextResponse.json(
         { message: "No tokens found", authenticated: false, user: null },
         { status: 401 }
@@ -171,8 +189,8 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    // ALWAYS get fresh user data from database - CRITICAL FIX
-    console.log("[Auth Me] Fetching fresh user data from database...");
+    // CRITICAL: ALWAYS get FRESH user data from database
+    console.log("[Auth Me] 📊 Fetching FRESH user data from database...");
     const user = await prisma.user.findUnique({
       where: { user_id: session.userId },
       select: {
@@ -187,7 +205,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !user.is_active) {
-      console.log("[Auth Me] User not found or inactive");
+      console.log("[Auth Me] ❌ User not found or inactive in database");
       const response = NextResponse.json(
         { message: "User not found or inactive", authenticated: false, user: null },
         { status: 404 }
@@ -200,7 +218,11 @@ export async function GET(request: NextRequest) {
     // Update session activity
     await updateSessionActivity(sessionId);
 
-    console.log("[Auth Me] Authentication successful for:", user.email);
+    console.log("[Auth Me] ✅ Authentication successful with FRESH data:", {
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar
+    });
 
     // Prepare response with FRESH database data
     const responseData = {
@@ -208,19 +230,26 @@ export async function GET(request: NextRequest) {
       user: {
         user_id: user.user_id,
         id: user.user_id,
-        name: user.name, // From database
+        name: user.name, // FRESH from database
         email: user.email,
         phone: user.phone,
-        avatar: user.avatar || "/profile.svg", // From database
+        avatar: user.avatar || "/profile.svg", // FRESH from database
         role: user.role,
       },
-      refreshed: currentAccessToken !== accessToken,
+      refreshed: tokenWasRefreshed,
     };
 
-    const response = NextResponse.json(responseData, { status: 200 });
+    const response = NextResponse.json(responseData, { 
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
 
     // If token was refreshed, set new access token cookie
-    if (currentAccessToken && currentAccessToken !== accessToken) {
+    if (tokenWasRefreshed && currentAccessToken) {
       response.cookies.set("access_token", currentAccessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -228,12 +257,12 @@ export async function GET(request: NextRequest) {
         maxAge: 60 * 60, // 1 hour
         path: "/",
       });
-      console.log("[Auth Me] New access token cookie set");
+      console.log("[Auth Me] ✅ New access token cookie set");
     }
 
     return response;
   } catch (error) {
-    console.error("[Auth Me] Unexpected error:", error);
+    console.error("[Auth Me] ❌ Unexpected error:", error);
     return NextResponse.json(
       { message: "Internal server error", authenticated: false, user: null },
       { status: 500 }

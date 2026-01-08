@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("[Logout] Processing logout request...");
+    console.log("[Logout] 🚪 Processing logout request...");
 
     // Get session ID from cookie
     const sessionId = request.cookies.get("session_id")?.value;
@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
       try {
         await deleteSession(sessionId);
         await deleteTokens(sessionId);
-        console.log("[Logout] Session and tokens deleted from Redis:", sessionId);
+        console.log("[Logout] ✅ Session and tokens deleted from Redis:", sessionId);
       } catch (error) {
-        console.error("[Logout] Error deleting from Redis:", error);
+        console.error("[Logout] ⚠️ Error deleting from Redis:", error);
       }
     } else {
       console.log("[Logout] No session ID found in cookies");
@@ -34,16 +34,23 @@ export async function POST(request: NextRequest) {
         console.log("[Logout] NextAuth session detected, will be cleared");
       }
     } catch (error) {
-      console.log("[Logout] No NextAuth session or error checking:", error);
+      console.log("[Logout] No NextAuth session or error checking");
     }
 
     // Create response
     const response = NextResponse.json(
       { success: true, message: "Logged out successfully" },
-      { status: 200 }
+      { 
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
 
-    // Define cookie options for clearing - IMPORTANT: Must match the original cookie settings
+    // Define cookie clearing options - MUST match original cookie settings
     const secureCookieOptions = {
       path: "/",
       maxAge: 0,
@@ -59,7 +66,9 @@ export async function POST(request: NextRequest) {
       expires: new Date(0),
     };
 
-    // Clear custom auth cookies
+    // Clear ALL custom auth cookies
+    console.log("[Logout] 🧹 Clearing all authentication cookies...");
+    
     response.cookies.set("session_id", "", secureCookieOptions);
     response.cookies.set("access_token", "", secureCookieOptions);
     response.cookies.set("refresh_token", "", secureCookieOptions);
@@ -88,11 +97,11 @@ export async function POST(request: NextRequest) {
     // Callback URL
     response.cookies.set("next-auth.callback-url", "", publicCookieOptions);
 
-    console.log("[Logout] All cookies cleared successfully");
+    console.log("[Logout] ✅ All cookies cleared successfully");
 
     return response;
   } catch (error) {
-    console.error("[Logout] Unexpected error:", error);
+    console.error("[Logout] ❌ Unexpected error:", error);
     
     // Even if there's an error, try to clear cookies
     const response = NextResponse.json(
@@ -110,10 +119,18 @@ export async function POST(request: NextRequest) {
       sameSite: "lax" as const,
     };
 
+    const publicCookieOptions = {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    };
+
+    console.log("[Logout] 🧹 Clearing cookies despite error...");
+    
     response.cookies.set("session_id", "", secureCookieOptions);
     response.cookies.set("access_token", "", secureCookieOptions);
     response.cookies.set("refresh_token", "", secureCookieOptions);
-    response.cookies.set("next-auth.session-token", "", { path: "/", maxAge: 0, expires: new Date(0) });
+    response.cookies.set("next-auth.session-token", "", publicCookieOptions);
 
     return response;
   }

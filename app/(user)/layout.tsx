@@ -65,16 +65,33 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
 
-  // Use AuthContext - now destructure properly to get latest state
+  // CRITICAL: Don't destructure - use authContext directly for reactivity
   const authContext = useAuth();
-  const { user, isAuthenticated, isLoading: authLoading, logout } = authContext;
+  
+  // Access properties directly from authContext to ensure reactivity
+  const user = authContext.user;
+  const isAuthenticated = authContext.isAuthenticated;
+  const authLoading = authContext.isLoading;
+  const logout = authContext.logout;
+
+  // Log auth state changes for debugging
+  useEffect(() => {
+    console.log("[Layout] Auth state:", {
+      isAuthenticated,
+      user: user ? {
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar
+      } : null,
+      authLoading
+    });
+  }, [isAuthenticated, user, authLoading]);
 
   // Calculate unread notifications
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -169,30 +186,28 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = useCallback(async () => {
-    // Prevent double logout
-    if (isLoggingOut) {
-      console.log("[Layout] Logout already in progress");
-      return;
-    }
-
-    setIsLoggingOut(true);
+    console.log("[Layout] Logout button clicked");
+    
+    // Close all menus immediately for better UX
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
     
+    // Show loading immediately
+    setIsLoading(true);
+    
     try {
-      console.log("[Layout] Starting logout...");
-      
-      // Call logout from AuthContext - this will update state immediately
+      // Call logout from AuthContext
       await logout();
-      
-      console.log("[Layout] Logout completed");
-      
+      console.log("[Layout] Logout completed successfully");
     } catch (error) {
       console.error("[Layout] Logout error:", error);
     } finally {
-      setIsLoggingOut(false);
+      // Loading will be cleared by redirect
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 500);
     }
-  }, [logout, isLoggingOut]);
+  }, [logout]);
 
   const handleProfileClick = () => {
     handleNavigation("/profile");
@@ -293,9 +308,16 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  // Get user display values with fallbacks
+  const userName = user?.name || "User";
+  const userAvatar = user?.avatar || defaultAvatar;
+  const userEmail = user?.email || "";
+
+  console.log("[Layout] Rendering with user:", { userName, userAvatar, userEmail });
+
   return (
     <div className="relative w-full min-h-screen">
-      {(isLoading || isLoggingOut) && (
+      {isLoading && (
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
           <LoaderTwo />
         </div>
@@ -457,8 +479,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <button className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors">
                       <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                         <img
-                          src={user?.avatar || defaultAvatar}
-                          alt={user?.name || "User"}
+                          src={userAvatar}
+                          alt={userName}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.currentTarget.src = defaultAvatar;
@@ -466,7 +488,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                         />
                       </div>
                       <span className="hidden md:inline text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {user?.name?.split(" ")[0] || "User"}
+                        {userName.split(" ")[0]}
                       </span>
                     </button>
                   </DropdownMenuTrigger>
@@ -522,11 +544,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
                     <DropdownMenuItem
                       onClick={handleLogout}
-                      disabled={isLoggingOut}
                       className="flex items-center gap-2 text-red-600 cursor-pointer py-2.5 hover:bg-red-50 dark:hover:bg-red-900/20"
                     >
                       <LogOut className="w-4 h-4" />
-                      {isLoggingOut ? "Logging out..." : "Keluar"}
+                      Keluar
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -602,8 +623,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-neutral-800">
                     <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                       <img
-                        src={user?.avatar || defaultAvatar}
-                        alt={user?.name || "User"}
+                        src={userAvatar}
+                        alt={userName}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           e.currentTarget.src = defaultAvatar;
@@ -612,10 +633,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {user?.name || "User"}
+                        {userName}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {user?.email || ""}
+                        {userEmail}
                       </p>
                     </div>
                   </div>
@@ -660,11 +681,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-2"></div>
                     <button
                       onClick={handleLogout}
-                      disabled={isLoggingOut}
                       className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     >
                       <LogOut className="w-5 h-5" />
-                      <span>{isLoggingOut ? "Logging out..." : "Keluar"}</span>
+                      <span>Keluar</span>
                     </button>
                   </div>
 

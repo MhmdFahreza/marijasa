@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check if current path is mitra route
   const isMitraRoute = pathname?.startsWith('/mitra') || false;
 
-  // Fetch current user from API
+  // Fetch current user from API - IMPROVED
   const fetchCurrentUser = useCallback(async (skipLoadingState = false) => {
     // Skip if on mitra routes or currently logging out
     if (isMitraRoute || isLoggingOutRef.current) {
@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isFetchingRef.current = true;
 
     try {
-      console.log("[Auth] Fetching current user...");
+      console.log("[Auth] Fetching current user from /api/auth/me...");
       
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
@@ -84,6 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/auth/me", {
         credentials: "include",
         cache: "no-store",
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
         signal: controller.signal,
       });
 
@@ -92,9 +96,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         if (data.authenticated && data.user) {
-          console.log("[Auth] User authenticated:", data.user.email);
-          setUser(data.user);
-          return data.user;
+          console.log("[Auth] ✅ User authenticated:", {
+            email: data.user.email,
+            name: data.user.name,
+            avatar: data.user.avatar
+          });
+          
+          // CRITICAL: Set user with ALL data from database
+          const userData: User = {
+            id: data.user.id || data.user.user_id,
+            name: data.user.name || "User",
+            email: data.user.email,
+            phone: data.user.phone || null,
+            avatar: data.user.avatar || "/profile.svg",
+            role: data.user.role || "USER"
+          };
+          
+          setUser(userData);
+          return userData;
         } else {
           console.log("[Auth] Response OK but not authenticated");
           setUser(null);
@@ -220,7 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("[Auth] NextAuth session detected for:", session.user.email);
         const userFromSession: User = {
           id: (session.user as any).id || "",
-          name: session.user.name || "",
+          name: session.user.name || "User",
           email: session.user.email || "",
           phone: (session.user as any).phone || null,
           avatar: session.user.image || "/profile.svg",
@@ -237,7 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("[Auth] Checking JWT cookie authentication...");
         const fetchedUser = await fetchCurrentUser();
         if (fetchedUser) {
-          console.log("[Auth] JWT authentication successful");
+          console.log("[Auth] JWT authentication successful for:", fetchedUser.email);
           setupTokenRefresh();
         } else {
           console.log("[Auth] No valid authentication found");
@@ -265,7 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Setup auto token refresh
       setupTokenRefresh();
       
-      // Fetch fresh user data asynchronously
+      // Fetch fresh user data asynchronously to ensure we have latest from DB
       setTimeout(() => {
         fetchCurrentUser(true);
       }, 100);
@@ -273,24 +292,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setupTokenRefresh, fetchCurrentUser]
   );
 
-  // Logout function - IMPROVED
+  // Logout function - SIGNIFICANTLY IMPROVED
   const logout = useCallback(async () => {
     try {
-      console.log("[Auth] Starting logout process...");
+      console.log("[Auth] 🚪 Starting logout process...");
       
       // Set logout flag to prevent any ongoing operations
       isLoggingOutRef.current = true;
       
+      // CRITICAL: Clear user state FIRST - this immediately triggers UI update
+      console.log("[Auth] Clearing user state immediately...");
+      setUser(null);
+      
       // Clear token refresh interval IMMEDIATELY
       clearTokenRefresh();
-
-      // Clear user state IMMEDIATELY - this will trigger UI update
-      setUser(null);
 
       // If using NextAuth (Google OAuth), sign out from there
       if (session) {
         console.log("[Auth] Signing out from NextAuth...");
-        await nextAuthSignOut({ redirect: false });
+        try {
+          await nextAuthSignOut({ redirect: false });
+        } catch (error) {
+          console.error("[Auth] NextAuth signout error:", error);
+        }
       }
 
       // Call our logout API to clear the cookies and Redis data
@@ -302,68 +326,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         
         if (response.ok) {
-          console.log("[Auth] Logout API successful");
+          console.log("[Auth] ✅ Logout API successful");
         } else {
-          console.error("[Auth] Logout API failed:", response.status);
+          console.error("[Auth] ⚠️ Logout API failed:", response.status);
         }
       } catch (error) {
         console.error("[Auth] Error calling logout API:", error);
       }
       
-      console.log("[Auth] Logout successful, redirecting...");
+      console.log("[Auth] ✅ Logout complete, redirecting to home...");
+      
+      // Small delay to ensure state propagates
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Redirect to home
+      router.push("/");
       
       // Force router refresh to clear any cached data
       router.refresh();
       
-      // Redirect to home after a short delay to ensure state updates
-      setTimeout(() => {
-        router.push("/");
-      }, 100);
-      
     } catch (error) {
       console.error("[Auth] Logout error:", error);
-      // Clear user state even if API fails
+      // Ensure user state is cleared even if API fails
       setUser(null);
       clearTokenRefresh();
       router.push("/");
+      router.refresh();
     } finally {
-      // Reset logout flag after completion
+      // Reset logout flag after a delay
       setTimeout(() => {
         isLoggingOutRef.current = false;
-      }, 500);
+      }, 1000);
     }
   }, [session, clearTokenRefresh, router]);
 
   // Refresh user data from database
   const refreshUser = useCallback(async () => {
     try {
-      console.log("[Auth] Refreshing user data...");
+      console.log("[Auth] 🔄 Manually refreshing user data...");
       
-      // Fetch fresh profile data from API
-      const response = await fetch("/api/user/profile", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.profile) {
-          setUser({
-            id: data.profile.user_id,
-            name: data.profile.name,
-            email: data.profile.email,
-            phone: data.profile.phone,
-            avatar: data.profile.avatar || "/profile.svg",
-            role: data.profile.role,
-          });
-          console.log("[Auth] User data refreshed from database");
-        }
-      }
+      // Fetch fresh data from /api/auth/me which always gets from database
+      await fetchCurrentUser(true);
+      
+      console.log("[Auth] ✅ User data refresh complete");
     } catch (error) {
       console.error("[Auth] Error refreshing user data:", error);
     }
-  }, []);
+  }, [fetchCurrentUser]);
 
   const value: AuthContextType = {
     user,
