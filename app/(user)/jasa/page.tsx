@@ -1,7 +1,7 @@
 // app/jasa/page.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -134,30 +134,11 @@ const EmptyState = ({
   );
 };
 
-// Loading skeleton component
-const VendorSkeleton = () => (
-  <div className="w-full overflow-hidden rounded-2xl md:rounded-3xl border border-gray-200 dark:border-gray-800">
-    <div className="p-3 sm:p-5 md:p-6">
-      <div className="flex flex-col gap-3 md:grid md:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)] md:gap-4 md:items-start">
-        <div className="flex items-start gap-2 md:gap-4 min-w-0">
-          <div className="h-9 w-9 sm:h-12 sm:w-12 md:h-14 md:w-14 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse shrink-0" />
-          <div className="flex-1 min-w-0 space-y-2">
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4" />
-            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/2" />
-            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-full" />
-            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-5/6" />
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
 export default function JasaPage() {
   const prefersReduced = useReducedMotion();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const [leaving, setLeaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -173,51 +154,50 @@ export default function JasaPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState<string>("10");
 
-  // Load vendors dari API dengan debounce
-  const loadVendors = useCallback(async (category: string, city: string, rating: string, search: string) => {
-    try {
-      setIsFilterLoading(true);
-
-      // Build query params
-      const params = new URLSearchParams();
-      if (category) params.set('kategori', category);
-      if (city) params.set('kota', city);
-      if (rating && rating !== 'semuarating') {
-        params.set('rating', rating);
-      }
-      if (search) params.set('search', search);
-
-      const queryString = params.toString();
-      const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
-
-      const response = await fetch(url, {
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setVendors(data.vendors || []);
-      } else {
-        console.error('Error loading vendors:', await response.text());
-        setVendors([]);
-      }
-    } catch (error) {
-      console.error('Error loading vendors:', error);
-      setVendors([]);
-    } finally {
-      setIsFilterLoading(false);
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Debounce untuk filter changes
+  // Debounce untuk filter changes - Load vendors dari API
   useEffect(() => {
+    const loadVendors = async () => {
+      try {
+        setIsFilterLoading(true);
+
+        // Build query params
+        const params = new URLSearchParams();
+        if (selectedCategory) params.set('kategori', selectedCategory);
+        if (selectedCity) params.set('kota', selectedCity);
+        if (selectedRating && selectedRating !== 'semuarating') {
+          params.set('rating', selectedRating);
+        }
+        if (searchQuery) params.set('search', searchQuery);
+
+        const queryString = params.toString();
+        const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
+
+        const response = await fetch(url, {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setVendors(data.vendors || []);
+        } else {
+          console.error('Error loading vendors:', await response.text());
+          setVendors([]);
+        }
+      } catch (error) {
+        console.error('Error loading vendors:', error);
+        setVendors([]);
+      } finally {
+        setIsFilterLoading(false);
+        setIsLoading(false);
+      }
+    };
+
     const timeoutId = setTimeout(() => {
-      loadVendors(selectedCategory, selectedCity, selectedRating, searchQuery);
+      loadVendors();
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedCategory, selectedCity, selectedRating, searchQuery, loadVendors]);
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery]);
 
   // Set filters from URL params
   useEffect(() => {
@@ -239,16 +219,24 @@ export default function JasaPage() {
     setCurrentPage(1);
   }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit]);
 
-  // Listen for favorites update event
+  // Listen for favorite toggle event and update local state
   useEffect(() => {
-    const handleFavoritesUpdate = () => {
-      // Refresh vendors to update favorite status
-      loadVendors(selectedCategory, selectedCity, selectedRating, searchQuery);
+    const handleFavoriteToggled = (event: CustomEvent) => {
+      const { vendorId, isFavorite } = event.detail;
+      
+      // Update vendor in local state
+      setVendors(prevVendors => 
+        prevVendors.map(vendor => 
+          vendor.id === vendorId 
+            ? { ...vendor, isFavorite } 
+            : vendor
+        )
+      );
     };
 
-    window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
-    return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
-  }, [selectedCategory, selectedCity, selectedRating, searchQuery, loadVendors]);
+    window.addEventListener('favoriteToggled', handleFavoriteToggled as EventListener);
+    return () => window.removeEventListener('favoriteToggled', handleFavoriteToggled as EventListener);
+  }, []);
 
   // Calculate display based on limit
   const displayedVendors = useMemo(() => {
@@ -479,7 +467,6 @@ export default function JasaPage() {
                         vendor={v}
                         isLoggedIn={isAuthenticated}
                         onLoginRequired={() => setShowLoginModal(true)}
-                        userId={user?.id}
                       />
                     </motion.div>
                   ))}

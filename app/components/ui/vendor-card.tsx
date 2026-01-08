@@ -30,6 +30,7 @@ export type Vendor = {
   summary: string;
   gallery: WorkImage[];
   avatar?: string;
+  isFavorite?: boolean;
 };
 
 interface VendorCardProps {
@@ -39,64 +40,40 @@ interface VendorCardProps {
   userId?: string;
 }
 
-export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId }: VendorCardProps) {
+export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: VendorCardProps) {
   const { id, name, verified, rating, reviewCount, tags, summary, gallery, avatar } = vendor;
   const router = useRouter();
   const prefersReduced = useReducedMotion();
   const [isNavigating, setIsNavigating] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(vendor.isFavorite || false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check if vendor is in favorites dari database
-  const checkFavorite = useCallback(async () => {
-    if (!isLoggedIn || !userId) {
-      setIsFavorite(false);
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/user/favorites/check?vendorId=${id}`, {
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setIsFavorite(data.isFavorite);
-      }
-    } catch (error) {
-      console.error('Error checking favorite:', error);
-    }
-  }, [id, isLoggedIn, userId]);
-
+  // Update local state when vendor prop changes
   useEffect(() => {
-    checkFavorite();
-  }, [checkFavorite]);
-
-  // Listen for favorites update event from other components
-  useEffect(() => {
-    const handleFavoritesUpdate = () => {
-      checkFavorite();
-    };
-
-    window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
-    return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
-  }, [checkFavorite]);
+    setIsFavorite(vendor.isFavorite || false);
+  }, [vendor.isFavorite]);
 
   const handleToggleFavorite = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Cek login terlebih dahulu
-    if (!isLoggedIn || !userId) {
+    // Check login first
+    if (!isLoggedIn) {
       onLoginRequired();
       return;
     }
 
+    // Prevent double-click
+    if (isLoading) return;
+
+    // Optimistic update
+    const previousState = isFavorite;
+    setIsFavorite(!isFavorite);
     setIsLoading(true);
     setIsAnimating(true);
 
     try {
-      const endpoint = isFavorite ? '/api/user/favorites/remove' : '/api/user/favorites/add';
+      const endpoint = previousState ? '/api/user/favorites/remove' : '/api/user/favorites/add';
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -108,22 +85,30 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
       });
 
       if (response.ok) {
-        // Update local state immediately for smooth UI
-        setIsFavorite(!isFavorite);
-        
-        // Dispatch event untuk update components lain
-        window.dispatchEvent(new CustomEvent('favoritesUpdated'));
+        // Success - state already updated optimistically
+        // Dispatch custom event with vendor ID for targeted updates
+        window.dispatchEvent(new CustomEvent('favoriteToggled', { 
+          detail: { vendorId: id, isFavorite: !previousState }
+        }));
+      } else if (response.status === 401) {
+        // Revert on auth failure
+        setIsFavorite(previousState);
+        onLoginRequired();
       } else {
+        // Revert on error
+        setIsFavorite(previousState);
         const error = await response.json();
         console.error('Error toggling favorite:', error);
       }
     } catch (error) {
-      console.error('Error toggling favorite:', error);
+      // Revert on network error
+      setIsFavorite(previousState);
+      console.error('Network error toggling favorite:', error);
     } finally {
       setIsLoading(false);
       setTimeout(() => setIsAnimating(false), 400);
     }
-  }, [id, isFavorite, isLoggedIn, userId, onLoginRequired]);
+  }, [id, isFavorite, isLoggedIn, onLoginRequired, isLoading]);
 
   const handleViewProfile = useCallback(() => {
     setIsNavigating(true);
@@ -135,7 +120,6 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
   const handleOrderNow = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Cek login terlebih dahulu
     if (!isLoggedIn) {
       onLoginRequired();
       return;
@@ -191,7 +175,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
                         <button
                           onClick={handleToggleFavorite}
                           disabled={isLoading}
-                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative disabled:opacity-50"
+                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center active:scale-95 relative disabled:opacity-50 disabled:cursor-not-allowed"
                           aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                         >
                           <motion.div
@@ -304,7 +288,7 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired, userId
                     <button
                       onClick={handleToggleFavorite}
                       disabled={isLoading}
-                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95 disabled:opacity-50"
+                      className="self-end p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors relative active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                       aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
                     >
                       <motion.div
