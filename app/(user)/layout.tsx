@@ -79,6 +79,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const isAuthenticated = authContext.isAuthenticated;
   const authLoading = authContext.isLoading;
   const logout = authContext.logout;
+  const refreshUser = authContext.refreshUser;
   
   // Mengambil notifikasi dari context
   const notifications = notificationContext.notifications;
@@ -116,6 +117,14 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       notificationContext.fetchNotifications();
     }
   }, [isAuthenticated, user]);
+
+  // Refresh user data ketika layout mount untuk memastikan data selalu fresh
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log("[Layout] Refreshing user data on mount...");
+      refreshUser();
+    }
+  }, [isAuthenticated, refreshUser]);
 
   // Close notifications ketika klik di luar
   useEffect(() => {
@@ -274,10 +283,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  // PERBAIKAN: Hanya gunakan data user jika sudah terautentikasi
-  const userName = isAuthenticated && user ? user.name : "";
-  const userAvatar = isAuthenticated && user ? (user.avatar || defaultAvatar) : defaultAvatar;
-  const userEmail = isAuthenticated && user ? user.email : "";
+  // Get user display values with fallbacks
+  const userName = user?.name || "User";
+  const userAvatar = user?.avatar || defaultAvatar;
+  const userEmail = user?.email || "";
 
   console.log("[Layout] Rendering with user:", { userName, userAvatar, userEmail });
 
@@ -446,18 +455,16 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                         <img
                           src={userAvatar}
-                          alt={userName || "User"}
+                          alt={userName}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.currentTarget.src = defaultAvatar;
                           }}
                         />
                       </div>
-                      {userName && (
-                        <span className="hidden md:inline text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {userName.split(" ")[0]}
-                        </span>
-                      )}
+                      <span className="hidden md:inline text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {userName.split(" ")[0]}
+                      </span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56 mt-2">
@@ -592,7 +599,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#7CE0A8]">
                       <img
                         src={userAvatar}
-                        alt={userName || "User"}
+                        alt={userName}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           e.currentTarget.src = defaultAvatar;
@@ -601,13 +608,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {userName || "User"}
+                        {userName}
                       </p>
-                      {userEmail && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                          {userEmail}
-                        </p>
-                      )}
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {userEmail}
+                      </p>
                     </div>
                   </div>
 

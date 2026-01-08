@@ -107,7 +107,7 @@ export const authOptions: NextAuthOptions = {
           id: user.user_id,
           email: user.email,
           name: user.name,
-          image: user.avatar || "/profile.svg",
+          image: user.avatar || "/profile.svg", // CRITICAL: Use database avatar, not default
           role: user.role,
           phone: user.phone,
         };
@@ -153,13 +153,16 @@ export const authOptions: NextAuthOptions = {
             console.log(`[Google OAuth] Email verified for: ${userEmail}`);
           }
 
-          // Update avatar from Google if user doesn't have one
+          // CRITICAL FIX: Don't update avatar from Google if user already has one in database
+          // Only update avatar if user doesn't have one AND wants to use Google avatar
           if (!existingUser.avatar && user.image) {
             await prisma.user.update({
               where: { email: userEmail },
               data: { avatar: user.image },
             });
-            console.log(`[Google OAuth] Avatar updated for: ${userEmail}`);
+            console.log(`[Google OAuth] Avatar updated from Google for: ${userEmail}`);
+          } else if (existingUser.avatar) {
+            console.log(`[Google OAuth] Keeping existing database avatar for: ${userEmail}`);
           }
 
           console.log(`[Google OAuth] Sign in successful for: ${userEmail}`);
@@ -233,6 +236,7 @@ export const authOptions: NextAuthOptions = {
       }
 
       // For Google OAuth, get FRESH user data from database every time
+      // CRITICAL FIX: Always fetch from database to get updated avatar
       if (account?.provider === "google" && token.email) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -244,7 +248,9 @@ export const authOptions: NextAuthOptions = {
             token.role = dbUser.role;
             token.phone = dbUser.phone;
             token.name = dbUser.name; // Fresh from database
-            token.picture = dbUser.avatar || token.picture || "/profile.svg"; // Fresh from database
+            
+            // CRITICAL: Always use avatar from database, not from Google
+            token.picture = dbUser.avatar || "/profile.svg"; // Fresh from database
           }
         } catch (error) {
           console.error("[JWT Callback] Error fetching user:", error);
@@ -263,7 +269,9 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
         session.user.name = token.name as string;
-        session.user.image = token.picture as string;
+        
+        // CRITICAL: Always use avatar from token (which comes from database)
+        session.user.image = token.picture as string || "/profile.svg";
       }
       return session;
     },

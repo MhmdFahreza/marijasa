@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       if (nextAuthSession?.user?.email) {
         console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
         
-        // CRITICAL: ALWAYS get fresh user data from database
+        // CRITICAL FIX: ALWAYS get fresh user data from database
         const user = await prisma.user.findUnique({
           where: { email: nextAuthSession.user.email.toLowerCase() },
           select: {
@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
               name: user.name, // Fresh from DB
               email: user.email,
               phone: user.phone,
+              // CRITICAL: Always use avatar from database, not from Google
               avatar: user.avatar || "/profile.svg", // Fresh from DB
               role: user.role,
             },
@@ -233,6 +234,7 @@ export async function GET(request: NextRequest) {
         name: user.name, // FRESH from database
         email: user.email,
         phone: user.phone,
+        // CRITICAL: Always use avatar from database
         avatar: user.avatar || "/profile.svg", // FRESH from database
         role: user.role,
       },

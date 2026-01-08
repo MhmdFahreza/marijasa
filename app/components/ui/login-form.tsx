@@ -267,7 +267,7 @@ export function LoginForm({
       }
 
       setIsLoading(true);
-      
+
       // Simulate async login
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -402,15 +402,13 @@ export function LoginForm({
         authLogin(data.user);
       }
 
+      // CRITICAL: Refresh user data to ensure we have latest from database
+      await refreshUser();
+
       if (onSuccess) {
         // Call onSuccess callback
         onSuccess(data.user?.email || trimmedIdentifier);
         setIsLoading(false);
-        
-        // Small delay to let state propagate
-        setTimeout(() => {
-          refreshUser();
-        }, 100);
         return;
       }
 

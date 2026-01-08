@@ -97,16 +97,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         if (data.authenticated && data.user) {
-          console.log("[Auth] ✅ User authenticated:", {
+          console.log("[Auth] ✅ User authenticated from database:", {
             email: data.user.email,
             name: data.user.name,
             avatar: data.user.avatar
           });
           
-          // CRITICAL: Set user with ALL data from database
+          // CRITICAL: Set user with ALL data from database (including updated avatar)
           const userData: User = {
             id: data.user.id || data.user.user_id,
-            name: data.user.name || "user",
+            name: data.user.name || "User",
             email: data.user.email,
             phone: data.user.phone || null,
             avatar: data.user.avatar || "/profile.svg",
@@ -175,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         console.log("[Auth] Access token refreshed successfully");
-        // Fetch user to ensure we have latest data
+        // Fetch user to ensure we have latest data from database
         await fetchCurrentUser(true);
         return true;
       } else {
@@ -227,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Initialize auth state
+  // Initialize auth state - FIXED untuk Google OAuth
   useEffect(() => {
     const initAuth = async () => {
       // Skip auth check for mitra routes
@@ -240,37 +240,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       console.log("[Auth] Initializing authentication...");
 
-      // First check if we have a session from NextAuth (Google OAuth)
-      if (status === "authenticated" && session?.user) {
-        console.log("[Auth] NextAuth session detected for:", session.user.email);
-        const userFromSession: User = {
-          id: (session.user as any).id || "",
-          name: session.user.name || "User",
-          email: session.user.email || "",
-          phone: (session.user as any).phone || null,
-          avatar: session.user.image || "/profile.svg",
-          role: (session.user as any).role || "USER",
-        };
-        setUser(userFromSession);
+      // CRITICAL FIX: Always fetch from database via /api/auth/me
+      // This ensures we get the latest data including updated avatar
+      console.log("[Auth] Fetching fresh user data from database...");
+      const fetchedUser = await fetchCurrentUser();
+      
+      if (fetchedUser) {
+        console.log("[Auth] User authenticated via database:", fetchedUser.email);
         setupTokenRefresh();
-        setIsLoading(false);
-        return;
+      } else {
+        console.log("[Auth] No valid authentication found");
+        setUser(null);
+        clearTokenRefresh();
       }
-
-      // If no NextAuth session, check JWT cookie via API
-      if (status !== "loading") {
-        console.log("[Auth] Checking JWT cookie authentication...");
-        const fetchedUser = await fetchCurrentUser();
-        if (fetchedUser) {
-          console.log("[Auth] JWT authentication successful for:", fetchedUser.email);
-          setupTokenRefresh();
-        } else {
-          console.log("[Auth] No valid authentication found");
-          setUser(null);
-          clearTokenRefresh();
-        }
-        setIsLoading(false);
-      }
+      
+      setIsLoading(false);
     };
 
     initAuth();
@@ -279,20 +263,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       clearTokenRefresh();
     };
-  }, [session, status, fetchCurrentUser, setupTokenRefresh, clearTokenRefresh, isMitraRoute]);
+  }, [fetchCurrentUser, setupTokenRefresh, clearTokenRefresh, isMitraRoute]);
 
-  // Login function
+  // Login function - FIXED untuk mengambil data dari database
   const login = useCallback(
     async (userData: User) => {
       console.log("[Auth] User logged in:", userData.email);
+      
+      // Immediately set user data
       setUser(userData);
       
       // Setup auto token refresh
       setupTokenRefresh();
       
-      // Fetch fresh user data asynchronously to ensure we have latest from DB
-      setTimeout(() => {
-        fetchCurrentUser(true);
+      // Fetch fresh user data from database to ensure we have latest data
+      setTimeout(async () => {
+        try {
+          const freshUser = await fetchCurrentUser(true);
+          if (freshUser) {
+            console.log("[Auth] Fresh user data loaded from database:", freshUser.email);
+          }
+        } catch (error) {
+          console.error("[Auth] Error fetching fresh user data:", error);
+        }
       }, 100);
     },
     [setupTokenRefresh, fetchCurrentUser]
@@ -366,15 +359,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session, clearTokenRefresh, router]);
 
-  // Refresh user data from database
+  // Refresh user data from database - ALWAYS fetch from database
   const refreshUser = useCallback(async () => {
     try {
-      console.log("[Auth] 🔄 Manually refreshing user data...");
+      console.log("[Auth] 🔄 Manually refreshing user data from database...");
       
-      // Fetch fresh data from /api/auth/me which always gets from database
-      await fetchCurrentUser(true);
+      // Always fetch fresh data from /api/auth/me which gets from database
+      const freshUser = await fetchCurrentUser(true);
       
-      console.log("[Auth] ✅ User data refresh complete");
+      if (freshUser) {
+        console.log("[Auth] ✅ User data refreshed from database:", freshUser.email);
+      } else {
+        console.log("[Auth] ⚠️ No user data returned from refresh");
+      }
     } catch (error) {
       console.error("[Auth] Error refreshing user data:", error);
     }
