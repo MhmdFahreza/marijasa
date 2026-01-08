@@ -232,7 +232,7 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // For Google OAuth, get user data from database
+      // For Google OAuth, get FRESH user data from database every time
       if (account?.provider === "google" && token.email) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -243,8 +243,8 @@ export const authOptions: NextAuthOptions = {
             token.id = dbUser.user_id;
             token.role = dbUser.role;
             token.phone = dbUser.phone;
-            token.name = dbUser.name;
-            token.picture = dbUser.avatar || token.picture || "/profile.svg";
+            token.name = dbUser.name; // Fresh from database
+            token.picture = dbUser.avatar || token.picture || "/profile.svg"; // Fresh from database
           }
         } catch (error) {
           console.error("[JWT Callback] Error fetching user:", error);
@@ -308,5 +308,23 @@ export const authOptions: NextAuthOptions = {
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === "development",
+  debug: false, // IMPORTANT: Disable debug to suppress errors
+  logger: {
+    // Custom logger to suppress "No session found" errors
+    error(code, metadata) {
+      // Suppress specific NextAuth errors that are expected
+      if (code === "CLIENT_FETCH_ERROR" && typeof metadata?.message === "string" && metadata.message.includes("No session found")) {
+        // This is expected when user is not logged in, don't log it
+        return;
+      }
+      // Log other errors normally
+      console.error("[NextAuth Error]", code, metadata);
+    },
+    warn(code) {
+      // Suppress warnings too
+      if (code.includes("session")) return;
+      console.warn("[NextAuth Warning]", code);
+    },
+    debug: () => {}, // Disable debug logs
+  },
 };

@@ -65,19 +65,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
 
-  // Use AuthContext
-  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+  // Use AuthContext - now destructure properly to get latest state
+  const authContext = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, logout } = authContext;
 
   // Calculate unread notifications
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Load language preference - ONE TIME ONLY
+  // Load language preference
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -167,34 +169,30 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = useCallback(async () => {
+    // Prevent double logout
+    if (isLoggingOut) {
+      console.log("[Layout] Logout already in progress");
+      return;
+    }
+
+    setIsLoggingOut(true);
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
     
     try {
-      console.log("[Layout] Starting logout process...");
-      setIsLoading(true);
+      console.log("[Layout] Starting logout...");
       
-      // Call logout from AuthContext
+      // Call logout from AuthContext - this will update state immediately
       await logout();
       
-      console.log("[Layout] Logout successful, redirecting...");
-      
-      // Small delay for better UX
-      setTimeout(() => {
-        router.push("/");
-        
-        // Force router refresh to clear any cached data
-        setTimeout(() => {
-          router.refresh();
-          setIsLoading(false);
-        }, 200);
-      }, 300);
+      console.log("[Layout] Logout completed");
       
     } catch (error) {
       console.error("[Layout] Logout error:", error);
-      setIsLoading(false);
+    } finally {
+      setIsLoggingOut(false);
     }
-  }, [logout, router]);
+  }, [logout, isLoggingOut]);
 
   const handleProfileClick = () => {
     handleNavigation("/profile");
@@ -297,7 +295,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative w-full min-h-screen">
-      {isLoading && (
+      {(isLoading || isLoggingOut) && (
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
           <LoaderTwo />
         </div>
@@ -524,10 +522,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
                     <DropdownMenuItem
                       onClick={handleLogout}
+                      disabled={isLoggingOut}
                       className="flex items-center gap-2 text-red-600 cursor-pointer py-2.5 hover:bg-red-50 dark:hover:bg-red-900/20"
                     >
                       <LogOut className="w-4 h-4" />
-                      Keluar
+                      {isLoggingOut ? "Logging out..." : "Keluar"}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -661,10 +660,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-2"></div>
                     <button
                       onClick={handleLogout}
+                      disabled={isLoggingOut}
                       className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     >
                       <LogOut className="w-5 h-5" />
-                      <span>Keluar</span>
+                      <span>{isLoggingOut ? "Logging out..." : "Keluar"}</span>
                     </button>
                   </div>
 

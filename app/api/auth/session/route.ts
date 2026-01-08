@@ -11,26 +11,28 @@ export async function GET(request: NextRequest) {
   try {
     console.log('[Session Check] Starting session verification...');
 
-    // Check NextAuth session first (Google OAuth)
+    // Check NextAuth session first (Google OAuth) - with error handling
+    let nextAuthSession = null;
     try {
-      const session = await getServerSession(authOptions);
-      if (session?.user) {
-        console.log('[Session Check] Valid NextAuth session found for:', session.user.email);
+      nextAuthSession = await getServerSession(authOptions);
+      if (nextAuthSession?.user) {
+        console.log('[Session Check] Valid NextAuth session found for:', nextAuthSession.user.email);
         return NextResponse.json({
           authenticated: true,
           user: {
-            user_id: (session.user as any).id,
-            id: (session.user as any).id,
-            email: session.user.email,
-            name: session.user.name,
-            phone: (session.user as any).phone,
-            avatar: session.user.image || "/profile.svg",
-            role: (session.user as any).role || "USER"
+            user_id: (nextAuthSession.user as any).id,
+            id: (nextAuthSession.user as any).id,
+            email: nextAuthSession.user.email,
+            name: nextAuthSession.user.name,
+            phone: (nextAuthSession.user as any).phone,
+            avatar: nextAuthSession.user.image || "/profile.svg",
+            role: (nextAuthSession.user as any).role || "USER"
           }
         }, { status: 200 });
       }
     } catch (error) {
-      console.log('[Session Check] NextAuth check failed:', error);
+      // Suppress NextAuth errors - this is expected when no session exists
+      console.log('[Session Check] No NextAuth session (this is normal)');
     }
 
     // Check custom session cookies
@@ -40,14 +42,14 @@ export async function GET(request: NextRequest) {
 
     console.log('[Session Check] Cookie status:', {
       hasSessionId: !!sessionId,
-      sessionId: sessionId?.substring(0, 8) + '...',
+      sessionId: sessionId ? sessionId.substring(0, 8) + '...' : 'none',
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken
     });
 
-    // If no session cookies at all
+    // If no session cookies at all, return 401 but without error
     if (!sessionId) {
-      console.log('[Session Check] No session cookies found');
+      console.log('[Session Check] No session cookies found - user not logged in');
       return NextResponse.json({
         authenticated: false,
         message: 'No session found'

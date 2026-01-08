@@ -46,14 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isRefreshingRef = useRef(false);
   const isFetchingRef = useRef(false);
   const lastFetchAttemptRef = useRef<number>(0);
+  const isLoggingOutRef = useRef(false);
 
   // Check if current path is mitra route
   const isMitraRoute = pathname?.startsWith('/mitra') || false;
 
   // Fetch current user from API
   const fetchCurrentUser = useCallback(async (skipLoadingState = false) => {
-    // Skip if on mitra routes
-    if (isMitraRoute) {
+    // Skip if on mitra routes or currently logging out
+    if (isMitraRoute || isLoggingOutRef.current) {
       return null;
     }
 
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
       } else {
         console.log("[Auth] Unexpected response status:", response.status);
+        setUser(null);
       }
       return null;
     } catch (error) {
@@ -124,8 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Refresh access token
   const refreshAccessToken = useCallback(async () => {
-    // Skip if on mitra routes
-    if (isMitraRoute) {
+    // Skip if on mitra routes or currently logging out
+    if (isMitraRoute || isLoggingOutRef.current) {
       return false;
     }
 
@@ -271,42 +273,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setupTokenRefresh, fetchCurrentUser]
   );
 
-  // Logout function
+  // Logout function - IMPROVED
   const logout = useCallback(async () => {
     try {
-      console.log("[Auth] Logging out...");
+      console.log("[Auth] Starting logout process...");
       
-      // Clear token refresh interval
+      // Set logout flag to prevent any ongoing operations
+      isLoggingOutRef.current = true;
+      
+      // Clear token refresh interval IMMEDIATELY
       clearTokenRefresh();
 
-      // Clear user state immediately
+      // Clear user state IMMEDIATELY - this will trigger UI update
       setUser(null);
 
       // If using NextAuth (Google OAuth), sign out from there
       if (session) {
+        console.log("[Auth] Signing out from NextAuth...");
         await nextAuthSignOut({ redirect: false });
       }
 
       // Call our logout API to clear the cookies and Redis data
       try {
-        await fetch("/api/auth/logout", {
+        console.log("[Auth] Calling logout API...");
+        const response = await fetch("/api/auth/logout", {
           method: "POST",
           credentials: "include",
         });
+        
+        if (response.ok) {
+          console.log("[Auth] Logout API successful");
+        } else {
+          console.error("[Auth] Logout API failed:", response.status);
+        }
       } catch (error) {
         console.error("[Auth] Error calling logout API:", error);
       }
       
-      console.log("[Auth] Logout successful");
+      console.log("[Auth] Logout successful, redirecting...");
       
-      // Redirect to home
-      router.push("/");
+      // Force router refresh to clear any cached data
+      router.refresh();
+      
+      // Redirect to home after a short delay to ensure state updates
+      setTimeout(() => {
+        router.push("/");
+      }, 100);
+      
     } catch (error) {
       console.error("[Auth] Logout error:", error);
       // Clear user state even if API fails
       setUser(null);
       clearTokenRefresh();
       router.push("/");
+    } finally {
+      // Reset logout flag after completion
+      setTimeout(() => {
+        isLoggingOutRef.current = false;
+      }, 500);
     }
   }, [session, clearTokenRefresh, router]);
 

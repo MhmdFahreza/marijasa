@@ -7,6 +7,8 @@ import {
   updateSessionActivity,
 } from "@/app/components/lib/token-service";
 import prisma from "@/app/components/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/components/lib/auth.config";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
@@ -26,12 +28,53 @@ function clearAuthCookies(response: NextResponse) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get session ID and tokens from cookies
+    console.log("[Auth Me] Processing authentication check...");
+
+    // FIRST: Check for NextAuth session (Google OAuth)
+    try {
+      const nextAuthSession = await getServerSession(authOptions);
+      if (nextAuthSession?.user) {
+        console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
+        
+        // Get fresh user data from database
+        const user = await prisma.user.findUnique({
+          where: { email: nextAuthSession.user.email!.toLowerCase() },
+          select: {
+            user_id: true,
+            email: true,
+            name: true,
+            phone: true,
+            avatar: true,
+            role: true,
+            is_active: true,
+          },
+        });
+
+        if (user && user.is_active) {
+          return NextResponse.json({
+            authenticated: true,
+            user: {
+              user_id: user.user_id,
+              id: user.user_id,
+              name: user.name,
+              email: user.email,
+              phone: user.phone,
+              avatar: user.avatar || "/profile.svg",
+              role: user.role,
+            },
+          }, { status: 200 });
+        }
+      }
+    } catch (error) {
+      console.log("[Auth Me] NextAuth session check failed or not found:", error);
+    }
+
+    // SECOND: Check custom JWT session
     const sessionId = request.cookies.get("session_id")?.value;
     const accessToken = request.cookies.get("access_token")?.value;
     const refreshToken = request.cookies.get("refresh_token")?.value;
 
-    console.log("[Auth Me] Request received", {
+    console.log("[Auth Me] Cookie status:", {
       hasSessionId: !!sessionId,
       sessionId: sessionId?.substring(0, 8) + "...",
       hasAccessToken: !!accessToken,
@@ -61,18 +104,13 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    console.log("[Auth Me] Session found:", {
-      sessionId: sessionId.substring(0, 8) + "...",
-      userId: session.userId,
-      email: session.email,
-    });
+    console.log("[Auth Me] Redis session found for user:", session.userId);
 
     let currentAccessToken = accessToken;
 
     // Handle token refresh scenarios
     if (!accessToken && refreshToken) {
-      // No access token but has refresh token
-      console.log("[Auth Me] No access token, attempting refresh with refresh token");
+      console.log("[Auth Me] No access token, attempting refresh");
       
       const refreshResult = await refreshAccessToken(sessionId, refreshToken);
       
@@ -90,13 +128,11 @@ export async function GET(request: NextRequest) {
         return response;
       }
     } else if (accessToken) {
-      // Verify access token
       const tokenPayload = verifyToken(accessToken);
       
       if (!tokenPayload || tokenPayload.sessionId !== sessionId) {
         console.log("[Auth Me] Access token invalid or expired, attempting refresh");
         
-        // Access token expired, try to refresh
         if (refreshToken) {
           const refreshResult = await refreshAccessToken(sessionId, refreshToken);
           
@@ -125,7 +161,6 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      // No tokens at all
       console.log("[Auth Me] No tokens found");
       const response = NextResponse.json(
         { message: "No tokens found", authenticated: false, user: null },
@@ -136,7 +171,8 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    // Get full user data from database
+    // ALWAYS get fresh user data from database - CRITICAL FIX
+    console.log("[Auth Me] Fetching fresh user data from database...");
     const user = await prisma.user.findUnique({
       where: { user_id: session.userId },
       select: {
@@ -166,16 +202,16 @@ export async function GET(request: NextRequest) {
 
     console.log("[Auth Me] Authentication successful for:", user.email);
 
-    // Prepare response
+    // Prepare response with FRESH database data
     const responseData = {
       authenticated: true,
       user: {
         user_id: user.user_id,
         id: user.user_id,
-        name: user.name,
+        name: user.name, // From database
         email: user.email,
         phone: user.phone,
-        avatar: user.avatar || "/profile.svg",
+        avatar: user.avatar || "/profile.svg", // From database
         role: user.role,
       },
       refreshed: currentAccessToken !== accessToken,
@@ -197,7 +233,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("[Auth Me] Error:", error);
+    console.error("[Auth Me] Unexpected error:", error);
     return NextResponse.json(
       { message: "Internal server error", authenticated: false, user: null },
       { status: 500 }
