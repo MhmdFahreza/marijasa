@@ -27,35 +27,59 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
 
-    // Delete ALL auth-related cookies with proper options
+    // Define cookie options for clearing
     const cookieOptions = {
       path: "/",
       maxAge: 0,
       expires: new Date(0),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
     };
 
-    // Custom auth cookies
+    // Clear all auth cookies
     response.cookies.set("session_id", "", cookieOptions);
     response.cookies.set("access_token", "", cookieOptions);
     response.cookies.set("refresh_token", "", cookieOptions);
 
-    // NextAuth cookies (for Google OAuth)
-    response.cookies.set("next-auth.session-token", "", cookieOptions);
-    response.cookies.set("__Secure-next-auth.session-token", "", cookieOptions);
-    response.cookies.set("next-auth.csrf-token", "", cookieOptions);
-    response.cookies.set("__Host-next-auth.csrf-token", "", cookieOptions);
-    response.cookies.set("next-auth.callback-url", "", cookieOptions);
-    response.cookies.set("__Secure-next-auth.callback-url", "", cookieOptions);
+    // Also clear NextAuth cookies (for Google OAuth) if they exist
+    response.cookies.set("next-auth.session-token", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
+    response.cookies.set("__Secure-next-auth.session-token", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      secure: true,
+    });
+    response.cookies.set("next-auth.csrf-token", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
+    response.cookies.set("__Host-next-auth.csrf-token", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      secure: true,
+    });
+    response.cookies.set("next-auth.callback-url", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
 
-    console.log("[Logout] All cookies cleared");
+    console.log("[Logout] All cookies cleared successfully");
 
     return response;
   } catch (error) {
     console.error("[Logout] Error:", error);
     
-    // Even if there's an error, clear cookies
+    // Even if there's an error, try to clear cookies
     const response = NextResponse.json(
-      { success: false, message: "Logout completed with warnings" },
+      { success: true, message: "Logout completed" },
       { status: 200 }
     );
 
@@ -63,13 +87,25 @@ export async function POST(request: NextRequest) {
       path: "/",
       maxAge: 0,
       expires: new Date(0),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
     };
 
     response.cookies.set("session_id", "", cookieOptions);
     response.cookies.set("access_token", "", cookieOptions);
     response.cookies.set("refresh_token", "", cookieOptions);
-    response.cookies.set("next-auth.session-token", "", cookieOptions);
-    response.cookies.set("__Secure-next-auth.session-token", "", cookieOptions);
+    response.cookies.set("next-auth.session-token", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
+    response.cookies.set("__Secure-next-auth.session-token", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      secure: true,
+    });
 
     return response;
   }

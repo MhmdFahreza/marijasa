@@ -22,23 +22,18 @@ import {
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import {
-  History,
   Heart,
   User,
   LogOut,
   Package,
-  Store,
   Bell,
   X,
   CheckCircle,
   Clock,
-  PackageCheck,
   AlertCircle,
   PlusCircle,
-  FileText,
   CreditCard,
   ShoppingBag,
-  MessageSquare,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/components/contexts/AuthContext";
@@ -76,13 +71,13 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Use AuthContext instead of localStorage
+  // Use AuthContext
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
 
   // Calculate unread notifications
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Load language preference
+  // Load language preference - ONE TIME ONLY
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -92,6 +87,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Reset loading on pathname change
   useEffect(() => {
     setIsLoading(false);
   }, [pathname]);
@@ -175,31 +171,27 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsNotificationOpen(false);
     
     try {
-      // Set loading state before logout
+      console.log("[Layout] Starting logout process...");
       setIsLoading(true);
       
       // Call logout from AuthContext
       await logout();
       
-      // Use timeout to show loading briefly and ensure smooth transition
+      console.log("[Layout] Logout successful, redirecting...");
+      
+      // Small delay for better UX
       setTimeout(() => {
-        // Redirect to home
         router.push("/");
         
-        // Force a refresh to update auth state
+        // Force router refresh to clear any cached data
         setTimeout(() => {
           router.refresh();
-        }, 100);
-        
-        // Auto-reset loading after a reasonable time (fallback)
-        setTimeout(() => {
           setIsLoading(false);
-        }, 1000);
+        }, 200);
       }, 300);
       
     } catch (error) {
-      console.error("Logout error:", error);
-      // If logout fails, reset loading state
+      console.error("[Layout] Logout error:", error);
       setIsLoading(false);
     }
   }, [logout, router]);
@@ -292,7 +284,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   const defaultAvatar = "/profile.svg";
 
-  // Show loading while checking auth
+  // Show loading while checking auth - ONLY on initial load
   if (authLoading) {
     return (
       <div className="relative w-full min-h-screen">

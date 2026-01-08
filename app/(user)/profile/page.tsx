@@ -1,7 +1,7 @@
 // app/(user)/profile/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "motion/react";
 import {
   Card,
@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/app/components/ui/card";
-import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
@@ -22,16 +21,16 @@ import {
   MapPin,
   Calendar,
   Camera,
-  Save,
   Home,
   Globe,
   UserCircle,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/components/contexts/AuthContext";
 
-// Tipe data untuk user
 interface UserProfile {
   user_id: string;
   name: string;
@@ -43,23 +42,31 @@ interface UserProfile {
   avatar: string | null;
 }
 
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading, refreshUser } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   
-  // State untuk data user
   const [profile, setProfile] = useState<UserProfile | null>(null);
-
-  // State untuk preview avatar
   const [avatarPreview, setAvatarPreview] = useState<string>("/profile.svg");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
 
-  // Load user profile dari database saat component mount
+  // Refs for debouncing and preventing auto-reload
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialMount = useRef(true);
+  const hasLoadedOnce = useRef(false);
+
+  // Load user profile - ONLY ONCE on mount, no auto-reload
   useEffect(() => {
     const loadProfile = async () => {
+      // Skip if already loaded or auth is still loading
+      if (hasLoadedOnce.current || authLoading) {
+        return;
+      }
+
       if (!isAuthenticated || !user) {
         toast.error("Anda harus login terlebih dahulu");
         router.push("/login");
@@ -67,12 +74,12 @@ export default function ProfilePage() {
       }
 
       try {
-        setIsLoading(true);
+        setIsInitialLoading(true);
         
-        // Fetch user profile from API
         const response = await fetch("/api/user/profile", {
           method: "GET",
           credentials: "include",
+          cache: "no-store",
         });
 
         if (!response.ok) {
@@ -89,76 +96,44 @@ export default function ProfilePage() {
         if (data.profile) {
           setProfile(data.profile);
           setAvatarPreview(data.profile.avatar || "/profile.svg");
+          hasLoadedOnce.current = true;
+          console.log("[Profile] Data loaded successfully");
         }
       } catch (error) {
         console.error("Error loading user profile:", error);
         toast.error("Terjadi kesalahan saat memuat profil");
       } finally {
-        setIsLoading(false);
+        setIsInitialLoading(false);
+        // Mark initial mount as complete after a short delay
+        setTimeout(() => {
+          isInitialMount.current = false;
+        }, 1000);
       }
     };
 
-    if (!authLoading) {
+    // Only load if we haven't loaded before
+    if (!hasLoadedOnce.current) {
       loadProfile();
     }
   }, [isAuthenticated, user, authLoading, router]);
 
-  // Handle change avatar
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Ukuran file maksimal 5MB");
-        return;
-      }
-
-      // Validate file type
-      if (!file.type.startsWith("image/")) {
-        toast.error("File harus berupa gambar");
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setAvatarPreview(event.target.result as string);
-          setAvatarFile(file);
-          setIsEditing(true);
-        }
-      };
-      reader.readAsDataURL(file);
+  // Auto-save function
+  const autoSaveProfile = useCallback(async (updatedProfile: UserProfile, newAvatarFile?: File) => {
+    if (isInitialMount.current) {
+      console.log("[Profile] Skipping save during initial mount");
+      return;
     }
-  };
-
-  // Handle input changes
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setProfile((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        [name]: value,
-      };
-    });
-    setIsEditing(true);
-  };
-
-  // Handle save profile
-  const handleSaveProfile = async () => {
-    if (!profile) return;
-
-    setIsSaving(true);
+    
+    setSaveStatus("saving");
+    console.log("[Profile] Auto-saving...");
 
     try {
-      // Upload avatar if changed
-      let avatarUrl = profile.avatar;
+      let avatarUrl = updatedProfile.avatar;
       
-      if (avatarFile) {
+      // Upload avatar if changed
+      if (newAvatarFile) {
         const formData = new FormData();
-        formData.append("avatar", avatarFile);
+        formData.append("avatar", newAvatarFile);
 
         const uploadResponse = await fetch("/api/user/upload-avatar", {
           method: "POST",
@@ -172,6 +147,7 @@ export default function ProfilePage() {
 
         const uploadData = await uploadResponse.json();
         avatarUrl = uploadData.avatarUrl;
+        console.log("[Profile] Avatar uploaded:", avatarUrl);
       }
 
       // Update profile
@@ -182,9 +158,9 @@ export default function ProfilePage() {
         },
         credentials: "include",
         body: JSON.stringify({
-          name: profile.name,
-          address: profile.address,
-          gps_link: profile.gps_link,
+          name: updatedProfile.name,
+          address: updatedProfile.address,
+          gps_link: updatedProfile.gps_link,
           avatar: avatarUrl,
         }),
       });
@@ -195,48 +171,110 @@ export default function ProfilePage() {
 
       const data = await response.json();
       
-      // Update state with new profile data
+      // Update local state with server response
       setProfile(data.profile);
       setAvatarPreview(data.profile.avatar || "/profile.svg");
-      setAvatarFile(null);
-      
-      // Refresh auth context
-      await refreshUser();
-      
-      toast.success("Profil berhasil disimpan!");
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error saving profile:", error);
-      toast.error("Terjadi kesalahan saat menyimpan profil");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Handle cancel changes
-  const handleCancelChanges = async () => {
-    if (!user) return;
-
-    try {
-      // Reload profile from server
-      const response = await fetch("/api/user/profile", {
-        method: "GET",
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data.profile);
-        setAvatarPreview(data.profile.avatar || "/profile.svg");
+      if (newAvatarFile) {
         setAvatarFile(null);
       }
+      
+      // Refresh auth context to update navbar
+      await refreshUser();
+      
+      setSaveStatus("saved");
+      console.log("[Profile] Profile saved successfully");
+      
+      // Reset to idle after 2 seconds
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 2000);
     } catch (error) {
-      console.error("Error reloading profile:", error);
+      console.error("Error saving profile:", error);
+      setSaveStatus("error");
+      toast.error("Gagal menyimpan perubahan");
+      
+      // Reset to idle after showing error
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 3000);
+    }
+  }, [refreshUser]);
+
+  // Debounced save
+  const debouncedSave = useCallback((updatedProfile: UserProfile, newAvatarFile?: File) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
 
-    setIsEditing(false);
-    toast.info("Perubahan dibatalkan");
+    saveTimeoutRef.current = setTimeout(() => {
+      autoSaveProfile(updatedProfile, newAvatarFile);
+    }, 1500); // Increased to 1.5 seconds
+  }, [autoSaveProfile]);
+
+  // Handle avatar change with immediate save
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran file maksimal 5MB");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("File harus berupa gambar");
+      return;
+    }
+
+    // Show preview immediately (optimistic update)
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setAvatarPreview(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+
+    setAvatarFile(file);
+    
+    // Save immediately for avatar changes
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    await autoSaveProfile(profile, file);
   };
+
+  // Handle input changes with debounced save
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    
+    setProfile((prev) => {
+      if (!prev) return prev;
+      
+      const updatedProfile = {
+        ...prev,
+        [name]: value,
+      };
+      
+      // Trigger debounced save
+      debouncedSave(updatedProfile);
+      
+      return updatedProfile;
+    });
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Format join date
   const formattedJoinDate = profile
@@ -248,8 +286,36 @@ export default function ProfilePage() {
       })
     : "";
 
+  // Save status indicator
+  const SaveStatusIndicator = () => {
+    switch (saveStatus) {
+      case "saving":
+        return (
+          <div className="flex items-center gap-2 text-sm text-blue-600">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Menyimpan...</span>
+          </div>
+        );
+      case "saved":
+        return (
+          <div className="flex items-center gap-2 text-sm text-green-600">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Tersimpan</span>
+          </div>
+        );
+      case "error":
+        return (
+          <div className="flex items-center gap-2 text-sm text-red-600">
+            <span>Gagal menyimpan</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   // Loading state
-  if (isLoading || authLoading) {
+  if (isInitialLoading || authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
@@ -288,14 +354,17 @@ export default function ProfilePage() {
         transition={{ duration: 0.5 }}
         className="max-w-7xl mx-auto"
       >
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-            Profil Saya
-          </h1>
-          <p className="text-gray-600">
-            Kelola informasi profil Anda untuk pengalaman yang lebih personal
-          </p>
+        {/* Header with Save Status */}
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+              Profil Saya
+            </h1>
+            <p className="text-gray-600">
+              Kelola informasi profil Anda untuk pengalaman yang lebih personal
+            </p>
+          </div>
+          <SaveStatusIndicator />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -323,7 +392,7 @@ export default function ProfilePage() {
                         accept="image/*"
                         className="hidden"
                         onChange={handleAvatarChange}
-                        disabled={isSaving}
+                        disabled={saveStatus === "saving"}
                       />
                     </label>
                   </div>
@@ -358,21 +427,38 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Card Tips */}
+            {/* Card Tips Auto-Save */}
             <Card className="shadow-lg border-0 bg-gradient-to-br from-emerald-50 to-teal-50">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
                   <div className="p-2 bg-emerald-100 rounded-lg">
-                    <MapPin className="h-5 w-5 text-emerald-600" />
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">
+                      Auto-Save Aktif
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Semua perubahan akan disimpan secara otomatis setelah 1.5 detik. Data Anda aman bahkan saat berpindah tab.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card Tips Maps */}
+            <Card className="shadow-lg border-0 bg-gradient-to-br from-blue-50 to-cyan-50">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <MapPin className="h-5 w-5 text-blue-600" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">
                       Tips Link Google Maps
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Simpan link Google Maps lokasi rumah Anda di sini. Saat
-                      memesan jasa, Anda bisa langsung menggunakan lokasi ini
-                      tanpa perlu membuka Google Maps lagi.
+                      Simpan link Google Maps lokasi rumah Anda. Saat memesan jasa, Anda bisa langsung menggunakan lokasi ini.
                     </p>
                   </div>
                 </div>
@@ -389,8 +475,7 @@ export default function ProfilePage() {
                   Informasi Pribadi
                 </CardTitle>
                 <CardDescription>
-                  Update informasi pribadi Anda. Nama dan alamat dapat diubah
-                  sesuai kebutuhan.
+                  Update informasi pribadi Anda. Perubahan akan disimpan otomatis.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-8">
@@ -406,7 +491,7 @@ export default function ProfilePage() {
                       name="name"
                       value={profile.name}
                       onChange={handleInputChange}
-                      disabled={isSaving}
+                      disabled={saveStatus === "saving"}
                       className="pl-10 py-6 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
                       placeholder="Masukkan nama lengkap"
                     />
@@ -469,7 +554,7 @@ export default function ProfilePage() {
                     name="address"
                     value={profile.address || ""}
                     onChange={handleInputChange}
-                    disabled={isSaving}
+                    disabled={saveStatus === "saving"}
                     className="min-h-[120px] py-4 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
                     placeholder="Masukkan alamat lengkap (jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota)"
                   />
@@ -493,7 +578,7 @@ export default function ProfilePage() {
                         type="url"
                         value={profile.gps_link || ""}
                         onChange={handleInputChange}
-                        disabled={isSaving}
+                        disabled={saveStatus === "saving"}
                         className="pl-10 py-6 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
                         placeholder="https://maps.google.com/?q=..."
                       />
@@ -507,53 +592,6 @@ export default function ProfilePage() {
                         lokasi ini tanpa perlu membuka Google Maps lagi
                       </p>
                     </div>
-                  </div>
-                </div>
-
-                {/* Tombol Aksi */}
-                <div className="pt-8 border-t">
-                  <div className="flex flex-col sm:flex-row gap-4 justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCancelChanges}
-                      disabled={!isEditing || isSaving}
-                      className="px-8 py-6 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Batalkan
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={handleSaveProfile}
-                      disabled={!isEditing || isSaving}
-                      className="px-8 py-6 text-base text-white transition-all duration-300 hover:shadow-lg transform hover:-translate-y-0.5"
-                      style={{
-                        backgroundColor: isEditing && !isSaving ? "#7CE0A8" : "#C6F7D9",
-                        cursor: isEditing && !isSaving ? "pointer" : "not-allowed",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (isEditing && !isSaving) {
-                          e.currentTarget.style.backgroundColor = "#5CA68A";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (isEditing && !isSaving) {
-                          e.currentTarget.style.backgroundColor = "#7CE0A8";
-                        }
-                      }}
-                    >
-                      {isSaving ? (
-                        <>
-                          <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                          Menyimpan...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-5 w-5 mr-2" />
-                          Simpan Perubahan
-                        </>
-                      )}
-                    </Button>
                   </div>
                 </div>
               </CardContent>
