@@ -46,12 +46,6 @@ enum PaymentStatus {
   REFUNDED
 }
 
-enum OTPType {
-  REGISTER
-  LOGIN
-  RESET_PASSWORD
-}
-
 // ==========================================
 // MASTER DATA TABLES
 // ==========================================
@@ -110,7 +104,6 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  otp_codes OTPCode[]
   bookings  Booking[]
   reviews   Review[]
   favorites UserFavorite[]
@@ -118,25 +111,6 @@ model User {
   @@index([email])
   @@index([phone])
   @@map("users")
-}
-
-model OTPCode {
-  otp_id     String   @id @default(uuid()) @db.Uuid
-  user_id    String?  @db.Uuid
-  email      String
-  code       String   @db.VarChar(6)
-  type       OTPType
-  expires_at DateTime
-  verified   Boolean  @default(false)
-
-  created_at DateTime @default(now())
-
-  user User? @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-
-  @@index([email, type])
-  @@index([code])
-  @@index([user_id])
-  @@map("otp_codes")
 }
 
 // ==========================================
