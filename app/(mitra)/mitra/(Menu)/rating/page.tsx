@@ -5,25 +5,24 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Star,
   Filter,
-  ChevronDown,
   Calendar,
   User,
   CheckCircle,
   MessageCircle,
   ThumbsUp,
-  MoreVertical,
-  ChevronUp,
-  ImageIcon,
   Eye,
   X as CloseIcon,
   Send,
 } from 'lucide-react'
 import { RatingStars } from '@/app/components/ui/rating-stars'
+import { useSession } from 'next-auth/react'
 
 // Type untuk Review
 type Review = {
   id: string
-  orderId: string
+  booking_id: string
+  user_id: string
+  vendor_id: string
   userName: string
   userEmail: string
   userAvatar?: string
@@ -40,36 +39,80 @@ type Review = {
   helpfulCount: number
   mitraLikes?: string[]
   isAnonymous?: boolean
+  created_at: Date
+  booking: {
+    booking_number: string
+    scheduled_date: Date
+    notes?: string | null
+    booking_items: {
+      service: {
+        name: string
+      }
+    }[]
+  }
+  user: {
+    name: string
+    email: string
+    avatar?: string | null
+  }
 }
 
-// ✅ FUNGSI HELPER UNTUK MENDAPATKAN NAMA USER YANG BENAR
-const getUserNameFromOrder = (order: any): { name: string; email: string; avatar: string } => {
-  // Jika anonymous, return "Anonymous"
-  if (order.isAnonymous) {
-    return {
-      name: 'Anonymous',
-      email: order.customerInfo?.email || '',
-      avatar: ''
-    };
+// Type untuk Vendor Response
+type VendorResponse = {
+  vendorReply: string
+  replyDate: string
+}
+
+// Type untuk API Response
+type ApiReview = {
+  review_id: string
+  booking_id: string
+  user_id: string
+  vendor_id: string
+  rating: number
+  comment: string | null
+  created_at: Date
+  updated_at: Date
+  booking: {
+    booking_number: string
+    scheduled_date: Date
+    notes: string | null
+    booking_items: Array<{
+      service: {
+        name: string
+      }
+    }>
+    user: {
+      name: string
+      email: string
+      avatar: string | null
+    }
   }
+  user: {
+    name: string
+    email: string
+    avatar: string | null
+  }
+}
 
-  // Prioritas: raterName (data saat memberikan rating) > customerInfo.name > fallback
-  const name = order.raterName || order.customerInfo?.name || 'Pengguna';
-  const email = order.raterEmail || order.customerInfo?.email || '';
-  const avatar = order.raterAvatar || order.customerInfo?.avatar || '';
+export default function UlasanPage() {
+  const [filter, setFilter] = useState('semua')
+  const [sortBy, setSortBy] = useState('terbaru')
+  const [expandedReviews, setExpandedReviews] = useState<string[]>([])
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [vendorId, setVendorId] = useState<string>('')
+  const [vendorName, setVendorName] = useState<string>('')
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState<string>('')
+  const [likedReviews, setLikedReviews] = useState<string[]>([])
+  const { data: session } = useSession()
 
-  return { name, email, avatar };
-};
-
-// FUNGSI HELPER UNTUK FORMAT TANGGAL
-const formatReviewDate = (orderHistory: any[]): { dateString: string; timestamp: number } => {
-  try {
-    const ratingHistory = orderHistory?.find(
-      (h: any) => h.status === 'Rating dan Ulasan Diberikan'
-    )
-
-    if (ratingHistory?.date) {
-      const dateObj = new Date(ratingHistory.date)
+  // Format tanggal
+  const formatReviewDate = (date: Date): { dateString: string; timestamp: number } => {
+    try {
+      const dateObj = new Date(date)
       
       if (isNaN(dateObj.getTime())) {
         const now = new Date()
@@ -91,98 +134,120 @@ const formatReviewDate = (orderHistory: any[]): { dateString: string; timestamp:
         }),
         timestamp: dateObj.getTime()
       }
-    }
-
-    const now = new Date()
-    return {
-      dateString: now.toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }),
-      timestamp: now.getTime()
-    }
-  } catch (error) {
-    console.error('Error formatting date:', error)
-    const now = new Date()
-    return {
-      dateString: now.toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }),
-      timestamp: now.getTime()
+    } catch (error) {
+      console.error('Error formatting date:', error)
+      const now = new Date()
+      return {
+        dateString: now.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        timestamp: now.getTime()
+      }
     }
   }
-}
 
-export default function UlasanPage() {
-  const [filter, setFilter] = useState('semua')
-  const [sortBy, setSortBy] = useState('terbaru')
-  const [expandedReviews, setExpandedReviews] = useState<string[]>([])
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [vendorId, setVendorId] = useState<string>('')
-  const [vendorName, setVendorName] = useState<string>('')
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
-  const [replyingTo, setReplyingTo] = useState<string | null>(null)
-  const [replyText, setReplyText] = useState<string>('')
-  const [likedReviews, setLikedReviews] = useState<string[]>([])
-
-  // Load vendor info dan reviews
+  // Load vendor info dan reviews dari database
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
-        // Ambil data vendor yang sedang login
-        const mitraUser = localStorage.getItem('mitraUser')
-        if (!mitraUser) {
+        // Ambil data vendor yang sedang login dari session atau localStorage (fallback)
+        const mitraUser = session?.user || JSON.parse(localStorage.getItem('mitraUser') || '{}')
+        
+        if (!mitraUser || !mitraUser.id) {
           setIsLoading(false)
           return
         }
 
-        const vendor = JSON.parse(mitraUser)
-        setVendorId(vendor.id)
-        setVendorName(vendor.name)
+        setVendorId(mitraUser.id)
+        setVendorName(mitraUser.name || '')
 
-        // Load semua orders dari user
-        const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]')
+        // Fetch reviews dari API
+        const response = await fetch(`/api/mitra/reviews?vendorId=${mitraUser.id}`)
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch reviews')
+        }
 
-        // Filter orders yang selesai, punya rating, dan sesuai dengan vendor ini
-        const vendorReviews: Review[] = userOrders
-          .filter(
-            (order: any) =>
-              order.status === 'selesai' &&
-              order.rating &&
-              order.rating > 0 &&
-              (order.vendor?.id === vendor.id ||
-                order.vendorId === vendor.id ||
-                order.vendor?.name === vendor.name ||
-                order.vendorName === vendor.name)
-          )
-          .map((order: any) => {
-            // ✅ PERBAIKAN: Gunakan fungsi helper untuk mendapatkan nama yang benar
-            const userData = getUserNameFromOrder(order);
+        const data: ApiReview[] = await response.json()
 
-            const { dateString, timestamp } = formatReviewDate(order.orderHistory)
+        // Transform data ke format Review
+        const vendorReviews: Review[] = data.map((review) => {
+          const { dateString, timestamp } = formatReviewDate(review.created_at)
+          
+          // Ambil service type dari booking items
+          const serviceType = review.booking.booking_items[0]?.service?.name || 'Layanan'
+          
+          // Parse metadata dari notes atau comment (jika ada foto)
+          const comment = review.comment || ''
+          let photos: string[] = []
+          let response: VendorResponse | undefined
+          let helpfulCount = 0
+          let mitraLikes: string[] = []
+          let isAnonymous = false
 
-            return {
-              id: order.id || order.orderId,
-              orderId: order.id || order.orderId,
-              userName: userData.name,
-              userEmail: userData.email,
-              userAvatar: userData.avatar,
-              rating: order.rating,
-              comment: order.review || '',
-              serviceType: order.serviceType || 'Layanan',
-              date: dateString,
-              dateTimestamp: timestamp,
-              photos: order.ratingPhotos || [],
-              response: order.vendorResponse || undefined,
-              helpfulCount: order.helpfulCount || 0,
-              mitraLikes: order.mitraLikes || [],
-              isAnonymous: order.isAnonymous || false,
+          try {
+            // Coba parse metadata dari comment atau notes
+            if (comment.includes('|PHOTOS|')) {
+              const parts = comment.split('|PHOTOS|')
+              const mainComment = parts[0]
+              const photosData = parts[1] ? JSON.parse(parts[1]) : []
+              photos = photosData
             }
-          })
+            
+            if (comment.includes('|RESPONSE|')) {
+              const parts = comment.split('|RESPONSE|')
+              const responseData = parts[1] ? JSON.parse(parts[1]) : null
+              if (responseData) {
+                response = {
+                  vendorReply: responseData.reply,
+                  replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })
+                }
+              }
+            }
+
+            // Parse likes dari comment metadata
+            if (comment.includes('|LIKES|')) {
+              const parts = comment.split('|LIKES|')
+              const likesData = parts[1] ? JSON.parse(parts[1]) : { count: 0, mitraLikes: [] }
+              helpfulCount = likesData.count || 0
+              mitraLikes = likesData.mitraLikes || []
+            }
+
+            // Check anonymous
+            isAnonymous = comment.includes('|ANONYMOUS|')
+          } catch (error) {
+            console.error('Error parsing review metadata:', error)
+          }
+
+          return {
+            id: review.review_id,
+            booking_id: review.booking_id,
+            user_id: review.user_id,
+            vendor_id: review.vendor_id,
+            userName: review.user.name,
+            userEmail: review.user.email,
+            userAvatar: review.user.avatar || undefined,
+            rating: review.rating,
+            comment: comment.split('|')[0], // Ambil hanya komentar utama
+            serviceType,
+            date: dateString,
+            dateTimestamp: timestamp,
+            photos,
+            response,
+            helpfulCount,
+            mitraLikes,
+            isAnonymous,
+            created_at: review.created_at,
+            booking: review.booking,
+            user: review.user
+          }
+        })
 
         setReviews(vendorReviews)
       } catch (error) {
@@ -194,14 +259,7 @@ export default function UlasanPage() {
     }
 
     loadData()
-
-    const handleStorageChange = () => {
-      loadData()
-    }
-
-    window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
-  }, [])
+  }, [session])
 
   // Toggle ekspansi review
   const toggleReviewExpansion = (id: string) => {
@@ -213,98 +271,82 @@ export default function UlasanPage() {
   }
 
   // Handle Like/Unlike
-  const handleLikeReview = (reviewId: string) => {
-    setReviews((prevReviews) =>
-      prevReviews.map((review) => {
-        if (review.id === reviewId) {
-          const mitraLikes = review.mitraLikes || []
-          const alreadyLiked = mitraLikes.includes(vendorId)
-
-          const updatedReview = {
-            ...review,
-            mitraLikes: alreadyLiked
-              ? mitraLikes.filter((id) => id !== vendorId)
-              : [...mitraLikes, vendorId],
-            helpfulCount: alreadyLiked
-              ? Math.max(0, review.helpfulCount - 1)
-              : review.helpfulCount + 1,
-          }
-
-          // Update localStorage
-          const userOrders = JSON.parse(
-            localStorage.getItem('userOrders') || '[]'
-          )
-          const updatedOrders = userOrders.map((order: any) => {
-            if (order.id === reviewId || order.orderId === reviewId) {
-              return {
-                ...order,
-                mitraLikes: updatedReview.mitraLikes,
-                helpfulCount: updatedReview.helpfulCount,
-              }
-            }
-            return order
-          })
-          localStorage.setItem('userOrders', JSON.stringify(updatedOrders))
-
-          // Trigger update event
-          window.dispatchEvent(
-            new CustomEvent('reviewsUpdated', { detail: { vendorId } })
-          )
-
-          return updatedReview
-        }
-        return review
+  const handleLikeReview = async (reviewId: string) => {
+    try {
+      const response = await fetch(`/api/mitra/reviews/${reviewId}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ vendorId }),
       })
-    )
+
+      if (!response.ok) {
+        throw new Error('Failed to like review')
+      }
+
+      const data = await response.json()
+      
+      // Update local state
+      setReviews((prevReviews) =>
+        prevReviews.map((review) => {
+          if (review.id === reviewId) {
+            return {
+              ...review,
+              mitraLikes: data.mitraLikes,
+              helpfulCount: data.helpfulCount,
+            }
+          }
+          return review
+        })
+      )
+    } catch (error) {
+      console.error('Error liking review:', error)
+    }
   }
 
   // Handle Balas Ulasan
-  const handleReplySubmit = (reviewId: string) => {
+  const handleReplySubmit = async (reviewId: string) => {
     if (!replyText.trim()) return
 
-    setReviews((prevReviews) =>
-      prevReviews.map((review) => {
-        if (review.id === reviewId) {
-          const updatedReview = {
-            ...review,
-            response: {
-              vendorReply: replyText,
-              replyDate: new Date().toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              }),
-            },
-          }
-
-          // Update localStorage
-          const userOrders = JSON.parse(
-            localStorage.getItem('userOrders') || '[]'
-          )
-          const updatedOrders = userOrders.map((order: any) => {
-            if (order.id === reviewId || order.orderId === reviewId) {
-              return {
-                ...order,
-                vendorResponse: updatedReview.response,
-              }
-            }
-            return order
-          })
-          localStorage.setItem('userOrders', JSON.stringify(updatedOrders))
-
-          // Trigger update event
-          window.dispatchEvent(
-            new CustomEvent('reviewsUpdated', { detail: { vendorId } })
-          )
-
-          return updatedReview
-        }
-        return review
+    try {
+      const response = await fetch(`/api/mitra/reviews/${reviewId}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          vendorId,
+          reply: replyText 
+        }),
       })
-    )
 
-    setReplyingTo(null)
-    setReplyText('')
+      if (!response.ok) {
+        throw new Error('Failed to submit reply')
+      }
+
+      const data = await response.json()
+      
+      // Update local state
+      setReviews((prevReviews) =>
+        prevReviews.map((review) => {
+          if (review.id === reviewId) {
+            return {
+              ...review,
+              response: data.response,
+              // Update comment untuk menyimpan response di metadata
+              comment: `${review.comment.split('|')[0]}|RESPONSE|${JSON.stringify(data.metadata)}`
+            }
+          }
+          return review
+        })
+      )
+
+      setReplyingTo(null)
+      setReplyText('')
+    } catch (error) {
+      console.error('Error submitting reply:', error)
+    }
   }
 
   // Hitung data statistik

@@ -1216,5 +1216,5 @@ export default function DashboardPage() {
         </div>
       </div>
     </motion.div>
-  );a
+  );
 }
