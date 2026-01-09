@@ -1,7 +1,7 @@
-// page.tsx (/chat) - FIXED VERSION
+// app/chat/[vendorId]/page.tsx - User Chat Page with Database Integration
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
@@ -23,7 +23,7 @@ import {
   Menu,
   X,
   Camera,
-  Image,
+  Image as ImageIcon,
   Play,
   Download,
   File,
@@ -32,24 +32,18 @@ import {
   MicOff,
   Volume2,
   UserPlus,
+  MessageSquare,
+  MoreVertical,
 } from "lucide-react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import EmojiPicker3D from "@/app/components/ui/emoji-picker-3d";
 import CameraModal from "@/app/components/ui/camera-modal";
-import { Vendors } from "@/app/data/dataVendor";
-import {
-  getChatSession,
-  createOrUpdateChatSession,
-  addMessage,
-  markMessagesAsRead,
-  getUserChatSessions,
-  type Message,
-  type ChatSession,
-} from "@/app/data/chatStorage";
+import * as chatService from "@/app/components/lib/services/chatService";
+import type { Message, ChatSession } from "@/app/components/lib/services/chatService";
 
 // VoiceRecorder Component
-const VoiceRecorder = ({ onSend, onCancel }: any) => {
+const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: number) => void; onCancel: () => void }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -63,7 +57,6 @@ const VoiceRecorder = ({ onSend, onCancel }: any) => {
   useEffect(() => {
     startRecording();
     return () => cleanup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cleanup = () => {
@@ -145,44 +138,44 @@ const VoiceRecorder = ({ onSend, onCancel }: any) => {
   };
 
   return (
-    <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 z-50 min-w-[320px]">
-      <div className="flex flex-col items-center gap-4">
+    <div className="fixed bottom-24 right-4 md:right-8 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 z-50 w-[90%] max-w-[300px]">
+      <div className="flex flex-col items-center gap-3">
         <div className="relative">
           <div
-            className={`h-20 w-20 rounded-full flex items-center justify-center ${
+            className={`h-12 w-12 rounded-full flex items-center justify-center ${
               isRecording ? "bg-red-500 animate-pulse" : "bg-gray-300"
             }`}
           >
-            <Mic className="h-10 w-10 text-white" />
+            <Mic className="h-6 w-6 text-white" />
           </div>
         </div>
 
         <div className="text-center">
-          <div className="text-3xl font-mono font-bold text-gray-800">
+          <div className="text-2xl font-mono font-bold text-gray-800">
             {formatTime(recordingTime)}
           </div>
-          <p className="text-sm text-gray-600 mt-2">
+          <p className="text-xs text-gray-600 mt-1">
             {isRecording ? "Merekam..." : "Siap dikirim"}
           </p>
         </div>
 
-        <div className="flex gap-3 w-full">
-          <Button onClick={onCancel} variant="outline" className="flex-1 rounded-full">
-            <X className="h-4 w-4 mr-2" />
+        <div className="flex gap-2 w-full">
+          <Button onClick={onCancel} variant="outline" className="flex-1 rounded-full text-sm h-9">
+            <X className="h-3.5 w-3.5 mr-1" />
             Batal
           </Button>
 
           {isRecording ? (
-            <Button onClick={stopRecording} className="flex-1 rounded-full bg-red-500 hover:bg-red-600">
+            <Button onClick={stopRecording} className="flex-1 rounded-full bg-red-500 hover:bg-red-600 text-sm h-9">
               Stop
             </Button>
           ) : (
             <Button
               onClick={handleSend}
-              className="flex-1 rounded-full bg-green-500 hover:bg-green-600"
+              className="flex-1 rounded-full bg-green-500 hover:bg-green-600 text-sm h-9"
               disabled={!audioBlob}
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="h-3.5 w-3.5 mr-1" />
               Kirim
             </Button>
           )}
@@ -193,7 +186,7 @@ const VoiceRecorder = ({ onSend, onCancel }: any) => {
 };
 
 // Voice Message Player Component
-const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
+const VoiceMessagePlayer = ({ msg, isUser }: { msg: Message; isUser: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(msg.duration || 0);
@@ -203,8 +196,12 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
+  const waveformHeights = useRef<number[]>(
+    Array.from({ length: 40 }, () => Math.random() * 60 + 40)
+  );
+
   useEffect(() => {
-    const audioUrl = msg.audioUrl; // ✅ make it a stable string variable after guard
+    const audioUrl = msg.audioUrl || msg.fileUrl;
     if (!audioUrl) {
       setHasError(true);
       setIsLoading(false);
@@ -235,7 +232,7 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
       setIsPlaying(false);
     };
 
-    audio.src = audioUrl; // ✅ no more string | undefined error
+    audio.src = audioUrl;
     audio.load();
 
     return () => {
@@ -249,7 +246,7 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
         audioRef.current = null;
       }
     };
-  }, [msg.audioUrl]);
+  }, [msg.audioUrl, msg.fileUrl]);
 
   useEffect(() => {
     if (isPlaying && audioRef.current) {
@@ -277,8 +274,7 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current
-        .play()
+      audioRef.current.play()
         .then(() => setIsPlaying(true))
         .catch(() => {
           setHasError(true);
@@ -287,44 +283,41 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
     }
   };
 
-  const formatTime = (seconds: number) => {
+  const formatTimeDisplay = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
   const WaveformBars = () => {
-    const bars = 40;
-    const heights = Array.from({ length: bars }, () => Math.random() * 100 + 20);
+    const heights = waveformHeights.current;
+    const progressWidth = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return (
-      <div className="flex items-center gap-[2px] h-8 flex-1 mx-3">
-        {heights.map((height, i) => {
-          const barProgress = (i / bars) * 100;
-          const isActive = barProgress <= progress;
+      <div className="relative h-8 flex-1 min-w-[120px] mr-2">
+        <div className="absolute inset-0 flex items-center gap-[2px]">
+          {heights.map((height, i) => {
+            const barPosition = ((i + 1) / heights.length) * 100;
+            const isActive = barPosition <= progressWidth;
 
-          return (
-            <div
-              key={i}
-              className={`flex-1 rounded-full transition-all duration-100 ${
-                isActive
-                  ? msg.senderType === "user"
-                    ? "bg-white"
-                    : "bg-blue-500"
-                  : msg.senderType === "user"
-                  ? "bg-blue-300"
-                  : "bg-gray-300"
-              }`}
-              style={{
-                height: `${height}%`,
-                minHeight: "4px",
-                maxHeight: "100%",
-              }}
-            />
-          );
-        })}
+            return (
+              <div
+                key={i}
+                className={`flex-1 rounded-full transition-colors duration-100 ${
+                  isActive
+                    ? isUser ? "bg-white" : "bg-blue-500"
+                    : isUser ? "bg-blue-300/50" : "bg-gray-300"
+                }`}
+                style={{
+                  height: `${height}%`,
+                  minHeight: "6px",
+                  maxHeight: "100%",
+                  minWidth: "2px",
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -332,13 +325,13 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
   if (hasError) {
     return (
       <div
-        className={`flex items-center gap-2 p-3 rounded-xl min-w-[280px] max-w-[350px] ${
-          msg.senderType === "user"
+        className={`flex items-center gap-2 p-3 rounded-xl min-w-[200px] max-w-[300px] ${
+          isUser
             ? "bg-gradient-to-r from-blue-500 to-blue-600"
             : "bg-white border border-gray-200"
         }`}
       >
-        <p className={`text-sm ${msg.senderType === "user" ? "text-white" : "text-gray-600"}`}>
+        <p className={`text-sm ${isUser ? "text-white" : "text-gray-600"}`}>
           ⚠️ Tidak dapat memutar audio
         </p>
       </div>
@@ -347,8 +340,8 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
 
   return (
     <div
-      className={`flex items-center gap-2 p-2 rounded-xl min-w-[280px] max-w-[350px] ${
-        msg.senderType === "user"
+      className={`flex items-center gap-3 p-2 rounded-xl min-w-[200px] max-w-[300px] ${
+        isUser
           ? "bg-gradient-to-r from-blue-500 to-blue-600"
           : "bg-white border border-gray-200"
       }`}
@@ -357,15 +350,13 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
         onClick={handlePlayPause}
         disabled={isLoading || hasError}
         className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-          msg.senderType === "user"
-            ? "bg-white/20 hover:bg-white/30"
-            : "bg-blue-500 hover:bg-blue-600"
-        } ${(isLoading || hasError) ? "opacity-50 cursor-not-allowed" : ""}`}
+          isUser ? "bg-white/20 hover:bg-white/30" : "bg-blue-500 hover:bg-blue-600"
+        } ${isLoading || hasError ? "opacity-50 cursor-not-allowed" : ""}`}
       >
         {isLoading ? (
           <svg className="h-5 w-5 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
         ) : isPlaying ? (
           <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -380,8 +371,8 @@ const VoiceMessagePlayer = ({ msg }: { msg: Message }) => {
 
       <WaveformBars />
 
-      <div className={`text-xs font-medium whitespace-nowrap ${msg.senderType === "user" ? "text-white" : "text-gray-600"}`}>
-        {isPlaying ? formatTime(currentTime) : formatTime(duration)}
+      <div className={`text-xs font-medium whitespace-nowrap flex-shrink-0 ${isUser ? "text-white" : "text-gray-600"}`}>
+        {isPlaying ? formatTimeDisplay(currentTime) : formatTimeDisplay(duration)}
       </div>
     </div>
   );
@@ -403,8 +394,8 @@ const MediaPopup = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute bottom-24 left-6 bg-white rounded-xl shadow-2xl border border-gray-200 p-3 z-50 min-w-[180px]">
+      <div className="fixed inset-0 z-40 md:hidden" onClick={onClose} />
+      <div className="fixed md:absolute bottom-24 left-4 md:left-6 bg-white rounded-xl shadow-2xl border border-gray-200 p-3 z-50 min-w-[180px]">
         <div className="flex flex-col gap-1">
           <button
             onClick={onTakePhoto}
@@ -426,7 +417,7 @@ const MediaPopup = ({
             className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <div className="h-9 w-9 rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center">
-              <Image className="h-5 w-5 text-white" />
+              <ImageIcon className="h-5 w-5 text-white" />
             </div>
             <div className="text-left">
               <p className="font-medium text-gray-800">Gambar & Video</p>
@@ -441,23 +432,13 @@ const MediaPopup = ({
   );
 };
 
-// Image/Video Message Component
-const MediaMessage = ({
-  msg,
-  onDownload,
-  timestamp,
-}: {
-  msg: Message;
-  onDownload: () => void;
-  timestamp: string;
-}) => {
+// Media Message Component
+const MediaMessage = ({ msg, isUser, timestamp }: { msg: Message; isUser: boolean; timestamp: string }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [videoDuration, setVideoDuration] = useState<number>(0);
-  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const formatFileSize = (bytes: number | undefined) => {
+  const formatFileSize = (bytes: number | undefined | null) => {
     if (!bytes) return "0 KB";
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -465,38 +446,28 @@ const MediaMessage = ({
   };
 
   const handlePlayPause = () => {
-    if (msg.isVideo && videoRef.current) {
+    if (videoRef.current) {
       if (isVideoPlaying) videoRef.current.pause();
       else videoRef.current.play();
       setIsVideoPlaying(!isVideoPlaying);
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  const handleDownload = () => {
+    if (!msg.fileUrl) return;
+    const link = document.createElement("a");
+    link.href = msg.fileUrl;
+    link.download = msg.fileName || "file";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  useEffect(() => {
-    if (msg.isVideo && videoRef.current) {
-      const video = videoRef.current;
+  const safeFileUrl = msg.fileUrl || "";
+  const isImage = msg.isImage || msg.messageType === "IMAGE";
+  const isVideo = msg.isVideo || msg.messageType === "VIDEO";
 
-      const handleLoadedMetadata = () => setVideoDuration(video.duration);
-      const handleTimeUpdate = () => setVideoCurrentTime(video.currentTime);
-
-      video.addEventListener("loadedmetadata", handleLoadedMetadata);
-      video.addEventListener("timeupdate", handleTimeUpdate);
-
-      return () => {
-        video.removeEventListener("loadedmetadata", handleLoadedMetadata);
-        video.removeEventListener("timeupdate", handleTimeUpdate);
-      };
-    }
-  }, [msg.isVideo]);
-
-  // ✅ Guard fileUrl for TS + runtime safety
-  if ((msg.isImage || msg.isVideo) && !msg.fileUrl) {
+  if ((isImage || isVideo) && !safeFileUrl) {
     return (
       <div className="p-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
         ⚠️ Media tidak tersedia
@@ -504,34 +475,30 @@ const MediaMessage = ({
     );
   }
 
-  const safeFileUrl = msg.fileUrl ?? "";
-
   return (
     <div
       className={`relative overflow-hidden rounded-xl border ${
-        msg.senderType === "user" ? "border-blue-200" : "border-gray-200"
-      } max-w-[280px] transition-all duration-300 ${isHovered ? "shadow-lg scale-[1.02]" : "shadow-md"}`}
+        isUser ? "border-blue-200" : "border-gray-200"
+      } max-w-[240px] md:max-w-[280px] transition-all duration-300 ${isHovered ? "shadow-lg scale-[1.02]" : "shadow-md"}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative">
-        {msg.isImage ? (
+        {isImage && (
           <>
             <img
               src={safeFileUrl}
               alt={msg.fileName || "Gambar"}
-              className="w-full h-auto max-h-[300px] object-cover"
+              className="w-full h-auto max-h-[200px] object-cover"
               loading="lazy"
             />
-
             <div
               className={`absolute bottom-2 right-2 px-2 py-1 rounded text-xs font-medium ${
-                msg.senderType === "user" ? "bg-black/60 text-white" : "bg-white/90 text-gray-800"
+                isUser ? "bg-black/60 text-white" : "bg-white/90 text-gray-800"
               }`}
             >
               {timestamp}
             </div>
-
             {isHovered && (
               <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                 <button
@@ -545,37 +512,21 @@ const MediaMessage = ({
               </div>
             )}
           </>
-        ) : msg.isVideo ? (
+        )}
+
+        {isVideo && (
           <>
             <div className="relative">
               {!isVideoPlaying && msg.thumbnail && (
-                <img src={msg.thumbnail} alt="Video thumbnail" className="w-full h-auto max-h-[300px] object-cover" />
+                <img src={msg.thumbnail} alt="Video thumbnail" className="w-full h-auto max-h-[200px] object-cover" />
               )}
-
               <video
                 ref={videoRef}
                 src={safeFileUrl}
-                className={`w-full h-auto max-h-[300px] object-cover ${!isVideoPlaying ? "hidden" : ""}`}
+                className={`w-full h-auto max-h-[200px] object-cover ${!isVideoPlaying ? "hidden" : ""}`}
                 controls={isVideoPlaying}
                 onEnded={() => setIsVideoPlaying(false)}
               />
-
-              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                <div
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    msg.senderType === "user" ? "bg-black/60 text-white" : "bg-white/90 text-gray-800"
-                  }`}
-                >
-                  {timestamp}
-                </div>
-
-                {isVideoPlaying && videoDuration > 0 && (
-                  <div className="px-2 py-1 rounded text-xs font-medium bg-black/60 text-white">
-                    {formatTime(videoCurrentTime)} / {formatTime(videoDuration)}
-                  </div>
-                )}
-              </div>
-
               {!isVideoPlaying && (
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex flex-col items-center justify-center">
                   <button
@@ -584,187 +535,59 @@ const MediaMessage = ({
                   >
                     <Play className="w-8 h-8 text-gray-800 ml-1" fill="currentColor" />
                   </button>
-
-                  {videoDuration > 0 && (
-                    <div className="px-3 py-1 rounded-full bg-black/60 text-white text-sm font-medium">
-                      {formatTime(videoDuration)}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
           </>
-        ) : null}
+        )}
       </div>
 
-      <div className={`p-3 ${msg.senderType === "user" ? "bg-gradient-to-r from-blue-500 to-blue-600" : "bg-white"}`}>
-        <div className="flex items-center justify-between mb-2">
+      <div className={`p-2 ${isUser ? "bg-gradient-to-r from-blue-500 to-blue-600" : "bg-white"}`}>
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {msg.isImage ? (
-              <div className="p-1.5 bg-white/20 rounded">
-                <Image className="w-4 h-4 text-white" />
-              </div>
-            ) : msg.isVideo ? (
-              <div className="p-1.5 bg-white/20 rounded">
-                <VideoIcon className="w-4 h-4 text-white" />
-              </div>
+            {isImage ? (
+              <ImageIcon className={`w-4 h-4 ${isUser ? "text-white" : "text-gray-600"}`} />
+            ) : isVideo ? (
+              <VideoIcon className={`w-4 h-4 ${isUser ? "text-white" : "text-gray-600"}`} />
             ) : (
-              <div className="p-1.5 bg-white/20 rounded">
-                <File className="w-4 h-4 text-white" />
-              </div>
+              <File className={`w-4 h-4 ${isUser ? "text-white" : "text-gray-600"}`} />
             )}
-
             <div>
-              <p className={`text-xs font-medium truncate max-w-[180px] ${msg.senderType === "user" ? "text-white" : "text-gray-700"}`}>
+              <p className={`text-xs font-medium truncate max-w-[140px] ${isUser ? "text-white" : "text-gray-700"}`}>
                 {msg.fileName}
               </p>
-              <p className={`text-xs ${msg.senderType === "user" ? "text-blue-100" : "text-gray-500"}`}>
+              <p className={`text-xs ${isUser ? "text-blue-100" : "text-gray-500"}`}>
                 {formatFileSize(msg.fileSize)}
               </p>
             </div>
           </div>
-
           <button
-            onClick={onDownload}
-            className={`p-1.5 rounded-full hover:bg-white/20 transition-colors ${msg.senderType === "user" ? "text-white" : "text-gray-600"}`}
+            onClick={handleDownload}
+            className={`p-1.5 rounded-full hover:bg-white/20 transition-colors ${isUser ? "text-white" : "text-gray-600"}`}
             title="Download"
           >
             <Download className="w-4 h-4" />
           </button>
         </div>
-
-        {msg.text && msg.text !== "[Gambar]" && msg.text !== "[Video]" && (
-          <div className="mt-2 pt-2 border-t border-white/20">
-            <p className={`text-sm ${msg.senderType === "user" ? "text-white" : "text-gray-800"}`}>
-              {msg.text}
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-// Call Modal Component
-const CallModal = ({
-  isOpen,
-  onClose,
-  vendor,
-  callType,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  vendor: any;
-  callType: "audio" | "video";
-}) => {
-  const [duration, setDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-
-    if (isOpen) {
-      interval = setInterval(() => setDuration((prev) => prev + 1), 1000);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && vendor?.phone) {
-      if (callType === "audio") window.location.href = `tel:${vendor.phone}`;
-    }
-  }, [isOpen, vendor?.phone, callType]);
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  if (!isOpen) return null;
-
-  const vendorAvatar = vendor?.avatar ?? "https://api.dicebear.com/7.x/avataaars/svg?seed=Vendor";
-  const vendorName = vendor?.name ?? "Vendor";
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-      <div className="relative w-full max-w-md p-6">
-        <div className="text-center mb-8">
-          <div className="h-32 w-32 rounded-full border-4 border-white/20 mx-auto overflow-hidden mb-4">
-            <img src={vendorAvatar} alt={vendorName} className="h-full w-full object-cover" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">{vendorName}</h2>
-          <p className="text-white/70 mb-1">{callType === "audio" ? "Panggilan Telepon" : "Panggilan Video"}</p>
-          {vendor?.phone && <p className="text-white/50 text-sm">Nomor: {vendor.phone}</p>}
-        </div>
-
-        <div className="text-center mb-8">
-          <div className="text-4xl font-mono text-white mb-2">{formatDuration(duration)}</div>
-          <p className="text-white/60 text-sm">{callType === "audio" ? "Berbicara..." : "Video call aktif..."}</p>
-        </div>
-
-        <div className="flex justify-center gap-4 mb-8">
-          <button
-            onClick={() => setIsMuted(!isMuted)}
-            className={`h-16 w-16 rounded-full flex items-center justify-center ${
-              isMuted ? "bg-red-500" : "bg-white/20"
-            } hover:bg-white/30 transition-colors`}
-          >
-            {isMuted ? <MicOff className="h-6 w-6 text-white" /> : <Mic className="h-6 w-6 text-white" />}
-          </button>
-
-          <button
-            onClick={() => setIsSpeakerOn(!isSpeakerOn)}
-            className={`h-16 w-16 rounded-full flex items-center justify-center ${
-              isSpeakerOn ? "bg-green-500" : "bg-white/20"
-            } hover:bg-white/30 transition-colors`}
-          >
-            <Volume2 className="h-6 w-6 text-white" />
-          </button>
-
-          <button
-            onClick={() => alert("Fitur tambah peserta dalam pengembangan")}
-            className="h-16 w-16 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-          >
-            <UserPlus className="h-6 w-6 text-white" />
-          </button>
-        </div>
-
-        <div className="text-center">
-          <button
-            onClick={onClose}
-            className="h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center mx-auto transition-colors animate-pulse"
-          >
-            <PhoneOff className="h-8 w-8 text-white transform rotate-135" />
-          </button>
-          <p className="text-white/50 text-sm mt-4">Tekan untuk mengakhiri panggilan</p>
-        </div>
-
-        {callType === "video" && (
-          <div className="absolute bottom-6 right-6 h-24 w-24 rounded-lg border-2 border-white/30 overflow-hidden bg-black">
-            <div className="h-full w-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <div className="text-white text-xs">Anda</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default function ChatPage() {
+// Main Chat Page Component
+export default function UserChatPage() {
   const params = useParams();
   const router = useRouter();
-  const vendorId = (params?.vendorId as string) || "1";
-  const vendor = Vendors.find((v) => v.id === vendorId);
+  const vendorId = (params?.vendorId as string) || "";
 
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  // State for current user and vendor
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; avatar: string } | null>(null);
+  const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatList, setChatList] = useState<ChatSession[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // UI State
   const [newMessage, setNewMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -772,242 +595,228 @@ export default function ChatPage() {
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [showMediaPopup, setShowMediaPopup] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
-
-  const [isCallActive, setIsCallActive] = useState(false);
-  const [callType, setCallType] = useState<"audio" | "video" | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ SAFE vendor fields (fix string | undefined everywhere)
-  const vendorName = vendor?.name ?? "Vendor";
-  const vendorAvatar = vendor?.avatar ?? "https://api.dicebear.com/7.x/avataaars/svg?seed=Vendor";
-  const vendorPhone = vendor?.phone;
-
+  // Load current user from auth
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const user = localStorage.getItem("user");
-      if (user) {
-        setCurrentUser(JSON.parse(user));
-      } else {
-        const mockUser = {
-          id: "user_123",
-          name: "User Demo",
-          email: "user@demo.com",
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=User",
-        };
-        localStorage.setItem("user", JSON.stringify(mockUser));
-        setCurrentUser(mockUser);
+    const loadCurrentUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        const data = await response.json();
+        if (data.user) {
+          setCurrentUser({
+            id: data.user.user_id,
+            name: data.user.name,
+            avatar: data.user.avatar || "/profile.svg",
+          });
+        }
+      } catch (error) {
+        console.error("Error loading current user:", error);
       }
-    }
+    };
+    loadCurrentUser();
+  }, []);
+
+  // Load chat session and messages
+  useEffect(() => {
+    if (!currentUser?.id || !vendorId) return;
+
+    const loadChatData = async () => {
+      setIsLoading(true);
+      try {
+        // Get or create session
+        const session = await chatService.getOrCreateSession(currentUser.id, vendorId);
+        if (session) {
+          setCurrentSession(session);
+          setMessages(session.messages || []);
+          
+          // Mark messages as read
+          await chatService.markAsRead(currentUser.id, vendorId, "user");
+        }
+
+        // Load all user sessions for sidebar
+        const sessions = await chatService.getUserSessions(currentUser.id);
+        setChatList(sessions);
+      } catch (error) {
+        console.error("Error loading chat data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadChatData();
+  }, [currentUser?.id, vendorId]);
+
+  // Polling for new messages
+  useEffect(() => {
+    if (!currentUser?.id || !vendorId) return;
+
+    const pollMessages = async () => {
+      try {
+        const newMessages = await chatService.getMessages(currentUser.id, vendorId);
+        if (newMessages.length > messages.length) {
+          setMessages(newMessages);
+          await chatService.markAsRead(currentUser.id, vendorId, "user");
+        }
+      } catch (error) {
+        console.error("Error polling messages:", error);
+      }
+    };
+
+    pollingRef.current = setInterval(pollMessages, 3000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [currentUser?.id, vendorId, messages.length]);
+
+  // Scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   useEffect(() => {
-    if (!vendor || !currentUser) return;
-
-    const session = createOrUpdateChatSession(
-      currentUser.id,
-      currentUser.name,
-      currentUser.avatar,
-      vendorId,
-      vendorName,
-      vendorAvatar,
-      vendorPhone
-    );
-
-    setMessages(session.messages);
-
-    markMessagesAsRead(currentUser.id, vendorId, "user");
-
-    const sessions = getUserChatSessions(currentUser.id);
-    setChatList(sessions);
-  }, [vendorId, vendor, currentUser, vendorName, vendorAvatar, vendorPhone]);
-
-  useEffect(() => {
-    const handleChatUpdate = () => {
-      if (!currentUser) return;
-
-      const session = getChatSession(currentUser.id, vendorId);
-      if (session) setMessages(session.messages);
-
-      const sessions = getUserChatSessions(currentUser.id);
-      setChatList(sessions);
-    };
-
-    window.addEventListener("chat-update", handleChatUpdate);
-    return () => window.removeEventListener("chat-update", handleChatUpdate);
-  }, [currentUser, vendorId]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
-  const handlePhoneCall = () => {
-    if (!vendorPhone) {
-      alert("Nomor telepon vendor tidak tersedia");
-      return;
-    }
-    setCallType("audio");
-    setIsCallActive(true);
-  };
-
-  const handleVideoCall = () => {
-    if (!vendorPhone) {
-      alert("Nomor telepon vendor tidak tersedia untuk video call");
-      return;
-    }
-    alert("Video call akan segera tersedia. Untuk saat ini, gunakan panggilan telepon biasa.");
-  };
-
-  const handleEndCall = () => {
-    setIsCallActive(false);
-    setCallType(null);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
+  // Send text message
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !currentUser || !vendor) return;
+    if (!newMessage.trim() || !currentUser?.id || !vendorId || isSending) return;
 
-    addMessage(currentUser.id, vendorId, {
-      senderId: currentUser.id,
-      senderType: "user",
-      recipientId: vendorId,
-      text: newMessage,
-      timestamp: new Date(),
-      read: false,
-    });
+    setIsSending(true);
+    try {
+      const sentMessage = await chatService.sendTextMessage(
+        currentUser.id,
+        vendorId,
+        currentUser.id,
+        "user",
+        newMessage.trim()
+      );
 
-    setNewMessage("");
-
-    const session = getChatSession(currentUser.id, vendorId);
-    if (session) setMessages(session.messages);
+      if (sentMessage) {
+        setMessages((prev) => [...prev, sentMessage]);
+        setNewMessage("");
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      alert("Gagal mengirim pesan. Silakan coba lagi.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const handleEmojiSelect = (emoji: string) => {
-    setNewMessage((prev) => prev + emoji);
-    setShowEmojiPicker(false);
-  };
+  // Send voice message
+  const handleSendVoiceMessage = async (audioBlob: Blob, duration: number) => {
+    if (!currentUser?.id || !vendorId || isSending) return;
 
-  const handleSendVoiceMessage = (audioBlob: Blob, duration: number) => {
-    if (!currentUser || !vendor) return;
-
-    const audioUrl = URL.createObjectURL(audioBlob);
-
-    addMessage(currentUser.id, vendorId, {
-      senderId: currentUser.id,
-      senderType: "user",
-      recipientId: vendorId,
-      text: "[Pesan Suara]",
-      audioUrl,
-      timestamp: new Date(),
-      read: false,
-      isVoiceMessage: true,
-      duration,
-    });
-
+    setIsSending(true);
     setShowVoiceRecorder(false);
+    try {
+      const sentMessage = await chatService.sendVoiceMessage(
+        currentUser.id,
+        vendorId,
+        currentUser.id,
+        "user",
+        audioBlob,
+        duration
+      );
 
-    const session = getChatSession(currentUser.id, vendorId);
-    if (session) setMessages(session.messages);
+      if (sentMessage) {
+        setMessages((prev) => [...prev, sentMessage]);
+      }
+    } catch (error) {
+      console.error("Error sending voice message:", error);
+      alert("Gagal mengirim pesan suara. Silakan coba lagi.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!currentUser || !vendor) return;
+  // Handle file selection
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentUser?.id || !vendorId || isSending) return;
 
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    const fileUrl = URL.createObjectURL(file);
-
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
 
-    let thumbnail: string | undefined = undefined;
-    if (isVideo) {
-      thumbnail =
-        "https://images.unsplash.com/photo-1563298723-dcfebaa392e3?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80";
+    setIsSending(true);
+    try {
+      let sentMessage: Message | null = null;
+
+      if (isImage) {
+        sentMessage = await chatService.sendImageMessage(
+          currentUser.id,
+          vendorId,
+          currentUser.id,
+          "user",
+          file
+        );
+      } else if (isVideo) {
+        sentMessage = await chatService.sendVideoMessage(
+          currentUser.id,
+          vendorId,
+          currentUser.id,
+          "user",
+          file
+        );
+      }
+
+      if (sentMessage) {
+        setMessages((prev) => [...prev, sentMessage!]);
+      }
+    } catch (error) {
+      console.error("Error sending file:", error);
+      alert("Gagal mengirim file. Silakan coba lagi.");
+    } finally {
+      setIsSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-
-    addMessage(currentUser.id, vendorId, {
-      senderId: currentUser.id,
-      senderType: "user",
-      recipientId: vendorId,
-      text: isImage ? "[Gambar]" : isVideo ? "[Video]" : "[File]",
-      timestamp: new Date(),
-      read: false,
-      isImage,
-      isVideo,
-      fileUrl,
-      fileName: file.name,
-      fileType: file.type,
-      fileSize: file.size,
-      thumbnail,
-    });
-
-    if (fileInputRef.current) fileInputRef.current.value = "";
-
-    const session = getChatSession(currentUser.id, vendorId);
-    if (session) setMessages(session.messages);
   };
 
-  const handlePaperclipClick = () => {
-    setShowMediaPopup(!showMediaPopup);
-    setShowEmojiPicker(false);
-    setShowVoiceRecorder(false);
+  // Handle camera capture
+  const handleCameraCapture = async (photoBlob: Blob) => {
+    if (!currentUser?.id || !vendorId || isSending) return;
+
     setShowCameraModal(false);
-  };
+    setIsSending(true);
+    try {
+      const sentMessage = await chatService.sendImageMessage(
+        currentUser.id,
+        vendorId,
+        currentUser.id,
+        "user",
+        photoBlob
+      );
 
-  const handleTakePhoto = () => {
-    setShowCameraModal(true);
-    setShowMediaPopup(false);
-  };
-
-  const handleCameraCapture = (photoBlob: Blob) => {
-    if (!currentUser || !vendor) return;
-
-    const fileUrl = URL.createObjectURL(photoBlob);
-
-    addMessage(currentUser.id, vendorId, {
-      senderId: currentUser.id,
-      senderType: "user",
-      recipientId: vendorId,
-      text: "[Foto dari Kamera]",
-      timestamp: new Date(),
-      read: false,
-      isImage: true,
-      fileUrl,
-      fileName: `foto_${Date.now()}.jpg`,
-      fileType: "image/jpeg",
-      fileSize: photoBlob.size,
-    });
-
-    const session = getChatSession(currentUser.id, vendorId);
-    if (session) setMessages(session.messages);
-  };
-
-  const handleSelectImage = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = "image/*,video/*";
-      fileInputRef.current.click();
-      setShowMediaPopup(false);
+      if (sentMessage) {
+        setMessages((prev) => [...prev, sentMessage]);
+      }
+    } catch (error) {
+      console.error("Error sending photo:", error);
+      alert("Gagal mengirim foto. Silakan coba lagi.");
+    } finally {
+      setIsSending(false);
     }
   };
 
-  const handleDownloadMedia = (msg: Message) => {
-    if (!msg.fileUrl) return;
-    const link = document.createElement("a");
-    link.href = msg.fileUrl;
-    link.download = msg.fileName || "file";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Emoji handler
+  const handleEmojiSelect = (emoji: string) => {
+    setNewMessage((prev) => prev + emoji);
+    setShowEmojiPicker(false);
   };
 
+  // Format functions
   const formatTime = (date: Date) => format(date, "HH:mm", { locale: id });
 
   const formatDate = (date: Date) => {
@@ -1034,22 +843,42 @@ export default function ChatPage() {
     return format(date, "dd/MM/yy", { locale: id });
   };
 
-  const filteredChats = chatList.filter((chat) => chat.mitraName.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Filter chats
+  const filteredChats = chatList.filter((chat) =>
+    (chat.mitraName || "").toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
+  // Render message content
   const renderMessageContent = (msg: Message) => {
-    if (msg.isVoiceMessage) return <VoiceMessagePlayer msg={msg} />;
-    if (msg.isImage || msg.isVideo)
-      return <MediaMessage msg={msg} onDownload={() => handleDownloadMedia(msg)} timestamp={formatTime(msg.timestamp)} />;
+    const isUser = msg.senderType === "user";
+    const isVoice = msg.isVoiceMessage || msg.messageType === "VOICE";
+    const isImage = msg.isImage || msg.messageType === "IMAGE";
+    const isVideo = msg.isVideo || msg.messageType === "VIDEO";
+
+    if (isVoice) {
+      return <VoiceMessagePlayer msg={msg} isUser={isUser} />;
+    }
+
+    if (isImage || isVideo) {
+      return <MediaMessage msg={msg} isUser={isUser} timestamp={formatTime(msg.timestamp)} />;
+    }
+
     return <p className="text-sm md:text-base leading-relaxed break-words">{msg.text}</p>;
   };
 
-  if (!vendor) {
+  // Safe vendor data
+  const vendorName = currentSession?.mitraName || "Vendor";
+  const vendorAvatar = currentSession?.mitraAvatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=Vendor";
+  const vendorOnline = currentSession?.mitraOnline || false;
+  const vendorVerified = currentSession?.mitraVerified || false;
+  const vendorPhone = currentSession?.mitraPhone;
+
+  if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Vendor Tidak Ditemukan</h1>
-          <p className="text-muted-foreground mb-4">Vendor yang Anda cari tidak tersedia</p>
-          <Button onClick={() => router.push("/jasa")}>Kembali ke Daftar Jasa</Button>
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Memuat chat...</p>
         </div>
       </div>
     );
@@ -1060,10 +889,10 @@ export default function ChatPage() {
       {/* Sidebar */}
       <div
         className={`
-        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0 fixed lg:relative z-30 w-80 bg-white border-r
-        transition-transform duration-300 h-full flex flex-col
-      `}
+          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0 fixed lg:relative z-30 w-80 bg-white border-r
+          transition-transform duration-300 h-full flex flex-col
+        `}
       >
         <div className="p-4 border-b bg-white">
           <div className="flex items-center justify-between mb-4">
@@ -1087,6 +916,7 @@ export default function ChatPage() {
         <div className="flex-1 overflow-y-auto">
           {filteredChats.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
+              <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-sm">Belum ada percakapan</p>
               <p className="text-xs mt-1">Mulai chat dengan vendor</p>
             </div>
@@ -1107,22 +937,30 @@ export default function ChatPage() {
                   <div className="relative">
                     <Avatar className="h-12 w-12 border-2 border-white shadow">
                       <AvatarImage src={chat.mitraAvatar} alt={chat.mitraName} />
-                      <AvatarFallback>{chat.mitraName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarFallback>{(chat.mitraName || "V").substring(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    {chat.mitraOnline && <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white" />}
+                    {chat.mitraOnline && (
+                      <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white" />
+                    )}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-1">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-sm text-gray-800 truncate">{chat.mitraName}</h3>
-                        <Badge className="bg-green-500 hover:bg-green-600 text-xs px-1.5 py-0">✓</Badge>
+                        {chat.mitraVerified && (
+                          <Badge className="bg-green-500 hover:bg-green-600 text-xs px-1.5 py-0">✓</Badge>
+                        )}
                       </div>
-                      <span className="text-xs text-gray-500 whitespace-nowrap ml-2">{formatChatTime(chat.timestamp)}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
+                        {formatChatTime(chat.timestamp)}
+                      </span>
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <p className="text-sm text-gray-600 truncate pr-2">{chat.lastMessage || "Mulai percakapan"}</p>
+                      <p className="text-sm text-gray-600 truncate pr-2">
+                        {chat.lastMessage || "Mulai percakapan"}
+                      </p>
                       {chat.userUnreadCount > 0 && (
                         <Badge className="bg-blue-500 hover:bg-blue-600 text-white rounded-full h-5 w-5 p-0 flex items-center justify-center text-xs flex-shrink-0">
                           {chat.userUnreadCount}
@@ -1137,20 +975,36 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {isSidebarOpen && <div className="lg:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)} />}
+      {isSidebarOpen && (
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)} />
+      )}
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col h-full relative">
         {/* Header */}
-        <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white border-b shadow-sm z-20 flex-shrink-0">
+        <motion.header
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="bg-white border-b shadow-sm z-20 flex-shrink-0"
+        >
           <div className="px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(true)} className="lg:hidden rounded-full hover:bg-gray-100">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="lg:hidden rounded-full hover:bg-gray-100"
+                >
                   <Menu className="h-5 w-5" />
                 </Button>
 
-                <Button variant="ghost" size="icon" onClick={() => router.push(`/jasa/detailjasa/${vendorId}`)} className="rounded-full hover:bg-gray-100">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => router.back()}
+                  className="rounded-full hover:bg-gray-100"
+                >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
 
@@ -1162,12 +1016,19 @@ export default function ChatPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h1 className="font-semibold text-gray-800">{vendorName}</h1>
-                    {vendor.verified && <Badge className="bg-green-500 hover:bg-green-600 text-xs">Verified</Badge>}
+                    {vendorVerified && (
+                      <Badge className="bg-green-500 hover:bg-green-600 text-xs">Verified</Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <p className="text-xs text-green-600">Online</p>
-                    {vendorPhone && <p className="text-xs text-gray-500 ml-2">📞 {vendorPhone}</p>}
+                    {vendorOnline ? (
+                      <>
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <p className="text-xs text-green-600">Online</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-500">Offline</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1177,8 +1038,7 @@ export default function ChatPage() {
                   variant="ghost"
                   size="icon"
                   className="rounded-full hover:bg-blue-50 hover:text-blue-600"
-                  onClick={handlePhoneCall}
-                  disabled={isCallActive}
+                  onClick={() => vendorPhone && (window.location.href = `tel:${vendorPhone}`)}
                   title="Telepon"
                 >
                   <Phone className="h-5 w-5" />
@@ -1187,11 +1047,13 @@ export default function ChatPage() {
                   variant="ghost"
                   size="icon"
                   className="rounded-full hover:bg-blue-50 hover:text-blue-600"
-                  onClick={handleVideoCall}
-                  disabled={isCallActive}
+                  onClick={() => alert("Video call akan segera tersedia")}
                   title="Video Call"
                 >
                   <Video className="h-5 w-5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="rounded-full hover:bg-gray-100">
+                  <MoreVertical className="h-5 w-5" />
                 </Button>
               </div>
             </div>
@@ -1199,20 +1061,11 @@ export default function ChatPage() {
         </motion.header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-white to-blue-50/30">
-          <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gradient-to-b from-white to-blue-50/30">
+          <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
             {messages.length === 0 ? (
               <div className="text-center py-12">
-                <div className="text-gray-400 mb-4">
-                  <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                </div>
+                <MessageSquare className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-700 mb-2">Mulai Percakapan</h3>
                 <p className="text-sm text-gray-500">Kirim pesan untuk memulai chat dengan {vendorName}</p>
               </div>
@@ -1220,6 +1073,9 @@ export default function ChatPage() {
               messages.map((msg, idx) => {
                 const showDate =
                   idx === 0 || formatDate(messages[idx - 1].timestamp) !== formatDate(msg.timestamp);
+                const isUser = msg.senderType === "user";
+                const isVoice = msg.isVoiceMessage || msg.messageType === "VOICE";
+                const isMedia = msg.isImage || msg.isVideo || msg.messageType === "IMAGE" || msg.messageType === "VIDEO";
 
                 return (
                   <React.Fragment key={msg.id}>
@@ -1234,37 +1090,39 @@ export default function ChatPage() {
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className={`flex ${msg.senderType === "user" ? "justify-end" : "justify-start"} items-end`}
+                      transition={{ delay: idx * 0.02 }}
+                      className={`flex ${isUser ? "justify-end" : "justify-start"} items-end`}
                     >
                       <div className="flex max-w-[85%] gap-2">
-                        {msg.senderType === "mitra" && !msg.isImage && !msg.isVideo && !msg.isVoiceMessage && (
+                        {!isUser && !isMedia && !isVoice && (
                           <Avatar className="h-8 w-8 mt-1 flex-shrink-0">
                             <AvatarImage src={vendorAvatar} />
-                            <AvatarFallback className="text-xs">{vendorName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            <AvatarFallback className="text-xs">
+                              {vendorName.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
                           </Avatar>
                         )}
 
                         <div
                           className={`relative ${
-                            msg.isImage || msg.isVideo
+                            isMedia || isVoice
                               ? ""
-                              : msg.senderType === "user"
+                              : isUser
                               ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl rounded-br-none shadow-lg px-4 py-3"
                               : "bg-white border shadow-sm rounded-2xl rounded-bl-none px-4 py-3"
                           }`}
                         >
                           {renderMessageContent(msg)}
 
-                          {(msg.isVoiceMessage || (!msg.isImage && !msg.isVideo)) && (
-                            <div className={`flex items-center gap-1 mt-2 ${msg.senderType === "user" ? "justify-end" : "justify-start"}`}>
-                              <span className={`text-xs ${msg.senderType === "user" ? "text-blue-100" : "text-gray-400"}`}>{formatTime(msg.timestamp)}</span>
-                              {msg.senderType === "user" && (
+                          {!isMedia && !isVoice && (
+                            <div className={`flex items-center gap-1 mt-2 ${isUser ? "justify-end" : "justify-start"}`}>
+                              <span className={`text-xs ${isUser ? "text-blue-100" : "text-gray-400"}`}>
+                                {formatTime(msg.timestamp)}
+                              </span>
+                              {isUser && (
                                 <span className="text-xs">
-                                  {msg.read ? (
+                                  {msg.isRead ? (
                                     <CheckCheck className="h-3 w-3 text-blue-200" />
-                                  ) : msg.id === messages[messages.length - 1].id ? (
-                                    <Clock className="h-3 w-3 text-blue-200 animate-pulse" />
                                   ) : (
                                     <Check className="h-3 w-3 text-blue-200" />
                                   )}
@@ -1273,16 +1131,15 @@ export default function ChatPage() {
                             </div>
                           )}
 
-                          {(!msg.isVoiceMessage && !msg.isImage && !msg.isVideo) && (
+                          {!isMedia && !isVoice && (
                             <div
                               className={`absolute bottom-0 w-3 h-3 ${
-                                msg.senderType === "user" ? "-right-1 bg-blue-500" : "-left-1 bg-white border-l border-b"
+                                isUser ? "-right-1 bg-blue-500" : "-left-1 bg-white border-l border-b"
                               }`}
                               style={{
-                                clipPath:
-                                  msg.senderType === "user"
-                                    ? "polygon(100% 0, 0 100%, 100% 100%)"
-                                    : "polygon(0 0, 100% 100%, 0 100%)",
+                                clipPath: isUser
+                                  ? "polygon(100% 0, 0 100%, 100% 100%)"
+                                  : "polygon(0 0, 100% 100%, 0 100%)",
                               }}
                             />
                           )}
@@ -1298,18 +1155,47 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Call Modals */}
-        {isCallActive && callType && <CallModal isOpen={isCallActive} onClose={handleEndCall} vendor={vendor} callType={callType} />}
+        {/* Modals */}
+        <EmojiPicker3D
+          isOpen={showEmojiPicker}
+          onEmojiSelect={handleEmojiSelect}
+          onClose={() => setShowEmojiPicker(false)}
+        />
 
-        <EmojiPicker3D isOpen={showEmojiPicker} onEmojiSelect={handleEmojiSelect} onClose={() => setShowEmojiPicker(false)} />
+        {showVoiceRecorder && (
+          <VoiceRecorder onSend={handleSendVoiceMessage} onCancel={() => setShowVoiceRecorder(false)} />
+        )}
 
-        {showVoiceRecorder && <VoiceRecorder onSend={handleSendVoiceMessage} onCancel={() => setShowVoiceRecorder(false)} />}
+        <CameraModal
+          isOpen={showCameraModal}
+          onClose={() => setShowCameraModal(false)}
+          onCapture={handleCameraCapture}
+        />
 
-        <CameraModal isOpen={showCameraModal} onClose={() => setShowCameraModal(false)} onCapture={handleCameraCapture} />
+        <MediaPopup
+          isOpen={showMediaPopup}
+          onClose={() => setShowMediaPopup(false)}
+          onTakePhoto={() => {
+            setShowCameraModal(true);
+            setShowMediaPopup(false);
+          }}
+          onSelectImage={() => {
+            if (fileInputRef.current) {
+              fileInputRef.current.accept = "image/*,video/*";
+              fileInputRef.current.click();
+              setShowMediaPopup(false);
+            }
+          }}
+        />
 
-        <MediaPopup isOpen={showMediaPopup} onClose={() => setShowMediaPopup(false)} onTakePhoto={handleTakePhoto} onSelectImage={handleSelectImage} />
-
-        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileSelect} multiple={false} />
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept="image/*,video/*"
+          onChange={handleFileSelect}
+          multiple={false}
+        />
 
         {(showEmojiPicker || showVoiceRecorder || showMediaPopup || showCameraModal) && (
           <div
@@ -1327,20 +1213,19 @@ export default function ChatPage() {
         <form onSubmit={handleSendMessage} className="p-4 border-t bg-white flex-shrink-0 relative">
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={handlePaperclipClick}
-                  className={`rounded-full hover:bg-gray-100 flex-shrink-0 ${showMediaPopup ? "bg-gray-100" : ""}`}
-                >
-                  <div className="relative">
-                    <Paperclip className={`h-5 w-5 ${showMediaPopup ? "text-blue-500" : ""}`} />
-                    {showMediaPopup && <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />}
-                  </div>
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setShowMediaPopup(!showMediaPopup);
+                  setShowEmojiPicker(false);
+                  setShowVoiceRecorder(false);
+                }}
+                className={`rounded-full hover:bg-gray-100 flex-shrink-0 ${showMediaPopup ? "bg-gray-100" : ""}`}
+              >
+                <Paperclip className={`h-5 w-5 ${showMediaPopup ? "text-blue-500" : ""}`} />
+              </Button>
 
               <Button
                 type="button"
@@ -1350,14 +1235,10 @@ export default function ChatPage() {
                   setShowEmojiPicker(!showEmojiPicker);
                   setShowVoiceRecorder(false);
                   setShowMediaPopup(false);
-                  setShowCameraModal(false);
                 }}
                 className="rounded-full hover:bg-gradient-to-r hover:from-yellow-50 hover:to-orange-50 flex-shrink-0"
               >
-                <div className="relative">
-                  <Smile className={`h-5 w-5 ${showEmojiPicker ? "text-orange-500" : ""}`} />
-                  {showEmojiPicker && <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 animate-pulse" />}
-                </div>
+                <Smile className={`h-5 w-5 ${showEmojiPicker ? "text-orange-500" : ""}`} />
               </Button>
 
               <div className="flex-1 relative">
@@ -1365,7 +1246,8 @@ export default function ChatPage() {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Ketik pesan..."
-                  className="rounded-full px-4 py-6 border-gray-300 focus-visible:ring-blue-500 focus-visible:border-blue-500 shadow-sm pr-24"
+                  className="rounded-full px-4 py-5 md:py-6 border-gray-300 focus-visible:ring-blue-500 focus-visible:border-blue-500 shadow-sm pr-20"
+                  disabled={isSending}
                 />
                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
                   <Button
@@ -1376,16 +1258,12 @@ export default function ChatPage() {
                       setShowVoiceRecorder(!showVoiceRecorder);
                       setShowEmojiPicker(false);
                       setShowMediaPopup(false);
-                      setShowCameraModal(false);
                     }}
                     className={`rounded-full hover:bg-gradient-to-r hover:from-red-50 hover:to-pink-50 ${
                       showVoiceRecorder ? "bg-gradient-to-r from-red-50 to-pink-50" : ""
                     }`}
                   >
-                    <div className="relative">
-                      <Mic className={`h-5 w-5 ${showVoiceRecorder ? "text-red-500" : ""}`} />
-                      {showVoiceRecorder && <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 animate-pulse" />}
-                    </div>
+                    <Mic className={`h-5 w-5 ${showVoiceRecorder ? "text-red-500" : ""}`} />
                   </Button>
                 </div>
               </div>
@@ -1393,18 +1271,24 @@ export default function ChatPage() {
               <Button
                 type="submit"
                 size="icon"
-                disabled={!newMessage.trim()}
-                className={`rounded-full shadow-lg hover:shadow-xl transition-all duration-300 h-12 w-12 flex-shrink-0 ${
-                  newMessage.trim()
+                disabled={!newMessage.trim() || isSending}
+                className={`rounded-full shadow-lg hover:shadow-xl transition-all duration-300 h-10 w-10 md:h-12 md:w-12 flex-shrink-0 ${
+                  newMessage.trim() && !isSending
                     ? "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                     : "bg-gray-300"
                 }`}
               >
-                <Send className="h-5 w-5" />
+                {isSending ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
               </Button>
             </div>
 
-            <p className="text-xs text-gray-500 text-center mt-3">Tekan Enter untuk mengirim • Pesan terenkripsi • Jangan bagikan data pribadi</p>
+            <p className="text-xs text-gray-500 text-center mt-3">
+              Tekan Enter untuk mengirim • Pesan terenkripsi
+            </p>
           </div>
         </form>
       </div>

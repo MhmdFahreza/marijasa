@@ -6,7 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
+
 }
 
 // ==========================================
@@ -53,6 +54,14 @@ enum WithdrawalStatus {
   FAILED
 }
 
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+  FILE
+}
+
 // ==========================================
 // MASTER DATA TABLES
 // ==========================================
@@ -75,10 +84,10 @@ model City {
 
 model Category {
   category_id String  @id @default(uuid()) @db.Uuid
-  slug        String  @unique // listrik, ac, pembersihanrumah, dll
-  name        String  // Tukang Listrik, Tukang AC, dll
+  slug        String  @unique
+  name        String
   description String? @db.Text
-  icon        String? // URL icon atau nama icon
+  icon        String?
   is_active   Boolean @default(true)
   sort_order  Int     @default(0)
 
@@ -95,25 +104,27 @@ model Category {
 // ==========================================
 
 model User {
-  user_id        String    @id @default(uuid()) @db.Uuid
-  email          String    @unique
+  user_id        String   @id @default(uuid()) @db.Uuid
+  email          String   @unique
   name           String
-  phone          String?   @unique
+  phone          String?  @unique
   password       String?
-  avatar         String?   @default("/profile.svg")
-  role           UserRole  @default(USER)
-  email_verified Boolean   @default(false)
-  is_active      Boolean   @default(true)
+  avatar         String?  @default("/profile.svg")
+  role           UserRole @default(USER)
+  email_verified Boolean  @default(false)
+  is_active      Boolean  @default(true)
+  is_online      Boolean  @default(false)
 
-  address        String?   @db.Text
-  gps_link       String?   @db.Text
+  address  String? @db.Text
+  gps_link String? @db.Text
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  bookings  Booking[]
-  reviews   Review[]
-  favorites UserFavorite[]
+  bookings      Booking[]
+  reviews       Review[]
+  favorites     UserFavorite[]
+  chat_sessions ChatSession[]
 
   @@index([email])
   @@index([phone])
@@ -161,18 +172,18 @@ model Admin {
 }
 
 model Withdrawal {
-  withdrawal_id String           @id @default(uuid()) @db.Uuid
-  vendor_id     String           @db.Uuid
-  amount        Float
-  method        String           // Bank name or e-wallet name
+  withdrawal_id  String           @id @default(uuid()) @db.Uuid
+  vendor_id      String           @db.Uuid
+  amount         Float
+  method         String
   account_number String
-  status        WithdrawalStatus @default(PENDING)
-  reference     String           @unique // Unique reference number
-  admin_fee     Float            @default(2500) // Default admin fee
-  
-  notes         String?          @db.Text
-  processed_at  DateTime?
-  completed_at  DateTime?
+  status         WithdrawalStatus @default(PENDING)
+  reference      String           @unique
+  admin_fee      Float            @default(2500)
+
+  notes        String?   @db.Text
+  processed_at DateTime?
+  completed_at DateTime?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -197,6 +208,7 @@ model Vendor {
   phone       String
   avatar      String?      @default("https://i.pravatar.cc/120")
   description String       @db.Text
+  is_online   Boolean      @default(false)
 
   verified Boolean      @default(false)
   status   VendorStatus @default(PENDING)
@@ -213,12 +225,13 @@ model Vendor {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  services       Service[]
-  gallery        VendorGallery[]
-  bookings       Booking[]
-  reviews        Review[]
-  favorited_by   UserFavorite[]
-  withdrawals    Withdrawal[]
+  services      Service[]
+  gallery       VendorGallery[]
+  bookings      Booking[]
+  reviews       Review[]
+  favorited_by  UserFavorite[]
+  withdrawals   Withdrawal[]
+  chat_sessions ChatSession[]
 
   @@index([email])
   @@index([status])
@@ -270,7 +283,7 @@ model Booking {
   booking_id     String @id @default(uuid()) @db.Uuid
   booking_number String @unique
 
-  user_id String @db.Uuid
+  user_id   String @db.Uuid
   vendor_id String @db.Uuid
 
   scheduled_date DateTime
@@ -341,4 +354,64 @@ model Review {
   @@index([vendor_id])
   @@index([user_id])
   @@map("reviews")
+}
+
+// ==========================================
+// CHAT TABLES
+// ==========================================
+
+model ChatSession {
+  session_id String @id @default(uuid()) @db.Uuid
+  user_id    String @db.Uuid
+  vendor_id  String @db.Uuid
+
+  last_message       String?  @db.Text
+  last_message_time  DateTime @default(now())
+  user_unread_count  Int      @default(0)
+  mitra_unread_count Int      @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user     User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  vendor   Vendor    @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([user_id, vendor_id])
+  @@index([user_id])
+  @@index([vendor_id])
+  @@index([last_message_time])
+  @@map("chat_sessions")
+}
+
+model Message {
+  message_id  String      @id @default(uuid()) @db.Uuid
+  session_id  String      @db.Uuid
+  sender_id   String      @db.Uuid
+  sender_type String      @db.VarChar(10) // 'user' or 'mitra'
+
+  text         String?     @db.Text
+  message_type MessageType @default(TEXT)
+
+  // Media fields
+  file_url  String?
+  file_name String?
+  file_type String?
+  file_size Int?
+  thumbnail String?
+  duration  Int? // For voice/video messages in seconds
+
+  is_read Boolean   @default(false)
+  read_at DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  session ChatSession @relation(fields: [session_id], references: [session_id], onDelete: Cascade)
+
+  @@index([session_id])
+  @@index([sender_id])
+  @@index([created_at])
+  @@index([is_read])
+  @@map("messages")
 }
