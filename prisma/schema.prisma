@@ -46,6 +46,13 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 // ==========================================
 // MASTER DATA TABLES
 // ==========================================
@@ -153,6 +160,31 @@ model Admin {
   @@map("admins")
 }
 
+model Withdrawal {
+  withdrawal_id String           @id @default(uuid()) @db.Uuid
+  vendor_id     String           @db.Uuid
+  amount        Float
+  method        String           // Bank name or e-wallet name
+  account_number String
+  status        WithdrawalStatus @default(PENDING)
+  reference     String           @unique // Unique reference number
+  admin_fee     Float            @default(2500) // Default admin fee
+  
+  notes         String?          @db.Text
+  processed_at  DateTime?
+  completed_at  DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@index([status])
+  @@index([reference])
+  @@map("withdrawals")
+}
+
 // ==========================================
 // VENDOR/MITRA TABLES
 // ==========================================
@@ -186,6 +218,7 @@ model Vendor {
   bookings       Booking[]
   reviews        Review[]
   favorited_by   UserFavorite[]
+  withdrawals    Withdrawal[]
 
   @@index([email])
   @@index([status])

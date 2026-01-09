@@ -202,6 +202,11 @@ export default function DashboardLayout({
     avatar: "https://assets.aceternity.com/manu.png"
   });
 
+  // PERBAIKAN: Reset isNavigating ketika pathname berubah
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
+
   // Fetch mitra profile dari API
   const fetchMitraProfile = async () => {
     try {
@@ -313,10 +318,8 @@ export default function DashboardLayout({
     // Show loading
     setIsNavigating(true);
     
-    // Simulate minimum loading time for better UX
-    setTimeout(() => {
-      router.push(href);
-    }, 300);
+    // PERBAIKAN: Navigasi langsung tanpa timeout
+    router.push(href);
   }, [router, pathname, isNavigating]);
 
   const toggleSettings = useCallback(() => {
@@ -338,8 +341,7 @@ export default function DashboardLayout({
       });
 
       if (response.ok) {
-        // PERBAIKAN: Langsung redirect setelah logout sukses
-        // Tidak perlu timeout atau loader tambahan
+        // Langsung redirect setelah logout sukses
         window.location.href = '/mitra/login';
       } else {
         toast.error('Gagal logout');

@@ -56,6 +56,7 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/app/components/ui/tooltip";
+import { useRouter } from 'next/navigation';
 
 // Data dummy untuk metode pembayaran
 const paymentMethods = [
@@ -309,6 +310,12 @@ const DashboardSkeleton = () => (
       <Skeleton className="h-10 w-32" />
     </div>
 
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {Array.from({ length: 2 }).map((_, i) => (
+        <Skeleton key={i} className="h-40 rounded-lg" />
+      ))}
+    </div>
+
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {Array.from({ length: 4 }).map((_, i) => (
         <Skeleton key={i} className="h-32 rounded-lg" />
@@ -326,6 +333,7 @@ const DashboardSkeleton = () => (
 );
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
@@ -345,223 +353,78 @@ export default function DashboardPage() {
   });
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
-  const [currentVendorName, setCurrentVendorName] = useState<string>('');
+  const [currentVendor, setCurrentVendor] = useState<any>(null);
 
-  // Load vendor ID dan nama dari localStorage
+  // Load vendor data from API
   useEffect(() => {
-    const mitraUser = localStorage.getItem('mitraUser');
-    if (mitraUser) {
-      try {
-        const parsedMitra = JSON.parse(mitraUser);
-        setCurrentVendorId(parsedMitra.id);
-        setCurrentVendorName(parsedMitra.name);
-        console.log('Current Vendor:', parsedMitra.name, '(ID:', parsedMitra.id, ')');
-      } catch (error) {
-        console.error('Error parsing mitraUser:', error);
-      }
-    }
+    loadVendorData();
   }, []);
 
-  // FUNGSI UNTUK MENGHITUNG RATING DARI USER ORDERS
-  const calculateVendorRatingFromOrders = (vendorId: string, vendorName: string) => {
+  // Auto refresh every 30 seconds
+  useEffect(() => {
+    if (!currentVendor) return;
+    
+    const interval = setInterval(() => {
+      loadDashboardData();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [currentVendor]);
+
+  const loadVendorData = async () => {
     try {
-      const userOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-      
-      // Filter orders yang selesai, punya rating, dan sesuai vendor ini
-      const vendorReviews = userOrders.filter((order: any) => 
-        order.status === 'selesai' && 
-        order.rating && 
-        order.rating > 0 &&
-        (order.vendor?.id === vendorId || 
-         order.vendorId === vendorId || 
-         order.vendor?.name === vendorName || 
-         order.vendorName === vendorName)
-      );
-
-      console.log('Orders with rating for this vendor:', vendorReviews);
-
-      if (vendorReviews.length === 0) {
-        return { rating: 0, reviewCount: 0 };
+      const response = await fetch('/api/mitra/verify');
+      if (!response.ok) {
+        router.push('/mitra/login');
+        return;
       }
 
-      // Hitung total rating
-      const totalRating = vendorReviews.reduce((sum: number, order: any) => sum + (order.rating || 0), 0);
-      const averageRating = totalRating / vendorReviews.length;
-
-      console.log('Calculated rating from orders:', {
-        totalRating,
-        reviewCount: vendorReviews.length,
-        averageRating: averageRating.toFixed(2)
-      });
-
-      return {
-        rating: Math.round(averageRating * 100) / 100, // Round ke 2 desimal
-        reviewCount: vendorReviews.length
-      };
+      const data = await response.json();
+      setCurrentVendor(data.vendor);
+      console.log('Current Vendor:', data.vendor);
+      
+      // Load dashboard data after getting vendor info
+      await loadDashboardData(data.vendor.vendor_id);
     } catch (error) {
-      console.error('Error calculating vendor rating:', error);
-      return { rating: 0, reviewCount: 0 };
+      console.error('Error loading vendor data:', error);
+      router.push('/mitra/login');
     }
   };
 
-  // Load data dari localStorage dengan sinkronisasi rating vendor
-  useEffect(() => {
-    if (!currentVendorId || !currentVendorName) return;
-
-    loadDashboardData();
-
-    const interval = setInterval(loadDashboardData, 5000);
-    
-    // Event listener untuk vendorDataUpdated
-    const handleVendorDataUpdated = () => {
-      console.log('Vendor data updated event received, reloading dashboard...');
-      loadDashboardData();
-    };
-
-    // Event listener untuk reviewsUpdated (dari halaman rating)
-    const handleReviewsUpdated = () => {
-      console.log('Reviews updated event received, reloading dashboard...');
-      loadDashboardData();
-    };
-    
-    window.addEventListener('vendorDataUpdated', handleVendorDataUpdated);
-    window.addEventListener('reviewsUpdated', handleReviewsUpdated);
-    window.addEventListener('storage', loadDashboardData);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('vendorDataUpdated', handleVendorDataUpdated);
-      window.removeEventListener('reviewsUpdated', handleReviewsUpdated);
-      window.removeEventListener('storage', loadDashboardData);
-    };
-  }, [currentVendorId, currentVendorName]);
-
-  const loadDashboardData = () => {
-    if (!currentVendorId || !currentVendorName) {
-      console.log('No vendor ID or name, skipping load');
-      return;
-    }
+  const loadDashboardData = async (vendorId?: string) => {
+    const id = vendorId || currentVendor?.vendor_id;
+    if (!id) return;
 
     try {
-      setIsLoading(true);
+      // Jangan set loading jika bukan initial load
+      if (!currentVendor) {
+        setIsLoading(true);
+      }
 
-      // HITUNG RATING LANGSUNG DARI USER ORDERS (SUMBER UTAMA)
-      const ratingFromOrders = calculateVendorRatingFromOrders(currentVendorId, currentVendorName);
-      let vendorRating = ratingFromOrders.rating;
-      let vendorReviewCount = ratingFromOrders.reviewCount;
+      const response = await fetch(`/api/mitra/dashboard?vendorId=${id}`);
+      if (!response.ok) {
+        throw new Error('Failed to load dashboard data');
+      }
 
-      console.log('Final rating from orders:', { vendorRating, vendorReviewCount });
-
-      // Load pesanan
-      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-      const vendorOrders = allOrders.filter((order: any) => {
-        return order.vendorId === currentVendorId;
-      });
-
-      console.log('Vendor Orders (filtered):', vendorOrders);
-
-      // Hitung statistik
-      let availableBalance = 0;
-      let pendingBalance = 0;
-      let monthlyIncome = 0;
-      let monthlyWithdrawal = 0;
-      let totalOrders = vendorOrders.length;
-      let completedOrders = 0;
-      let pendingOrders = 0;
-      let inProgressOrders = 0;
-
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-
-      const transactions: any[] = [];
-
-      // Hitung dari pesanan
-      vendorOrders.forEach((order: any) => {
-        const orderDate = new Date(order.orderDate);
-        const orderMonth = orderDate.getMonth();
-        const orderYear = orderDate.getFullYear();
-
-        if (order.status === 'completed') {
-          completedOrders++;
-          const orderAmount = order.serviceDetails?.totalPrice || 0;
-          availableBalance += orderAmount;
-
-          transactions.push({
-            id: `INC-${order.id}`,
-            type: "income",
-            amount: orderAmount,
-            date: order.orderDate,
-            description: `Pembayaran dari ${order.customerName}`,
-            customerName: order.customerName,
-            orderId: order.id,
-            service: getServiceLabel(order),
-            status: "completed",
-            paymentMethod: "transfer_bank"
-          });
-
-          if (orderMonth === currentMonth && orderYear === currentYear) {
-            monthlyIncome += orderAmount;
-          }
-        } else if (order.status === 'in-progress') {
-          pendingOrders++;
-          inProgressOrders++;
-          if (order.paymentStatus === 'paid') {
-            pendingBalance += order.serviceDetails?.totalPrice || 0;
-          }
-        } else if (order.status === 'pending') {
-          pendingOrders++;
-        }
-      });
-
-      console.log('Available Balance BEFORE withdrawal:', availableBalance);
-
-      // Load withdrawal history
-      const allWithdrawals = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
-      const vendorWithdrawals = allWithdrawals.filter((w: any) => w.vendorId === currentVendorId);
-
-      console.log('Vendor Withdrawals (filtered):', vendorWithdrawals);
-
-      let totalWithdrawn = 0;
-
-      vendorWithdrawals.forEach((withdrawal: any) => {
-        transactions.push(withdrawal);
-
-        if (withdrawal.status === 'completed') {
-          totalWithdrawn += withdrawal.amount;
-          console.log('Withdrawal:', withdrawal.amount, 'Total withdrawn so far:', totalWithdrawn);
-        }
-
-        const withdrawDate = new Date(withdrawal.date);
-        if (withdrawDate.getMonth() === currentMonth && withdrawDate.getFullYear() === currentYear) {
-          monthlyWithdrawal += withdrawal.amount;
-        }
-      });
-
-      console.log('Total Withdrawn (this vendor):', totalWithdrawn);
-
-      availableBalance = Math.max(0, availableBalance - totalWithdrawn);
-
-      console.log('Available Balance AFTER withdrawal:', availableBalance);
-
-      // Sort transactions by date
-      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const data = await response.json();
+      console.log('Dashboard data:', data);
 
       setStatData({
-        availableBalance,
-        pendingBalance,
-        monthlyIncome,
-        monthlyWithdrawal,
-        totalOrders,
-        completedOrders,
-        pendingOrders,
-        inProgressOrders,
-        vendorRating: vendorRating,
-        vendorReviewCount: vendorReviewCount,
-        totalRevenue: availableBalance + pendingBalance
+        availableBalance: data.availableBalance || 0,
+        pendingBalance: data.pendingBalance || 0,
+        monthlyIncome: data.monthlyIncome || 0,
+        monthlyWithdrawal: data.monthlyWithdrawal || 0,
+        totalOrders: data.totalOrders || 0,
+        completedOrders: data.completedOrders || 0,
+        pendingOrders: data.pendingOrders || 0,
+        inProgressOrders: data.inProgressOrders || 0,
+        vendorRating: data.vendorRating || 0,
+        vendorReviewCount: data.vendorReviewCount || 0,
+        totalRevenue: data.totalRevenue || 0
       });
 
-      setTransactionHistory(transactions);
+      setTransactionHistory(data.transactions || []);
+      
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -569,36 +432,9 @@ export default function DashboardPage() {
     }
   };
 
-  const getServiceLabel = (order: any) => {
-    const category = order.serviceCategory;
-    const details = order.serviceDetails;
-
-    switch (category) {
-      case 'ac':
-        return `Layanan AC - ${details.acCount || 1} Unit ${details.acType || ''} ${details.acPk || ''} PK`;
-      case 'cleaning':
-        return `Pembersihan - ${details.areaSize || 0} m²`;
-      case 'electrical':
-        return `Listrik - ${details.buildingType || ''}`;
-      case 'plumbing':
-        return `Ledeng/Pipa`;
-      case 'sedot-wc':
-        return `Sedot WC`;
-      case 'taman':
-        return `Taman - ${details.gardenSize || 0} m²`;
-      case 'furniture':
-        return `Furniture`;
-      default:
-        return 'Layanan Umum';
-    }
-  };
-
   const handleRefresh = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      loadDashboardData();
-      setRefreshKey(prev => prev + 1);
-    }, 1000);
+    setRefreshKey(prev => prev + 1);
+    loadDashboardData();
   };
 
   const filteredTransactions = transactionHistory.filter(transaction => {
@@ -624,12 +460,16 @@ export default function DashboardPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
+      case 'COMPLETED':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'pending':
+      case 'PENDING':
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       case 'processing':
+      case 'IN_PROGRESS':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'failed':
+      case 'CANCELLED':
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
@@ -639,53 +479,78 @@ export default function DashboardPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
+      case 'COMPLETED':
         return <CheckCircle className="h-3 w-3 md:h-4 md:w-4" />;
       case 'pending':
+      case 'PENDING':
         return <Clock className="h-3 w-3 md:h-4 md:w-4" />;
       case 'processing':
+      case 'IN_PROGRESS':
         return <RefreshCw className="h-3 w-3 md:h-4 md:w-4" />;
       case 'failed':
+      case 'CANCELLED':
         return <X className="h-3 w-3 md:h-4 md:w-4" />;
       default:
         return <Info className="h-3 w-3 md:h-4 md:w-4" />;
     }
   };
 
-  const handleWithdraw = (amount: number, method: string) => {
-    if (!currentVendorId) {
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'Selesai';
+      case 'PENDING':
+        return 'Pending';
+      case 'IN_PROGRESS':
+        return 'Diproses';
+      case 'CANCELLED':
+        return 'Dibatalkan';
+      default:
+        return status;
+    }
+  };
+
+  const handleWithdraw = async (amount: number, method: string) => {
+    if (!currentVendor?.vendor_id) {
       alert('Error: Vendor ID tidak ditemukan');
       return;
     }
 
     setWithdrawLoading(true);
 
-    setTimeout(() => {
+    try {
       const methodData = paymentMethods.find(m => m.id === method);
 
-      const newWithdrawal = {
-        id: `WD-${Date.now()}`,
-        type: "withdrawal",
-        amount: amount,
-        date: new Date().toISOString(),
-        description: `Penarikan ke ${methodData?.name}`,
-        bankName: methodData?.name || '',
-        accountNumber: methodData?.accountNumber || '',
-        status: "completed",
-        reference: `WD-${Date.now()}`,
-        vendorId: currentVendorId
-      };
+      const response = await fetch('/api/mitra/withdraw', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vendorId: currentVendor.vendor_id,
+          amount: amount,
+          method: methodData?.name || '',
+          accountNumber: methodData?.accountNumber || '',
+        }),
+      });
 
-      const withdrawalHistory = JSON.parse(localStorage.getItem('withdrawalHistory') || '[]');
-      withdrawalHistory.push(newWithdrawal);
-      localStorage.setItem('withdrawalHistory', JSON.stringify(withdrawalHistory));
+      if (!response.ok) {
+        throw new Error('Failed to process withdrawal');
+      }
 
-      console.log('New withdrawal saved:', newWithdrawal);
+      const data = await response.json();
+      console.log('Withdrawal successful:', data);
 
       setWithdrawLoading(false);
       setShowWithdrawDialog(false);
 
+      // Reload dashboard data
       loadDashboardData();
-    }, 1500);
+    } catch (error) {
+      console.error('Error processing withdrawal:', error);
+      alert('Gagal memproses penarikan. Silakan coba lagi.');
+      setWithdrawLoading(false);
+    }
   };
 
   const renderStars = (rating: number) => {
@@ -706,14 +571,13 @@ export default function DashboardPage() {
     );
   };
 
-  if (isLoading) {
+  if (isLoading && !currentVendor) {
     return (
       <motion.div
         className="min-h-screen bg-neutral-50 dark:bg-neutral-900 p-4 md:p-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
-        key={refreshKey}
       >
         <div className="max-w-7xl mx-auto">
           <DashboardSkeleton />
@@ -756,7 +620,7 @@ export default function DashboardPage() {
               Dashboard Mitra
             </h1>
             <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm md:text-base">
-              Selamat datang kembali! Kelola keuangan dan pesanan Anda di sini
+              Selamat datang kembali, {currentVendor?.name || 'Mitra'}! Kelola keuangan dan pesanan Anda di sini
             </p>
           </div>
 
@@ -787,7 +651,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Balance Cards */}
+        {/* Balance Cards - 2 Cards in a row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 md:mb-8">
           {/* Available Balance */}
           <motion.div
@@ -822,14 +686,14 @@ export default function DashboardPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
-            <Card className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white border-0 shadow-xl">
+            <Card className="bg-gradient-to-r from-orange-400 to-orange-500 text-white border-0 shadow-xl">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
-                    <Lock className="h-6 w-6" />
+                    <Clock className="h-6 w-6" />
                   </div>
                   <Badge className="bg-white/20 text-white border-0">
-                    Menunggu
+                    Diproses
                   </Badge>
                 </div>
                 <p className="text-sm opacity-90 mb-1">Saldo Pending</p>
@@ -837,15 +701,15 @@ export default function DashboardPage() {
                   {formatCurrency(statData.pendingBalance)}
                 </p>
                 <p className="text-xs opacity-75 mt-2">
-                  Dari pesanan yang sedang dikerjakan
+                  Dari pesanan yang sedang diproses
                 </p>
               </CardContent>
             </Card>
           </motion.div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        {/* Stats Cards - 4 Cards in a row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 md:mb-8">
           {/* Pemasukan Bulan Ini */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -861,8 +725,8 @@ export default function DashboardPage() {
                       {formatCurrency(statData.monthlyIncome)}
                     </p>
                   </div>
-                  <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 md:h-6 md:w-6 text-blue-600 dark:text-blue-400" />
+                  <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <TrendingUp className="h-5 w-5 md:h-6 md:w-6 text-green-600 dark:text-green-400" />
                   </div>
                 </div>
               </CardContent>
@@ -1111,9 +975,7 @@ export default function DashboardPage() {
                                     <div className="flex items-center gap-2 mt-2">
                                       <Badge className={`${getStatusColor(transaction.status)} flex items-center gap-1 text-xs`}>
                                         {getStatusIcon(transaction.status)}
-                                        {transaction.status === 'completed' ? 'Selesai' :
-                                          transaction.status === 'pending' ? 'Pending' :
-                                            transaction.status === 'processing' ? 'Diproses' : 'Gagal'}
+                                        {getStatusLabel(transaction.status)}
                                       </Badge>
                                     </div>
                                   </div>
@@ -1146,18 +1008,13 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <p className="font-medium truncate text-sm">{transaction.description}</p>
-                                  {transaction.type === 'income' ? (
+                                  {transaction.customerName && (
                                     <div className="flex items-center gap-2 text-xs text-neutral-500 mt-1">
                                       <User className="h-3 w-3" />
                                       <span className="truncate">{transaction.customerName}</span>
-                                      {transaction.service && (
-                                        <>
-                                          <span>•</span>
-                                          <span className="truncate">{transaction.service}</span>
-                                        </>
-                                      )}
                                     </div>
-                                  ) : (
+                                  )}
+                                  {transaction.bankName && (
                                     <div className="flex items-center gap-2 text-xs text-neutral-500 mt-1">
                                       <Banknote className="h-3 w-3" />
                                       <span className="truncate">{transaction.bankName}</span>
@@ -1179,9 +1036,7 @@ export default function DashboardPage() {
                               <div className="col-span-2 flex items-center">
                                 <Badge className={`${getStatusColor(transaction.status)} flex items-center gap-1 text-xs`}>
                                   {getStatusIcon(transaction.status)}
-                                  {transaction.status === 'completed' ? 'Selesai' :
-                                    transaction.status === 'pending' ? 'Pending' :
-                                      transaction.status === 'processing' ? 'Diproses' : 'Gagal'}
+                                  {getStatusLabel(transaction.status)}
                                 </Badge>
                               </div>
 
