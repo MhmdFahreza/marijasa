@@ -1,4 +1,4 @@
-// app/mitra/chat/page.tsx - Fixed version without infinite loading
+// app/mitra/chat/page.tsx - Fixed version with image preview
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -223,12 +223,13 @@ const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: b
   );
 };
 
-// Media Message Component
+// Media Message Component - UPDATED WITH HOVER AND PREVIEW
 const MediaMessage = ({ msg, isMitra, timestamp }: { msg: Message; isMitra: boolean; timestamp: string }) => {
   const safeFileUrl = msg.fileUrl || "";
   const isImage = msg.isImage || msg.messageType === "IMAGE";
   const isVideo = msg.isVideo || msg.messageType === "VIDEO";
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const handleDownload = () => {
@@ -253,16 +254,41 @@ const MediaMessage = ({ msg, isMitra, timestamp }: { msg: Message; isMitra: bool
   }
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border ${isMitra ? "border-green-200" : "border-gray-200"} max-w-[240px] md:max-w-[280px]`}>
+    <div 
+      className={`relative overflow-hidden rounded-xl border ${isMitra ? "border-green-200" : "border-gray-200"} max-w-[240px] md:max-w-[280px] transition-all duration-300 ${isHovered ? "shadow-lg scale-[1.02]" : "shadow-md"}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div className="relative">
-        {isImage && <img src={safeFileUrl} alt={msg.fileName || "Gambar"} className="w-full h-auto max-h-[200px] object-cover" loading="lazy"/>}
+        {isImage && (
+          <>
+            <img src={safeFileUrl} alt={msg.fileName || "Gambar"} className="w-full h-auto max-h-[200px] object-cover" loading="lazy"/>
+            <div className={`absolute bottom-2 right-2 px-2 py-1 rounded text-xs font-medium ${isMitra ? "bg-black/60 text-white" : "bg-white/90 text-gray-800"}`}>
+              {timestamp}
+            </div>
+            {isHovered && (
+              <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                <button
+                  onClick={() => window.open(safeFileUrl, "_blank")}
+                  className="bg-white/90 hover:bg-white p-2 rounded-full transition-all"
+                >
+                  <svg className="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </>
+        )}
         {isVideo && (
           <div className="relative">
             {!isVideoPlaying && msg.thumbnail && <img src={msg.thumbnail} alt="Video" className="w-full h-auto max-h-[200px] object-cover"/>}
             <video ref={videoRef} src={safeFileUrl} className={`w-full h-auto max-h-[200px] object-cover ${!isVideoPlaying ? "hidden" : ""}`} controls={isVideoPlaying} onEnded={() => setIsVideoPlaying(false)}/>
             {!isVideoPlaying && (
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-center justify-center">
-                <button onClick={() => { videoRef.current?.play(); setIsVideoPlaying(true); }} className="bg-white/90 hover:bg-white p-4 rounded-full"><Play className="w-8 h-8 text-gray-800 ml-1" fill="currentColor"/></button>
+                <button onClick={() => { videoRef.current?.play(); setIsVideoPlaying(true); }} className="bg-white/90 hover:bg-white p-4 rounded-full transform hover:scale-110 transition-all">
+                  <Play className="w-8 h-8 text-gray-800 ml-1" fill="currentColor"/>
+                </button>
               </div>
             )}
           </div>
@@ -277,7 +303,7 @@ const MediaMessage = ({ msg, isMitra, timestamp }: { msg: Message; isMitra: bool
               <p className={`text-xs ${isMitra ? "text-green-100" : "text-gray-500"}`}>{formatFileSize(msg.fileSize)}</p>
             </div>
           </div>
-          <button onClick={handleDownload} className={`p-1.5 rounded-full hover:bg-white/20 ${isMitra ? "text-white" : "text-gray-600"}`}><Download className="w-4 h-4"/></button>
+          <button onClick={handleDownload} className={`p-1.5 rounded-full hover:bg-white/20 transition-colors ${isMitra ? "text-white" : "text-gray-600"}`}><Download className="w-4 h-4"/></button>
         </div>
       </div>
     </div>
@@ -343,7 +369,7 @@ export default function MitraChatPage() {
     return () => {
       isMounted = false;
     };
-  }, []); // Empty dependency - only run once
+  }, []);
 
   // Load initial chat sessions
   useEffect(() => {
@@ -369,7 +395,7 @@ export default function MitraChatPage() {
     };
   }, [currentVendor?.id]);
 
-  // Polling for updates - separate from loading
+  // Polling for updates
   useEffect(() => {
     if (!currentVendor?.id || isPollingRef.current) return;
     
@@ -377,17 +403,14 @@ export default function MitraChatPage() {
     
     const pollData = async () => {
       try {
-        // Update sessions
         const sessions = await chatService.getMitraSessions(currentVendor.id);
         setChatSessions(prevSessions => {
-          // Only update if data actually changed
           if (JSON.stringify(prevSessions) !== JSON.stringify(sessions)) {
             return sessions;
           }
           return prevSessions;
         });
         
-        // Update messages if session is selected
         if (selectedSession?.userId) {
           const newMessages = await chatService.getMessages(
             selectedSession.userId, 
@@ -395,10 +418,8 @@ export default function MitraChatPage() {
           );
           
           setMessages(prevMessages => {
-            // Only update if message count or content changed
             if (prevMessages.length !== newMessages.length || 
                 JSON.stringify(prevMessages) !== JSON.stringify(newMessages)) {
-              // Mark as read
               chatService.markAsRead(selectedSession.userId, currentVendor.id, "mitra");
               return newMessages;
             }
@@ -410,11 +431,8 @@ export default function MitraChatPage() {
       }
     };
 
-    // Initial poll after 1 second
     const initialTimeout = setTimeout(pollData, 1000);
-    
-    // Set up interval for subsequent polls
-    pollingRef.current = setInterval(pollData, 3000); // Poll every 3 seconds
+    pollingRef.current = setInterval(pollData, 3000);
     
     return () => {
       clearTimeout(initialTimeout);
@@ -426,7 +444,7 @@ export default function MitraChatPage() {
     };
   }, [currentVendor?.id, selectedSession?.userId]);
 
-  // Auto scroll to bottom when messages change
+  // Auto scroll to bottom
   const scrollToBottom = useCallback(() => { 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, []);
@@ -449,7 +467,6 @@ export default function MitraChatPage() {
       
       await chatService.markAsRead(session.userId, currentVendor.id, "mitra");
       
-      // Refresh sessions to update unread count
       const sessions = await chatService.getMitraSessions(currentVendor.id);
       setChatSessions(sessions);
     } catch (error) {
@@ -462,7 +479,7 @@ export default function MitraChatPage() {
     if (!newMessage.trim() || !currentVendor?.id || !selectedSession || isSending) return;
     
     const messageToSend = newMessage.trim();
-    setNewMessage(""); // Clear input immediately
+    setNewMessage("");
     setIsSending(true);
     
     try {
@@ -480,7 +497,7 @@ export default function MitraChatPage() {
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Gagal mengirim pesan");
-      setNewMessage(messageToSend); // Restore message on error
+      setNewMessage(messageToSend);
     } finally {
       setIsSending(false);
     }
@@ -643,7 +660,6 @@ export default function MitraChatPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50">
-      {/* Header */}
       <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
@@ -666,7 +682,6 @@ export default function MitraChatPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-6">
         <div className="flex flex-col lg:flex-row gap-4 md:gap-6">
-          {/* Sidebar */}
           <div className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative z-30 lg:z-0 w-full lg:w-1/3 xl:w-1/4 bg-white rounded-xl shadow-lg border border-gray-200 transition-transform duration-300 h-[calc(100vh-120px)] lg:h-[calc(100vh-180px)] flex flex-col`}>
             <div className="p-4 border-b bg-white">
               <div className="flex items-center justify-between mb-4">
@@ -761,7 +776,6 @@ export default function MitraChatPage() {
             />
           )}
 
-          {/* Main Chat */}
           <div className="flex-1 flex flex-col bg-white rounded-xl shadow-lg border border-gray-200 h-[calc(100vh-120px)] lg:h-[calc(100vh-180px)]">
             {!selectedSession ? (
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
@@ -780,7 +794,6 @@ export default function MitraChatPage() {
               </div>
             ) : (
               <>
-                {/* Chat Header */}
                 <div className="p-4 border-b bg-white rounded-t-xl">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -835,7 +848,6 @@ export default function MitraChatPage() {
                   </div>
                 </div>
 
-                {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-white to-green-50/30">
                   <div className="max-w-3xl mx-auto space-y-4">
                     {messages.length === 0 ? (
@@ -916,7 +928,6 @@ export default function MitraChatPage() {
                   </div>
                 </div>
 
-                {/* Input */}
                 <form onSubmit={handleSendMessage} className="p-4 border-t bg-white flex-shrink-0 relative">
                   <div className="max-w-3xl mx-auto">
                     <div className="flex items-center gap-2">
@@ -994,7 +1005,6 @@ export default function MitraChatPage() {
         </div>
       </div>
 
-      {/* Modals */}
       <EmojiPicker3D 
         isOpen={showEmojiPicker} 
         onEmojiSelect={handleEmojiSelect} 
