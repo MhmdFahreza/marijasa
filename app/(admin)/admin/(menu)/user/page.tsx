@@ -54,6 +54,12 @@ export default function UserPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [userDetail, setUserDetail] = useState<any>(null);
 
+  // Loading states untuk setiap operasi
+  const [loadingAdd, setLoadingAdd] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [loadingDelete, setLoadingDelete] = useState(false);
+  const [loadingView, setLoadingView] = useState(false);
+
   // Form states
   const [formData, setFormData] = useState({
     name: "",
@@ -105,16 +111,21 @@ export default function UserPage() {
   // Fetch user detail
   const fetchUserDetail = async (userId: string) => {
     try {
+      setLoadingView(true);
       const response = await fetch(`/api/admin/users/${userId}`);
       const data = await response.json();
 
       if (data.success) {
         setUserDetail(data.data);
         setShowViewModal(true);
+      } else {
+        alert(data.error || "Gagal memuat detail user");
       }
     } catch (error) {
       console.error("Error fetching user detail:", error);
       alert("Gagal memuat detail user");
+    } finally {
+      setLoadingView(false);
     }
   };
 
@@ -122,6 +133,7 @@ export default function UserPage() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setLoadingAdd(true);
       const response = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -146,6 +158,8 @@ export default function UserPage() {
     } catch (error) {
       console.error("Error adding user:", error);
       alert("Gagal menambahkan user");
+    } finally {
+      setLoadingAdd(false);
     }
   };
 
@@ -155,6 +169,7 @@ export default function UserPage() {
     if (!selectedUser) return;
 
     try {
+      setLoadingEdit(true);
       const response = await fetch(`/api/admin/users/${selectedUser.user_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -174,6 +189,8 @@ export default function UserPage() {
     } catch (error) {
       console.error("Error updating user:", error);
       alert("Gagal mengupdate user");
+    } finally {
+      setLoadingEdit(false);
     }
   };
 
@@ -182,6 +199,7 @@ export default function UserPage() {
     if (!selectedUser) return;
 
     try {
+      setLoadingDelete(true);
       const response = await fetch(`/api/admin/users/${selectedUser.user_id}`, {
         method: "DELETE",
       });
@@ -199,6 +217,8 @@ export default function UserPage() {
     } catch (error) {
       console.error("Error deleting user:", error);
       alert("Gagal menghapus user");
+    } finally {
+      setLoadingDelete(false);
     }
   };
 
@@ -319,6 +339,7 @@ export default function UserPage() {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <IconLoader2 className="h-8 w-8 animate-spin text-[#7CE0A8]" />
+            <span className="ml-2 text-neutral-600">Memuat data...</span>
           </div>
         ) : users.length === 0 ? (
           <div className="text-center py-12 text-neutral-500">
@@ -416,10 +437,15 @@ export default function UserPage() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => fetchUserDetail(user.user_id)}
-                            className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                            disabled={loadingView}
+                            className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Lihat Detail"
                           >
-                            <IconEye className="h-4 w-4 text-blue-600" />
+                            {loadingView && selectedUser?.user_id === user.user_id ? (
+                              <IconLoader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                            ) : (
+                              <IconEye className="h-4 w-4 text-blue-600" />
+                            )}
                           </button>
                           <button
                             onClick={() => openEditModal(user)}
@@ -501,7 +527,8 @@ export default function UserPage() {
               <h3 className="text-lg font-semibold">Tambah User Baru</h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg"
+                disabled={loadingAdd}
+                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -518,7 +545,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingAdd}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                   placeholder="Masukkan nama lengkap"
                 />
               </div>
@@ -531,7 +559,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingAdd}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                   placeholder="user@example.com"
                 />
               </div>
@@ -545,7 +574,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, phone: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingAdd}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                   placeholder="08xxxxxxxxxx"
                 />
               </div>
@@ -560,7 +590,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, password: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingAdd}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                   placeholder="Masukkan password"
                 />
               </div>
@@ -568,15 +599,24 @@ export default function UserPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                  disabled={loadingAdd}
+                  className="flex-1 py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 px-4 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#6BC997] transition-colors"
+                  disabled={loadingAdd}
+                  className="flex-1 py-2 px-4 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#6BC997] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Simpan
+                  {loadingAdd ? (
+                    <>
+                      <IconLoader2 className="h-5 w-5 animate-spin mr-2" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Simpan"
+                  )}
                 </button>
               </div>
             </form>
@@ -592,7 +632,8 @@ export default function UserPage() {
               <h3 className="text-lg font-semibold">Edit User</h3>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg"
+                disabled={loadingEdit}
+                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -609,7 +650,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setEditFormData({ ...editFormData, name: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingEdit}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                 />
               </div>
               <div>
@@ -621,7 +663,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setEditFormData({ ...editFormData, email: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingEdit}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                 />
               </div>
               <div>
@@ -634,7 +677,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setEditFormData({ ...editFormData, phone: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingEdit}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                 />
               </div>
               <div>
@@ -644,7 +688,8 @@ export default function UserPage() {
                   onChange={(e) =>
                     setEditFormData({ ...editFormData, role: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingEdit}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                 >
                   <option value="USER">USER</option>
                   <option value="ADMIN">ADMIN</option>
@@ -660,7 +705,8 @@ export default function UserPage() {
                       is_active: e.target.value === "active",
                     })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingEdit}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                 >
                   <option value="active">Aktif</option>
                   <option value="inactive">Tidak Aktif</option>
@@ -679,7 +725,8 @@ export default function UserPage() {
                       password: e.target.value,
                     })
                   }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
+                  disabled={loadingEdit}
+                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] disabled:opacity-50"
                   placeholder="Masukkan password baru"
                 />
               </div>
@@ -687,15 +734,24 @@ export default function UserPage() {
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="flex-1 py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                  disabled={loadingEdit}
+                  className="flex-1 py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 px-4 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#6BC997] transition-colors"
+                  disabled={loadingEdit}
+                  className="flex-1 py-2 px-4 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#6BC997] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Update
+                  {loadingEdit ? (
+                    <>
+                      <IconLoader2 className="h-5 w-5 animate-spin mr-2" />
+                      Memperbarui...
+                    </>
+                  ) : (
+                    "Update"
+                  )}
                 </button>
               </div>
             </form>
@@ -704,155 +760,168 @@ export default function UserPage() {
       )}
 
       {/* View User Modal */}
-      {showViewModal && userDetail && (
+      {showViewModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-neutral-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold">Detail User</h3>
               <button
                 onClick={() => setShowViewModal(false)}
-                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg"
+                disabled={loadingView}
+                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <IconX className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-6">
-              {/* User Info */}
-              <div className="flex items-center gap-4">
-                {userDetail.avatar ? (
-                  <img
-                    src={userDetail.avatar}
-                    alt={userDetail.name}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
-                    {userDetail.name.charAt(0).toUpperCase()}
+            {loadingView ? (
+              <div className="flex items-center justify-center py-12">
+                <IconLoader2 className="h-8 w-8 animate-spin text-[#7CE0A8]" />
+                <span className="ml-2 text-neutral-600">Memuat detail user...</span>
+              </div>
+            ) : userDetail ? (
+              <div className="space-y-6">
+                {/* User Info */}
+                <div className="flex items-center gap-4">
+                  {userDetail.avatar ? (
+                    <img
+                      src={userDetail.avatar}
+                      alt={userDetail.name}
+                      className="h-16 w-16 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
+                      {userDetail.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="text-xl font-bold">{userDetail.name}</h4>
+                    <p className="text-neutral-600 dark:text-neutral-400">
+                      {userDetail.email}
+                    </p>
                   </div>
-                )}
-                <div>
-                  <h4 className="text-xl font-bold">{userDetail.name}</h4>
-                  <p className="text-neutral-600 dark:text-neutral-400">
-                    {userDetail.email}
-                  </p>
                 </div>
-              </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    Total Booking
-                  </p>
-                  <p className="text-2xl font-bold mt-1">
-                    {userDetail._count.bookings}
-                  </p>
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      Total Booking
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {userDetail._count.bookings}
+                    </p>
+                  </div>
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      Total Review
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {userDetail._count.reviews}
+                    </p>
+                  </div>
+                  <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      Favorit
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {userDetail._count.favorites}
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    Total Review
-                  </p>
-                  <p className="text-2xl font-bold mt-1">
-                    {userDetail._count.reviews}
-                  </p>
-                </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    Favorit
-                  </p>
-                  <p className="text-2xl font-bold mt-1">
-                    {userDetail._count.favorites}
-                  </p>
-                </div>
-              </div>
 
-              {/* Details */}
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Telepon
-                  </p>
-                  <p className="font-medium">{userDetail.phone || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Role
-                  </p>
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${
-                      userDetail.role === "ADMIN"
-                        ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
-                        : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                    }`}
-                  >
-                    {userDetail.role}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Status
-                  </p>
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${
-                      userDetail.is_active
-                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                    }`}
-                  >
-                    {userDetail.is_active ? "Aktif" : "Tidak Aktif"}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Email Verified
-                  </p>
-                  <p className="font-medium">
-                    {userDetail.email_verified ? "✅ Terverifikasi" : "❌ Belum Terverifikasi"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Tanggal Gabung
-                  </p>
-                  <p className="font-medium">
-                    {new Date(userDetail.created_at).toLocaleDateString("id-ID", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </p>
-                </div>
-                {userDetail.address && (
+                {/* Details */}
+                <div className="space-y-3">
                   <div>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      Alamat
+                      Telepon
                     </p>
-                    <p className="font-medium">{userDetail.address}</p>
+                    <p className="font-medium">{userDetail.phone || "-"}</p>
                   </div>
-                )}
-                {userDetail.gps_link && (
                   <div>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      GPS Link
+                      Role
                     </p>
-                    <a 
-                      href={userDetail.gps_link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="font-medium text-blue-600 hover:underline"
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${
+                        userDetail.role === "ADMIN"
+                          ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
+                          : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                      }`}
                     >
-                      Lihat Lokasi
-                    </a>
+                      {userDetail.role}
+                    </span>
                   </div>
-                )}
+                  <div>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Status
+                    </p>
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${
+                        userDetail.is_active
+                          ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                          : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                      }`}
+                    >
+                      {userDetail.is_active ? "Aktif" : "Tidak Aktif"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Email Verified
+                    </p>
+                    <p className="font-medium">
+                      {userDetail.email_verified ? "✅ Terverifikasi" : "❌ Belum Terverifikasi"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Tanggal Gabung
+                    </p>
+                    <p className="font-medium">
+                      {new Date(userDetail.created_at).toLocaleDateString("id-ID", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  {userDetail.address && (
+                    <div>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        Alamat
+                      </p>
+                      <p className="font-medium">{userDetail.address}</p>
+                    </div>
+                  )}
+                  {userDetail.gps_link && (
+                    <div>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        GPS Link
+                      </p>
+                      <a 
+                        href={userDetail.gps_link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 hover:underline"
+                      >
+                        Lihat Lokasi
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="text-center py-12 text-neutral-500">
+                Gagal memuat detail user
+              </div>
+            )}
 
             <button
               onClick={() => setShowViewModal(false)}
-              className="w-full mt-6 py-2 px-4 bg-neutral-100 dark:bg-neutral-700 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
+              disabled={loadingView}
+              className="w-full mt-6 py-2 px-4 bg-neutral-100 dark:bg-neutral-700 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Tutup
             </button>
@@ -880,15 +949,24 @@ export default function UserPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="flex-1 py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                disabled={loadingDelete}
+                className="flex-1 py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Batal
               </button>
               <button
                 onClick={handleDeleteUser}
-                className="flex-1 py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                disabled={loadingDelete}
+                className="flex-1 py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
-                Hapus
+                {loadingDelete ? (
+                  <>
+                    <IconLoader2 className="h-5 w-5 animate-spin mr-2" />
+                    Menghapus...
+                  </>
+                ) : (
+                  "Hapus"
+                )}
               </button>
             </div>
           </div>
