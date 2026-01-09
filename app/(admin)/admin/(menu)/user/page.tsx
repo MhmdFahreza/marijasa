@@ -20,6 +20,7 @@ interface User {
   is_active: boolean;
   email_verified: boolean;
   created_at: string;
+  address: string | null;
   _count: {
     bookings: number;
     reviews: number;
@@ -368,9 +369,17 @@ export default function UserPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
-                            {user.name.charAt(0).toUpperCase()}
-                          </div>
+                          {user.avatar ? (
+                            <img
+                              src={user.avatar}
+                              alt={user.name}
+                              className="h-8 w-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
+                              {user.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
                           <span className="font-medium">{user.name}</span>
                         </div>
                       </td>
@@ -726,9 +735,17 @@ export default function UserPage() {
             <div className="space-y-6">
               {/* User Info */}
               <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
-                  {userDetail.name.charAt(0).toUpperCase()}
-                </div>
+                {userDetail.avatar ? (
+                  <img
+                    src={userDetail.avatar}
+                    alt={userDetail.name}
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
+                    {userDetail.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <h4 className="text-xl font-bold">{userDetail.name}</h4>
                   <p className="text-neutral-600 dark:text-neutral-400">
@@ -830,49 +847,22 @@ export default function UserPage() {
                     <p className="font-medium">{userDetail.address}</p>
                   </div>
                 )}
-              </div>
-
-              {/* Recent Bookings */}
-              {userDetail.bookings && userDetail.bookings.length > 0 && (
-                <div>
-                  <h4 className="font-semibold mb-3">Booking Terakhir</h4>
-                  <div className="space-y-2">
-                    {userDetail.bookings.slice(0, 3).map((booking: any) => (
-                      <div
-                        key={booking.booking_id}
-                        className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white">
-                              {booking.vendor.name.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm">
-                                {booking.vendor.name}
-                              </p>
-                              <p className="text-xs text-neutral-500">
-                                {booking.booking_number}
-                              </p>
-                            </div>
-                          </div>
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              booking.status === "COMPLETED"
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                : booking.status === "CANCELLED"
-                                ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                                : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                            }`}
-                          >
-                            {booking.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                {userDetail.gps_link && (
+                  <div>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      GPS Link
+                    </p>
+                    <a 
+                      href={userDetail.gps_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="font-medium text-blue-600 hover:underline"
+                    >
+                      Lihat Lokasi
+                    </a>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <button

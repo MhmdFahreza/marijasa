@@ -18,22 +18,6 @@ export async function GET(
     const user = await prisma.user.findUnique({
       where: { user_id: userId },
       include: {
-        bookings: {
-          take: 5,
-          orderBy: { created_at: "desc" },
-          include: {
-            vendor: {
-              select: {
-                name: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        reviews: {
-          take: 5,
-          orderBy: { created_at: "desc" },
-        },
         _count: {
           select: {
             bookings: true,
@@ -51,14 +35,21 @@ export async function GET(
       );
     }
 
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+
     return NextResponse.json({
       success: true,
-      data: user,
+      data: userWithoutPassword,
     });
   } catch (error) {
     console.error("Error fetching user:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch user" },
+      { 
+        success: false, 
+        error: "Failed to fetch user",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     );
   }
@@ -120,15 +111,22 @@ export async function PUT(
       data: updateData,
     });
 
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+
     return NextResponse.json({
       success: true,
-      data: user,
+      data: userWithoutPassword,
       message: "User updated successfully",
     });
   } catch (error) {
     console.error("Error updating user:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to update user" },
+      { 
+        success: false, 
+        error: "Failed to update user",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     );
   }
@@ -144,6 +142,17 @@ export async function DELETE(
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { user_id: userId },
+      select: {
+        user_id: true,
+        name: true,
+        _count: {
+          select: {
+            bookings: true,
+            reviews: true,
+            favorites: true,
+          },
+        },
+      },
     });
 
     if (!existingUser) {
@@ -153,7 +162,46 @@ export async function DELETE(
       );
     }
 
-    // Delete user (will cascade delete bookings, reviews, etc.)
+    // Delete related data first (manual deletion for better control)
+    // Delete reviews
+    await prisma.review.deleteMany({
+      where: { user_id: userId },
+    });
+
+    // Delete favorites
+    await prisma.userFavorite.deleteMany({
+      where: { user_id: userId },
+    });
+
+    // Delete booking items through bookings
+    const userBookings = await prisma.booking.findMany({
+      where: { user_id: userId },
+      select: { booking_id: true },
+    });
+
+    if (userBookings.length > 0) {
+      const bookingIds = userBookings.map(b => b.booking_id);
+      
+      // Delete booking items
+      await prisma.bookingItem.deleteMany({
+        where: {
+          booking_id: {
+            in: bookingIds,
+          },
+        },
+      });
+
+      // Delete bookings
+      await prisma.booking.deleteMany({
+        where: {
+          booking_id: {
+            in: bookingIds,
+          },
+        },
+      });
+    }
+
+    // Finally delete the user
     await prisma.user.delete({
       where: { user_id: userId },
     });
@@ -161,11 +209,23 @@ export async function DELETE(
     return NextResponse.json({
       success: true,
       message: "User deleted successfully",
+      data: {
+        deletedUser: existingUser.name,
+        deletedRelations: {
+          bookings: existingUser._count.bookings,
+          reviews: existingUser._count.reviews,
+          favorites: existingUser._count.favorites,
+        },
+      },
     });
   } catch (error) {
     console.error("Error deleting user:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to delete user" },
+      { 
+        success: false, 
+        error: "Failed to delete user",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     );
   }

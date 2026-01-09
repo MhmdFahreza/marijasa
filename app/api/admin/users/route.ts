@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
           is_active: true,
           email_verified: true,
           created_at: true,
+          address: true,
+          gps_link: true,
           _count: {
             select: {
               bookings: true,
