@@ -9,7 +9,7 @@ import {
   IconUserPlus,
   IconLogout,
   IconChevronDown,
-  IconChartBar, // Icon baru untuk Reports
+  IconChartBar,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, usePathname } from "next/navigation";
@@ -26,6 +26,7 @@ export default function AdminLayout({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [mitraOpen, setMitraOpen] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [adminData, setAdminData] = useState<any>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -34,34 +35,111 @@ export default function AdminLayout({
     setMounted(true);
   }, []);
 
-  // Check authentication after mount
+  // Verify session and handle token refresh
   useEffect(() => {
     if (!mounted) return;
     
-    const checkAuth = () => {
-      const token = localStorage.getItem('adminToken');
-      const user = localStorage.getItem('adminUser');
-      
-      if (!token || !user) {
+    let refreshInterval: NodeJS.Timeout;
+
+    const verifySession = async () => {
+      try {
+        const response = await fetch('/api/admin/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          setIsAuthenticated(true);
+          setAdminData(data.admin);
+          setLoading(false);
+          return true;
+        } else if (data.shouldRefresh) {
+          // Try to refresh token
+          const refreshed = await refreshToken();
+          if (refreshed) {
+            return true;
+          }
+        }
+
+        // If verification failed and refresh failed, redirect to login
         router.push('/admin/login');
-      } else {
-        setIsAuthenticated(true);
+        return false;
+      } catch (error) {
+        console.error('[Admin Layout] Verification error:', error);
+        router.push('/admin/login');
+        return false;
       }
-      setLoading(false);
     };
-    
-    checkAuth();
+
+    const refreshToken = async () => {
+      try {
+        console.log('[Admin Layout] Refreshing access token...');
+        const response = await fetch('/api/admin/refresh', {
+          method: 'POST',
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          console.log('[Admin Layout] Token refreshed successfully');
+          setIsAuthenticated(true);
+          
+          // Verify again to get admin data
+          const verifyResponse = await fetch('/api/admin/verify', {
+            method: 'GET',
+            credentials: 'include',
+          });
+
+          if (verifyResponse.ok) {
+            const verifyData = await verifyResponse.json();
+            setAdminData(verifyData.admin);
+          }
+
+          setLoading(false);
+          return true;
+        } else {
+          console.log('[Admin Layout] Token refresh failed');
+          return false;
+        }
+      } catch (error) {
+        console.error('[Admin Layout] Refresh error:', error);
+        return false;
+      }
+    };
+
+    // Initial verification
+    verifySession();
+
+    // Set up auto-refresh every 50 minutes (before 1 hour expiry)
+    refreshInterval = setInterval(() => {
+      console.log('[Admin Layout] Auto-refreshing token...');
+      refreshToken();
+    }, 50 * 60 * 1000); // 50 minutes
+
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
   }, [mounted, router]);
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
   };
 
-  const confirmLogout = () => {
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('adminUser');
-    router.push('/admin/login');
-    router.refresh();
+  const confirmLogout = async () => {
+    try {
+      await fetch('/api/admin/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      router.push('/admin/login');
+      router.refresh();
+    }
   };
 
   const cancelLogout = () => {
@@ -98,7 +176,7 @@ export default function AdminLayout({
       label: "Reports",
       href: "/admin/reports",
       icon: (
-        <IconChartBar className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" /> // Icon diubah
+        <IconChartBar className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" />
       ),
     },
   ];
@@ -193,7 +271,7 @@ export default function AdminLayout({
           </div>
           
           {/* Admin Info */}
-          {open && <AdminInfo />}
+          {open && <AdminInfo adminData={adminData} />}
         </SidebarBody>
       </Sidebar>
       
@@ -310,53 +388,16 @@ const LogoutButton = ({ onClick }: { onClick: () => void }) => {
   );
 };
 
-const AdminInfo = () => {
-  const [adminInfo, setAdminInfo] = useState<{email: string; name: string} | null>(null);
-  const [mounted, setMounted] = useState(false);
-  
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  
-  useEffect(() => {
-    if (!mounted) return;
-    
-    const userStr = localStorage.getItem('adminUser');
-    if (userStr) {
-      try {
-        setAdminInfo(JSON.parse(userStr));
-      } catch (e) {
-        console.error('Error parsing admin user:', e);
-      }
-    }
-  }, [mounted]);
-
-  // Render placeholder until mounted to prevent hydration mismatch
-  if (!mounted) {
-    return (
-      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#7CE0A8] to-emerald-400 flex items-center justify-center text-white font-semibold shadow-sm">
-            <span className="text-lg">A</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm truncate">Administrator</p>
-            <p className="text-xs text-neutral-500 truncate">admin@gmail.com</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+const AdminInfo = ({ adminData }: { adminData: any }) => {
   return (
     <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4">
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#7CE0A8] to-emerald-400 flex items-center justify-center text-white font-semibold shadow-sm">
-          <span className="text-lg">A</span>
+          <span className="text-lg">{adminData?.name?.charAt(0) || 'A'}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm truncate">{adminInfo?.name || 'Administrator'}</p>
-          <p className="text-xs text-neutral-500 truncate">{adminInfo?.email || 'admin@gmail.com'}</p>
+          <p className="font-medium text-sm truncate">{adminData?.name || 'Administrator'}</p>
+          <p className="text-xs text-neutral-500 truncate">{adminData?.email || 'admin@example.com'}</p>
         </div>
       </div>
     </div>

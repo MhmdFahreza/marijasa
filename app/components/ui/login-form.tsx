@@ -228,19 +228,27 @@ export function LoginForm({
     const trimmedIdentifier = identifier.trim();
     const isEmail = isEmailInput(trimmedIdentifier);
 
-    // Validation
-    if (isEmail) {
-      if (!validateEmail(trimmedIdentifier)) {
-        setError(
-          "Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)"
-        );
-        return;
+    // Validation for user type
+    if (userType === "user") {
+      if (isEmail) {
+        if (!validateEmail(trimmedIdentifier)) {
+          setError(
+            "Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)"
+          );
+          return;
+        }
+      } else {
+        if (!validatePhone(trimmedIdentifier)) {
+          setError(
+            "Format nomor telepon tidak valid. Gunakan format Indonesia (contoh: 081234567890)"
+          );
+          return;
+        }
       }
     } else {
-      if (!validatePhone(trimmedIdentifier)) {
-        setError(
-          "Format nomor telepon tidak valid. Gunakan format Indonesia (contoh: 081234567890)"
-        );
+      // For admin and mitra, must be email
+      if (!validateEmail(trimmedIdentifier)) {
+        setError("Format email tidak valid.");
         return;
       }
     }
@@ -250,45 +258,64 @@ export function LoginForm({
       return;
     }
 
-    // Admin validation
+    // Admin login
     if (userType === "admin") {
-      const dummyAdminCredentials = [
-        { email: "Marijasa@gmail.com", password: "admin1234" },
-      ];
-
-      const isValid = dummyAdminCredentials.some(
-        (cred) =>
-          cred.email === trimmedIdentifier && cred.password === password
-      );
-
-      if (!isValid) {
-        setError("Email atau password admin salah.");
-        return;
-      }
-
       setIsLoading(true);
 
-      // Simulate async login
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        console.log('[Admin Login] Attempting login for:', trimmedIdentifier);
 
-      if (onSuccess) {
-        onSuccess(trimmedIdentifier);
+        const response = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: trimmedIdentifier.toLowerCase(),
+            password: password,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || 'Email atau password salah');
+          setIsLoading(false);
+          return;
+        }
+
+        console.log('[Admin Login] Login successful:', {
+          id: data.admin.id,
+          name: data.admin.name,
+          email: data.admin.email
+        });
+
+        if (onSuccess) {
+          onSuccess(trimmedIdentifier);
+          setIsLoading(false);
+          return;
+        }
+
+        // Redirect to dashboard
+        console.log('[Admin Login] Redirecting to dashboard...');
+        window.location.href = "/admin/dashboard";
+      } catch (error) {
+        console.error("Admin login error:", error);
+        setError("Terjadi kesalahan saat login. Silakan coba lagi.");
         setIsLoading(false);
-        return;
       }
 
-      router.push("/admin/dashboard");
       return;
     }
 
-    // Mitra validation
+    // Mitra login
     if (userType === "mitra") {
       setIsLoading(true);
 
       try {
         console.log('[Mitra Login] Attempting login for:', trimmedIdentifier);
 
-        // Call mitra login API
         const response = await fetch('/api/mitra/login', {
           method: 'POST',
           headers: {
@@ -513,9 +540,9 @@ export function LoginForm({
                     onBlur={() => setFocusedField(null)}
                     placeholder={
                       userType === "admin"
-                        ? "admin@gmail.com"
+                        ? "admin@example.com"
                         : userType === "mitra"
-                          ? "mitra@marijasa.com"
+                          ? "mitra@example.com"
                           : "Email atau Nomor Telepon"
                     }
                     autoComplete="email"

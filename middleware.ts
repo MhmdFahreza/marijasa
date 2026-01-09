@@ -12,6 +12,7 @@ export const config = {
     "/register",
     "/register/otp",
     "/mitra/:path*",
+    "/admin/:path*",
   ],
 };
 
@@ -23,6 +24,73 @@ const authRoutes = ["/login", "/register", "/register/otp"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // =============== ADMIN ROUTES ===============
+  if (pathname.startsWith('/admin/')) {
+    // Allow access to login page
+    if (pathname === '/admin/login') {
+      // If already logged in, redirect to dashboard
+      const adminSessionId = request.cookies.get('admin_session_id')?.value;
+      const adminAccessToken = request.cookies.get('admin_access_token')?.value;
+
+      if (adminSessionId && adminAccessToken) {
+        console.log('[Middleware] Admin already authenticated, redirecting to dashboard');
+        return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+      }
+      
+      return NextResponse.next();
+    }
+
+    // Protected admin routes - require authentication
+    const adminSessionId = request.cookies.get('admin_session_id')?.value;
+    const adminAccessToken = request.cookies.get('admin_access_token')?.value;
+    const adminRefreshToken = request.cookies.get('admin_refresh_token')?.value;
+
+    if (!adminSessionId || (!adminAccessToken && !adminRefreshToken)) {
+      console.log('[Middleware] Admin not authenticated, redirecting to login');
+      const url = new URL("/admin/login", request.url);
+      return NextResponse.redirect(url);
+    }
+
+    // If access token is missing but refresh token exists, allow through
+    // The client will handle token refresh
+    if (!adminAccessToken && adminRefreshToken) {
+      console.log('[Middleware] Admin access token missing, allowing through for refresh');
+      return NextResponse.next();
+    }
+
+    // Verify admin access token by calling verify API
+    try {
+      const verifyUrl = new URL('/api/admin/verify', request.url);
+      const verifyResponse = await fetch(verifyUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'Cookie': `admin_session_id=${adminSessionId}; admin_access_token=${adminAccessToken}`,
+        },
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok) {
+        // If token expired, check if we should refresh
+        if (verifyData.shouldRefresh && adminRefreshToken) {
+          console.log('[Middleware] Admin token expired, allowing through for refresh');
+          return NextResponse.next();
+        }
+
+        console.log('[Middleware] Admin token verification failed');
+        const url = new URL("/admin/login", request.url);
+        return NextResponse.redirect(url);
+      }
+
+      console.log('[Middleware] Admin authenticated successfully');
+      return NextResponse.next();
+    } catch (error) {
+      console.error('[Middleware] Error verifying admin token:', error);
+      const url = new URL("/admin/login", request.url);
+      return NextResponse.redirect(url);
+    }
+  }
 
   // =============== MITRA ROUTES ===============
   if (pathname.startsWith('/mitra/')) {

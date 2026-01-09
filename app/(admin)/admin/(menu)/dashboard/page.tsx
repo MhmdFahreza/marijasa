@@ -2,27 +2,48 @@
 import React, { useState, useEffect } from "react";
 
 export default function DashboardPage() {
-  const [adminInfo, setAdminInfo] = useState<{email: string; name: string} | null>(null);
+  const [adminInfo, setAdminInfo] = useState<{email: string; name: string; id: string} | null>(null);
+  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const userStr = localStorage.getItem('adminUser');
-      if (userStr) {
-        try {
-          setAdminInfo(JSON.parse(userStr));
-        } catch (e) {
-          console.error('Error parsing admin user:', e);
+    const fetchAdminInfo = async () => {
+      try {
+        const response = await fetch('/api/admin/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setAdminInfo(data.admin);
         }
+      } catch (error) {
+        console.error('Error fetching admin info:', error);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+
+    fetchAdminInfo();
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="h-8 w-8 border-4 border-[#7CE0A8] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-neutral-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
       <div>
         <h1 className="text-2xl font-bold mb-2">Dashboard Admin</h1>
         <p className="text-neutral-600 dark:text-neutral-400">
-          Selamat datang kembali, {adminInfo?.name || 'Administrator'}! ({adminInfo?.email || 'admin@gmail.com'})
+          Selamat datang kembali, {adminInfo?.name || 'Administrator'}! ({adminInfo?.email || 'admin@example.com'})
         </p>
       </div>
       
