@@ -60,7 +60,6 @@ export default function UserPage() {
     email: "",
     phone: "",
     password: "",
-    role: "USER",
   });
 
   const [editFormData, setEditFormData] = useState({
@@ -139,7 +138,6 @@ export default function UserPage() {
           email: "",
           phone: "",
           password: "",
-          role: "USER",
         });
         fetchUsers();
       } else {
@@ -565,19 +563,6 @@ export default function UserPage() {
                   className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
                   placeholder="Masukkan password"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Role</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#7CE0A8]"
-                >
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">ADMIN</option>
-                </select>
               </div>
               <div className="flex gap-3 mt-6">
                 <button

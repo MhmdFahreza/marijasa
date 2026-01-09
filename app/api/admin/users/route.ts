@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, phone, password, role } = body;
+    const { name, email, phone, password } = body;
 
     // Validate required fields
     if (!name || !email || !password) {
@@ -127,15 +127,16 @@ export async function POST(request: NextRequest) {
     const bcrypt = require("bcryptjs");
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user with role USER and email_verified true by default
     const user = await prisma.user.create({
       data: {
         name,
         email,
         phone: phone || null,
         password: hashedPassword,
-        role: role || "USER",
+        role: "USER",
         is_active: true,
+        email_verified: true,
       },
     });
 
