@@ -52,17 +52,16 @@ export default function ProfilePage() {
   
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>("/profile.svg");
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Refs for debouncing and preventing auto-reload
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
   const hasLoadedOnce = useRef(false);
 
-  // Load user profile - ONLY ONCE on mount, no auto-reload
+  // Load user profile
   useEffect(() => {
     const loadProfile = async () => {
-      // Skip if already loaded or auth is still loading
       if (hasLoadedOnce.current || authLoading) {
         return;
       }
@@ -75,11 +74,16 @@ export default function ProfilePage() {
 
       try {
         setIsInitialLoading(true);
+        console.log("[Profile] 📊 Loading profile from database...");
         
         const response = await fetch("/api/user/profile", {
           method: "GET",
           credentials: "include",
           cache: "no-store",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         });
 
         if (!response.ok) {
@@ -94,63 +98,45 @@ export default function ProfilePage() {
         const data = await response.json();
         
         if (data.profile) {
+          console.log("[Profile] ✅ Profile loaded:", {
+            name: data.profile.name,
+            email: data.profile.email,
+            hasAvatar: !!data.profile.avatar,
+            avatarType: data.profile.avatar?.substring(0, 20) + "..."
+          });
+          
           setProfile(data.profile);
+          // Set avatar preview - either base64 from DB or default
           setAvatarPreview(data.profile.avatar || "/profile.svg");
           hasLoadedOnce.current = true;
-          console.log("[Profile] Data loaded successfully");
         }
       } catch (error) {
-        console.error("Error loading user profile:", error);
+        console.error("[Profile] ❌ Error loading profile:", error);
         toast.error("Terjadi kesalahan saat memuat profil");
       } finally {
         setIsInitialLoading(false);
-        // Mark initial mount as complete after a short delay
         setTimeout(() => {
           isInitialMount.current = false;
         }, 1000);
       }
     };
 
-    // Only load if we haven't loaded before
     if (!hasLoadedOnce.current) {
       loadProfile();
     }
   }, [isAuthenticated, user, authLoading, router]);
 
   // Auto-save function
-  const autoSaveProfile = useCallback(async (updatedProfile: UserProfile, newAvatarFile?: File) => {
+  const autoSaveProfile = useCallback(async (updatedProfile: UserProfile) => {
     if (isInitialMount.current) {
-      console.log("[Profile] Skipping save during initial mount");
+      console.log("[Profile] ⏭️ Skipping save during initial mount");
       return;
     }
     
     setSaveStatus("saving");
-    console.log("[Profile] Auto-saving...");
+    console.log("[Profile] 💾 Auto-saving profile...");
 
     try {
-      let avatarUrl = updatedProfile.avatar;
-      
-      // Upload avatar if changed
-      if (newAvatarFile) {
-        const formData = new FormData();
-        formData.append("avatar", newAvatarFile);
-
-        const uploadResponse = await fetch("/api/user/upload-avatar", {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error("Gagal mengupload avatar");
-        }
-
-        const uploadData = await uploadResponse.json();
-        avatarUrl = uploadData.avatarUrl;
-        console.log("[Profile] Avatar uploaded:", avatarUrl);
-      }
-
-      // Update profile
       const response = await fetch("/api/user/profile", {
         method: "PUT",
         headers: {
@@ -161,7 +147,6 @@ export default function ProfilePage() {
           name: updatedProfile.name,
           address: updatedProfile.address,
           gps_link: updatedProfile.gps_link,
-          avatar: avatarUrl,
         }),
       });
 
@@ -171,29 +156,24 @@ export default function ProfilePage() {
 
       const data = await response.json();
       
+      console.log("[Profile] ✅ Profile saved successfully");
+      
       // Update local state with server response
       setProfile(data.profile);
-      setAvatarPreview(data.profile.avatar || "/profile.svg");
-      if (newAvatarFile) {
-        setAvatarFile(null);
-      }
       
       // Refresh auth context to update navbar
       await refreshUser();
       
       setSaveStatus("saved");
-      console.log("[Profile] Profile saved successfully");
       
-      // Reset to idle after 2 seconds
       setTimeout(() => {
         setSaveStatus("idle");
       }, 2000);
     } catch (error) {
-      console.error("Error saving profile:", error);
+      console.error("[Profile] ❌ Error saving profile:", error);
       setSaveStatus("error");
       toast.error("Gagal menyimpan perubahan");
       
-      // Reset to idle after showing error
       setTimeout(() => {
         setSaveStatus("idle");
       }, 3000);
@@ -201,20 +181,26 @@ export default function ProfilePage() {
   }, [refreshUser]);
 
   // Debounced save
-  const debouncedSave = useCallback((updatedProfile: UserProfile, newAvatarFile?: File) => {
+  const debouncedSave = useCallback((updatedProfile: UserProfile) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      autoSaveProfile(updatedProfile, newAvatarFile);
-    }, 1500); // Increased to 1.5 seconds
+      autoSaveProfile(updatedProfile);
+    }, 1500);
   }, [autoSaveProfile]);
 
-  // Handle avatar change with immediate save
+  // Handle avatar change - save as base64 to database
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !profile) return;
+
+    console.log("[Profile] 📸 Starting avatar upload:", {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    });
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
@@ -223,27 +209,105 @@ export default function ProfilePage() {
     }
 
     // Validate file type
-    if (!file.type.startsWith("image/")) {
-      toast.error("File harus berupa gambar");
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Format file tidak didukung. Gunakan JPG, PNG, WEBP, atau GIF");
       return;
     }
 
-    // Show preview immediately (optimistic update)
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setAvatarPreview(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsUploadingAvatar(true);
+      setSaveStatus("saving");
 
-    setAvatarFile(file);
-    
-    // Save immediately for avatar changes
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+      // Show preview immediately (optimistic update)
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const base64Preview = event.target.result as string;
+          setAvatarPreview(base64Preview);
+          console.log("[Profile] 👁️ Preview set (base64)");
+        }
+      };
+      reader.readAsDataURL(file);
+
+      // Upload avatar to server (will be saved as base64 in DB)
+      const formData = new FormData();
+      formData.append("avatar", file);
+
+      console.log("[Profile] ⬆️ Uploading to server...");
+      const uploadResponse = await fetch("/api/user/upload-avatar", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        console.error("[Profile] ❌ Upload failed:", errorData);
+        throw new Error(errorData.message || "Gagal mengupload avatar");
+      }
+
+      const uploadData = await uploadResponse.json();
+      console.log("[Profile] ✅ Upload successful:", {
+        hasAvatar: !!uploadData.avatarUrl,
+        avatarLength: uploadData.avatarUrl?.length || 0,
+        isBase64: uploadData.avatarUrl?.startsWith('data:image') || false
+      });
+
+      // Update local state with base64 from server
+      const updatedProfile = {
+        ...profile,
+        avatar: uploadData.avatarUrl,
+      };
+      setProfile(updatedProfile);
+      setAvatarPreview(uploadData.avatarUrl);
+
+      console.log("[Profile] 🔄 Refreshing auth context...");
+      // Refresh auth context to update navbar
+      await refreshUser();
+
+      setSaveStatus("saved");
+      toast.success("Avatar berhasil diupdate!");
+
+      // Verify by fetching fresh data
+      console.log("[Profile] 🔍 Verifying avatar in database...");
+      const verifyResponse = await fetch("/api/user/profile", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      if (verifyResponse.ok) {
+        const verifyData = await verifyResponse.json();
+        console.log("[Profile] ✅ Verification - Avatar in DB:", {
+          exists: !!verifyData.profile.avatar,
+          length: verifyData.profile.avatar?.length || 0,
+          matches: verifyData.profile.avatar === uploadData.avatarUrl
+        });
+      }
+
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 2000);
+
+    } catch (error) {
+      console.error("[Profile] ❌ Avatar upload error:", error);
+      setSaveStatus("error");
+      toast.error(error instanceof Error ? error.message : "Gagal mengupload avatar");
+      
+      // Revert preview on error
+      setAvatarPreview(profile.avatar || "/profile.svg");
+      
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 3000);
+    } finally {
+      setIsUploadingAvatar(false);
     }
-    await autoSaveProfile(profile, file);
   };
 
   // Handle input changes with debounced save
@@ -376,23 +440,33 @@ export default function ProfilePage() {
                 <div className="flex flex-col items-center">
                   <div className="relative mb-4">
                     <Avatar className="h-40 w-40 border-4 border-white shadow-lg">
-                      <AvatarImage src={avatarPreview} alt={profile.name} />
+                      <AvatarImage 
+                        src={avatarPreview} 
+                        alt={profile.name}
+                        key={avatarPreview} 
+                      />
                       <AvatarFallback className="text-4xl bg-gradient-to-br from-emerald-100 to-teal-100">
                         <UserCircle className="h-20 w-20 text-emerald-500" />
                       </AvatarFallback>
                     </Avatar>
                     <label
                       htmlFor="avatar-upload"
-                      className="absolute bottom-2 right-2 bg-white p-3 rounded-full shadow-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                      className={`absolute bottom-2 right-2 bg-white p-3 rounded-full shadow-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                        isUploadingAvatar || saveStatus === "saving" ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                     >
-                      <Camera className="h-5 w-5 text-emerald-600" />
+                      {isUploadingAvatar ? (
+                        <Loader2 className="h-5 w-5 text-emerald-600 animate-spin" />
+                      ) : (
+                        <Camera className="h-5 w-5 text-emerald-600" />
+                      )}
                       <input
                         id="avatar-upload"
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
                         className="hidden"
                         onChange={handleAvatarChange}
-                        disabled={saveStatus === "saving"}
+                        disabled={isUploadingAvatar || saveStatus === "saving"}
                       />
                     </label>
                   </div>
@@ -439,7 +513,7 @@ export default function ProfilePage() {
                       Auto-Save Aktif
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Semua perubahan akan disimpan secara otomatis setelah 1.5 detik. Data Anda aman bahkan saat berpindah tab.
+                      Semua perubahan akan disimpan secara otomatis setelah 1.5 detik. Avatar disimpan langsung ke database.
                     </p>
                   </div>
                 </div>

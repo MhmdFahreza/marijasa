@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       if (nextAuthSession?.user?.email) {
         console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
         
-        // CRITICAL FIX: ALWAYS get fresh user data from database
+        // ALWAYS get fresh user data from database
         const user = await prisma.user.findUnique({
           where: { email: nextAuthSession.user.email.toLowerCase() },
           select: {
@@ -54,7 +54,8 @@ export async function GET(request: NextRequest) {
           console.log("[Auth Me] ✅ Returning fresh user data from database:", {
             name: user.name,
             email: user.email,
-            avatar: user.avatar
+            hasAvatar: !!user.avatar,
+            avatarType: user.avatar?.substring(0, 20) + "..."
           });
           
           return NextResponse.json({
@@ -62,11 +63,11 @@ export async function GET(request: NextRequest) {
             user: {
               user_id: user.user_id,
               id: user.user_id,
-              name: user.name, // Fresh from DB
+              name: user.name,
               email: user.email,
               phone: user.phone,
-              // CRITICAL: Always use avatar from database, not from Google
-              avatar: user.avatar || "/profile.svg", // Fresh from DB
+              // Avatar from database (base64 or default)
+              avatar: user.avatar || "/profile.svg",
               role: user.role,
             },
           }, { 
@@ -190,7 +191,7 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    // CRITICAL: ALWAYS get FRESH user data from database
+    // ALWAYS get FRESH user data from database
     console.log("[Auth Me] 📊 Fetching FRESH user data from database...");
     const user = await prisma.user.findUnique({
       where: { user_id: session.userId },
@@ -222,7 +223,8 @@ export async function GET(request: NextRequest) {
     console.log("[Auth Me] ✅ Authentication successful with FRESH data:", {
       email: user.email,
       name: user.name,
-      avatar: user.avatar
+      hasAvatar: !!user.avatar,
+      avatarType: user.avatar?.substring(0, 20) + "..."
     });
 
     // Prepare response with FRESH database data
@@ -231,11 +233,11 @@ export async function GET(request: NextRequest) {
       user: {
         user_id: user.user_id,
         id: user.user_id,
-        name: user.name, // FRESH from database
+        name: user.name,
         email: user.email,
         phone: user.phone,
-        // CRITICAL: Always use avatar from database
-        avatar: user.avatar || "/profile.svg", // FRESH from database
+        // Avatar from database (base64 or default)
+        avatar: user.avatar || "/profile.svg",
         role: user.role,
       },
       refreshed: tokenWasRefreshed,
