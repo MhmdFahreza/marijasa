@@ -79,6 +79,14 @@ export async function POST(request: NextRequest) {
     // Generate public URL
     const fileUrl = `/uploads/chat/${fileName}`;
 
+    console.log('File uploaded successfully:', {
+      type,
+      fileName: file.name,
+      savedAs: fileName,
+      fileUrl,
+      size: file.size
+    });
+
     // For videos, use a placeholder thumbnail
     let thumbnail = null;
     if (type === "video") {
