@@ -40,4 +40,12 @@ export function isRedisAvailable(): boolean {
   return redis !== null;
 }
 
+// Export function untuk mendapatkan Redis client
+export async function getRedisClient(): Promise<Redis> {
+  if (!redis) {
+    throw new Error("Redis client is not available");
+  }
+  return redis;
+}
+
 export default redis;

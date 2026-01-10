@@ -1846,7 +1846,7 @@ export default function MitraDaftarPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Success Modal */}
+            {/* Success Modal - FIXED: Removed nested <p> tags and improved typography */}
             <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -1854,20 +1854,17 @@ export default function MitraDaftarPage() {
                     </DialogHeader>
                     <div className="flex flex-col items-center justify-center py-6">
                         <CheckCircle2 className="h-16 w-16 text-[#7CE0A8] mb-4" />
-                        <DialogDescription className="text-center">
-                            <p className="mb-2">
-                                <strong>Selamat! Anda telah berhasil mendaftarkan diri sebagai calon mitra kami.</strong>
+                        <div className="space-y-3 text-center">
+                            <p className="font-semibold text-foreground">
+                                Selamat! Pendaftaran Anda berhasil.
                             </p>
-                            <p className="mb-3">
-                                Pendaftaran Anda telah kami terima dan sedang dalam proses verifikasi oleh tim admin kami.
+                            <p className="text-sm text-muted-foreground">
+                                Pendaftaran Anda sedang dalam proses verifikasi. Hasil persetujuan akan dikirimkan melalui email dalam waktu maksimal 1x24 jam.
                             </p>
-                            <p className="mb-3">
-                                Hasil persetujuan pendaftaran akan dikirimkan melalui email yang Anda daftarkan dalam waktu maksimal 1x24 jam.
-                            </p>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-xs text-gray-500">
                                 Anda akan diarahkan ke halaman utama dalam beberapa detik...
                             </p>
-                        </DialogDescription>
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button 

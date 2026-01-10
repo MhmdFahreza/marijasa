@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
 import { IconSearch, IconCheck, IconX, IconEye, IconRefresh } from "@tabler/icons-react";
-import Image from "next/image";
 
 type Document = {
   id: string;
@@ -132,7 +131,18 @@ export default function MitraApprovalPage() {
       if (response.ok) {
         setActionSuccess(`Mitra "${mitra.name}" berhasil disetujui!`);
         setShowDetailModal(false);
-        await fetchPendingMitra();
+        
+        // Update stats immediately - increment approvedToday and decrement pending
+        setStats(prevStats => ({
+          pending: Math.max(0, prevStats.pending - 1),
+          approvedToday: prevStats.approvedToday + 1,
+          rejectedToday: prevStats.rejectedToday
+        }));
+        
+        // Remove approved mitra from list
+        setMitraRequests(prevRequests => 
+          prevRequests.filter(m => m.id !== mitra.id)
+        );
       } else {
         setActionError(data.message || 'Gagal menyetujui mitra');
       }
@@ -180,7 +190,18 @@ export default function MitraApprovalPage() {
         setActionSuccess(`Pendaftaran mitra "${selectedMitra.name}" ditolak.`);
         setShowRejectModal(false);
         setShowDetailModal(false);
-        await fetchPendingMitra();
+        
+        // Update stats immediately - increment rejectedToday and decrement pending
+        setStats(prevStats => ({
+          pending: Math.max(0, prevStats.pending - 1),
+          approvedToday: prevStats.approvedToday,
+          rejectedToday: prevStats.rejectedToday + 1
+        }));
+        
+        // Remove rejected mitra from list
+        setMitraRequests(prevRequests => 
+          prevRequests.filter(m => m.id !== selectedMitra.id)
+        );
       } else {
         setActionError(data.message || 'Gagal menolak mitra');
       }
