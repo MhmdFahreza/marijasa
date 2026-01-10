@@ -305,12 +305,12 @@ export async function PUT(request: NextRequest) {
           }
         });
 
-        // Create notification for user
+        // CREATE USER NOTIFICATION - APPROVED (with detailed info)
         await prisma.userNotification.create({
           data: {
             user_id: booking.user_id,
-            title: 'Permintaan Layanan Disetujui',
-            message: `Permintaan layanan tambahan untuk pesanan #${booking.booking_number} telah disetujui. Layanan telah ditambahkan ke pesanan Anda.`,
+            title: '✅ Permintaan Layanan Disetujui',
+            message: `Permintaan layanan tambahan untuk pesanan #${booking.booking_number} telah disetujui! Layanan ${additionalRequest.description} telah ditambahkan. Total tagihan baru: Rp ${newTotal.toLocaleString('id-ID')}`,
             type: 'additional_service',
             order_id: booking.booking_id
           }
@@ -352,13 +352,13 @@ export async function PUT(request: NextRequest) {
           }
         });
 
-        // Create notification for user
+        // CREATE USER NOTIFICATION - REJECTED (with detailed info)
         const booking = additionalRequest.booking;
         await prisma.userNotification.create({
           data: {
             user_id: booking.user_id,
-            title: 'Permintaan Layanan Ditolak',
-            message: `Permintaan layanan tambahan untuk pesanan #${booking.booking_number} ditolak. Alasan: ${rejectionReason}`,
+            title: '❌ Permintaan Layanan Ditolak',
+            message: `Maaf, permintaan layanan tambahan untuk pesanan #${booking.booking_number} ditolak. Alasan: ${rejectionReason}`,
             type: 'additional_service',
             order_id: booking.booking_id
           }

@@ -1,4 +1,4 @@
-// app/api/user/orders/route.ts
+// app/api/user/orders/route.ts (UPDATED with notifications)
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 
@@ -45,7 +45,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch all bookings for the user
     const bookings = await prisma.booking.findMany({
       where: {
         user_id: userId
@@ -113,7 +112,6 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Get all vendor services for each booking
     const vendorServicesByBooking: Record<string, any[]> = {};
     for (const booking of bookings) {
       const vendorServices = await prisma.service.findMany({
@@ -133,9 +131,7 @@ export async function GET(request: NextRequest) {
       vendorServicesByBooking[booking.booking_id] = vendorServices;
     }
 
-    // Format orders for frontend
     const formattedOrders = bookings.map(booking => {
-      // Map status
       const statusMap: Record<string, string> = {
         'PENDING': 'menunggu pembayaran',
         'CONFIRMED': 'diproses',
@@ -145,12 +141,9 @@ export async function GET(request: NextRequest) {
       };
 
       const frontendStatus = statusMap[booking.status] || 'menunggu pembayaran';
-
-      // Format service type
       const serviceNames = booking.items.map(item => item.service.name);
       const serviceType = serviceNames.join(', ') || booking.vendor.category || 'Layanan Umum';
 
-      // Format order history
       const orderHistory = booking.order_history.map(history => ({
         status: history.status,
         date: new Date(history.created_at).toLocaleDateString('id-ID', {
@@ -164,7 +157,6 @@ export async function GET(request: NextRequest) {
         reason: history.reason
       }));
 
-      // Format additional services
       const additionalServices = booking.additional_service_requests.map(req => ({
         id: req.request_id,
         description: req.description,
@@ -185,7 +177,6 @@ export async function GET(request: NextRequest) {
         rejectionReason: req.rejection_reason
       }));
 
-      // Get vendor services for this booking
       const vendorServices = vendorServicesByBooking[booking.booking_id] || [];
 
       return {
@@ -222,7 +213,7 @@ export async function GET(request: NextRequest) {
         },
         serviceDetails: {
           services: serviceNames,
-          propertyType: null, // Can be added if needed
+          propertyType: null,
           date: new Date(booking.scheduled_date).toLocaleDateString('id-ID', {
             day: 'numeric',
             month: 'long',
@@ -280,7 +271,6 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { action, orderId, ...data } = body;
 
-    // Find booking
     const booking = await prisma.booking.findFirst({
       where: {
         booking_number: orderId,
@@ -328,13 +318,13 @@ export async function PUT(request: NextRequest) {
           }
         });
 
-        // Create notification for vendor
+        // CREATE NOTIFICATION
         await prisma.userNotification.create({
           data: {
             user_id: userId,
             title: 'Pembayaran Berhasil',
-            message: `Pembayaran untuk pesanan #${orderId} telah berhasil. Pesanan Anda sedang diproses.`,
-            type: 'order',
+            message: `Pembayaran untuk pesanan #${orderId} telah berhasil diproses. Pesanan Anda sedang dikerjakan oleh vendor.`,
+            type: 'payment',
             order_id: booking.booking_id
           }
         });
@@ -371,6 +361,17 @@ export async function PUT(request: NextRequest) {
           }
         });
 
+        // CREATE NOTIFICATION
+        await prisma.userNotification.create({
+          data: {
+            user_id: userId,
+            title: 'Pesanan Dibatalkan',
+            message: `Pesanan #${orderId} telah dibatalkan. Alasan: ${reason}`,
+            type: 'cancellation',
+            order_id: booking.booking_id
+          }
+        });
+
         return NextResponse.json({
           success: true,
           message: 'Pesanan berhasil dibatalkan'
@@ -397,7 +398,6 @@ export async function PUT(request: NextRequest) {
           updateData.is_anonymous = isAnonymous || false;
           updateData.rated_at = new Date();
 
-          // Create review
           await prisma.review.create({
             data: {
               booking_id: booking.booking_id,
@@ -408,7 +408,6 @@ export async function PUT(request: NextRequest) {
             }
           });
 
-          // Update vendor rating
           const vendor = await prisma.vendor.findUnique({
             where: { vendor_id: booking.vendor_id }
           });
@@ -426,7 +425,6 @@ export async function PUT(request: NextRequest) {
             });
           }
 
-          // Add rating history
           updateData.order_history.create = [
             { status: 'Pekerjaan Selesai' },
             { status: 'Rating dan Ulasan Diberikan' }
@@ -436,6 +434,17 @@ export async function PUT(request: NextRequest) {
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
           data: updateData
+        });
+
+        // CREATE NOTIFICATION
+        await prisma.userNotification.create({
+          data: {
+            user_id: userId,
+            title: 'Pesanan Selesai',
+            message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
+            type: 'completion',
+            order_id: booking.booking_id
+          }
         });
 
         return NextResponse.json({
@@ -460,7 +469,6 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// Helper function to get status color
 function getStatusColor(status: string): string {
   switch (status) {
     case 'dibatalkan':

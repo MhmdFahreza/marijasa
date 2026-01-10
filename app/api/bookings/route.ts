@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
     const selectedServices = serviceDetails?.selectedServices || [];
     const serviceItems = [];
     let calculatedSubtotal = 0;
+    const serviceNames: string[] = [];
     
     for (const serviceId of selectedServices) {
       const service = await prisma.service.findUnique({
@@ -214,6 +215,7 @@ export async function POST(request: NextRequest) {
         });
 
         calculatedSubtotal += itemSubtotal;
+        serviceNames.push(service.name);
       }
     }
 
@@ -265,6 +267,29 @@ export async function POST(request: NextRequest) {
 
     console.log('[Bookings API] Booking created:', booking.booking_id);
     console.log('[Bookings API] Booking items:', booking.items.length);
+
+    // CREATE NOTIFICATION FOR USER - Pesanan Berhasil Dibuat
+    try {
+      const serviceNamesString = serviceNames.length > 0 
+        ? serviceNames.join(', ') 
+        : 'layanan yang dipilih';
+
+      await prisma.userNotification.create({
+        data: {
+          user_id: userId,
+          title: '🎉 Pesanan Berhasil Dibuat',
+          message: `Pesanan Anda untuk layanan ${serviceNamesString} dari ${vendor.name} telah berhasil dibuat dengan ID #${orderId}. Total tagihan: Rp ${finalTotal.toLocaleString('id-ID')}. Silakan lakukan pembayaran untuk melanjutkan pesanan Anda.`,
+          type: 'order',
+          order_id: booking.booking_id,
+          is_read: false
+        }
+      });
+
+      console.log('[Bookings API] Notification created successfully');
+    } catch (notifError) {
+      console.error('[Bookings API] Error creating notification:', notifError);
+      // Don't fail the booking creation if notification fails
+    }
 
     return NextResponse.json(
       {

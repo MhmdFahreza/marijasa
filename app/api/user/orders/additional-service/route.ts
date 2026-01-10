@@ -1,4 +1,4 @@
-// app/api/user/orders/additional-service/route.ts
+// app/api/user/orders/additional-service/route.ts (UPDATED with notifications)
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 
@@ -148,12 +148,12 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Create user notification
+    // CREATE USER NOTIFICATION
     await prisma.userNotification.create({
       data: {
         user_id: userId,
         title: 'Permintaan Layanan Tambahan Dikirim',
-        message: `Permintaan layanan tambahan untuk pesanan #${orderId} telah dikirim. Menunggu konfirmasi admin.`,
+        message: `Permintaan layanan tambahan untuk pesanan #${orderId} telah dikirim. Menunggu persetujuan admin. Total: Rp ${totalPrice.toLocaleString('id-ID')}`,
         type: 'additional_service',
         order_id: booking.booking_id
       }
