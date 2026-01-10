@@ -1,4 +1,4 @@
-// app/mitra/chat/page.tsx - Fixed Audio Playback
+// app/mitra/chat/page.tsx - Fixed Audio Playback and Error Handling
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -72,7 +72,7 @@ const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: nu
         if (startTimeRef.current) setRecordingTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 100);
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Error accessing microphone:", error);
       alert("Tidak dapat mengakses mikrofon");
       onCancel();
     }
@@ -127,19 +127,10 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   const waveformHeights = useRef<number[]>(Array.from({ length: 40 }, () => Math.random() * 60 + 40));
 
   useEffect(() => {
-    // Try multiple possible audio URL sources
     const audioUrl = msg.audioUrl || msg.fileUrl;
     
-    console.log('VoiceMessagePlayer - Loading audio:', {
-      audioUrl,
-      messageType: msg.messageType,
-      isVoiceMessage: msg.isVoiceMessage,
-      fileUrl: msg.fileUrl,
-      duration: msg.duration
-    });
-
     if (!audioUrl) {
-      console.error('No audio URL found');
+      console.warn('VoiceMessagePlayer: No audio URL available');
       setHasError(true);
       setIsLoading(false);
       return;
@@ -148,42 +139,58 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
     const audio = new Audio();
     audioRef.current = audio;
 
-    audio.onloadedmetadata = () => {
-      console.log('Audio loaded successfully:', audio.duration);
+    const handleLoadedMetadata = () => {
       setDuration(msg.duration || Math.floor(audio.duration));
       setIsLoading(false);
       setHasError(false);
     };
 
-    audio.onended = () => {
+    const handleEnded = () => {
       setIsPlaying(false);
       setCurrentTime(0);
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
 
-    audio.onerror = (e) => {
-      console.error('Audio loading error:', e, audio.error);
+    const handleError = (e: Event) => {
+      const target = e.target as HTMLAudioElement;
+      const errorCode = target.error?.code;
+      const errorMessage = target.error?.message || 'Unknown error';
+      
+      console.warn('VoiceMessagePlayer: Audio loading failed', {
+        errorCode,
+        errorMessage,
+        audioUrl
+      });
+      
       setHasError(true);
       setIsLoading(false);
       setIsPlaying(false);
     };
 
-    audio.oncanplay = () => {
-      console.log('Audio can play');
+    const handleCanPlay = () => {
       setIsLoading(false);
     };
 
-    // Set audio source with error handling
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('canplay', handleCanPlay);
+
     try {
       audio.src = audioUrl;
       audio.load();
     } catch (error) {
-      console.error('Error setting audio source:', error);
+      console.warn('VoiceMessagePlayer: Error setting audio source', error);
       setHasError(true);
       setIsLoading(false);
     }
 
     return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('canplay', handleCanPlay);
+      
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (audioRef.current) {
         audioRef.current.pause();
@@ -206,28 +213,21 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
     return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current); };
   }, [isPlaying]);
 
-  const handlePlayPause = () => {
-    if (!audioRef.current || hasError) {
-      console.log('Cannot play - audio ref or error:', { hasAudio: !!audioRef.current, hasError });
-      return;
-    }
+  const handlePlayPause = async () => {
+    if (!audioRef.current || hasError) return;
     
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      console.log('Attempting to play audio...');
-      audioRef.current.play()
-        .then(() => {
-          console.log('Audio playing successfully');
-          setIsPlaying(true);
-        })
-        .catch((error) => {
-          console.error('Play error:', error);
-          setHasError(true);
-          setIsPlaying(false);
-          alert('Tidak dapat memutar audio: ' + error.message);
-        });
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (error) {
+        console.warn('VoiceMessagePlayer: Play failed', error);
+        setHasError(true);
+        setIsPlaying(false);
+      }
     }
   };
 
@@ -511,7 +511,6 @@ export default function MitraChatPage() {
     
     try {
       const msgs = await chatService.getMessages(session.userId, currentVendor.id);
-      console.log('Loaded messages:', msgs);
       setMessages(msgs);
       
       await chatService.markAsRead(session.userId, currentVendor.id, "mitra");
@@ -567,7 +566,6 @@ export default function MitraChatPage() {
       );
       
       if (sentMessage) {
-        console.log('Voice message sent:', sentMessage);
         setMessages((prev) => [...prev, sentMessage]);
       }
     } catch (error) {
@@ -689,15 +687,6 @@ export default function MitraChatPage() {
     const isMitra = msg.senderType === "mitra";
     const isVoice = msg.isVoiceMessage || msg.messageType === "VOICE";
     const isMedia = msg.isImage || msg.isVideo || msg.messageType === "IMAGE" || msg.messageType === "VIDEO";
-    
-    console.log('Rendering message:', { 
-      id: msg.id, 
-      type: msg.messageType, 
-      isVoice, 
-      isMedia,
-      audioUrl: msg.audioUrl,
-      fileUrl: msg.fileUrl 
-    });
     
     if (isVoice) return <VoiceMessagePlayer msg={msg} isMitra={isMitra} />;
     if (isMedia) return <MediaMessage msg={msg} isMitra={isMitra} timestamp={formatTime(msg.timestamp)} />;

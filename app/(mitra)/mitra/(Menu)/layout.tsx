@@ -190,7 +190,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  // State untuk profile data dari API
+  // State untuk profile data dari API - PERBAIKAN: Sesuaikan dengan database schema
   const [mitraProfile, setMitraProfile] = useState<{
     name: string;
     avatar: string;
@@ -199,15 +199,15 @@ export default function DashboardLayout({
     email?: string;
   }>({
     name: "Nama Mitra",
-    avatar: "https://assets.aceternity.com/manu.png"
+    avatar: "https://i.pravatar.cc/120" // Default sesuai schema database
   });
 
-  // PERBAIKAN: Reset isNavigating ketika pathname berubah
+  // Reset isNavigating ketika pathname berubah
   useEffect(() => {
     setIsNavigating(false);
   }, [pathname]);
 
-  // Fetch mitra profile dari API
+  // Fetch mitra profile dari API - PERBAIKAN: Handle avatar dengan benar
   const fetchMitraProfile = async () => {
     try {
       const response = await fetch('/api/mitra/profile', {
@@ -225,17 +225,25 @@ export default function DashboardLayout({
 
       const data = await response.json();
       if (data.vendor) {
+        // PERBAIKAN: Gunakan default avatar dari database jika tidak ada
+        const avatarUrl = data.vendor.avatar || "https://i.pravatar.cc/120";
+        
         setMitraProfile({
           name: data.vendor.name || "Nama Mitra",
-          avatar: data.vendor.avatar || "https://assets.aceternity.com/manu.png",
-          verified: data.vendor.verified,
+          avatar: avatarUrl,
+          verified: data.vendor.verified || false,
           role: 'vendor',
           email: data.vendor.email
         });
       }
     } catch (error) {
       console.error('Error fetching mitra profile:', error);
-      router.push('/mitra/login');
+      // Jangan langsung redirect, coba lagi atau set default
+      setMitraProfile({
+        name: "Nama Mitra",
+        avatar: "https://i.pravatar.cc/120",
+        verified: false
+      });
     } finally {
       setIsLoading(false);
     }
@@ -318,7 +326,7 @@ export default function DashboardLayout({
     // Show loading
     setIsNavigating(true);
     
-    // PERBAIKAN: Navigasi langsung tanpa timeout
+    // Navigasi langsung tanpa timeout
     router.push(href);
   }, [router, pathname, isNavigating]);
 
@@ -356,13 +364,18 @@ export default function DashboardLayout({
     }
   }, []);
 
+  // PERBAIKAN: Handle error loading avatar dengan fallback
+  const handleAvatarError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    e.currentTarget.src = "https://i.pravatar.cc/120";
+  }, []);
+
   // Show loading state until mounted and profile loaded
   if (!mounted || isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-neutral-900">
         <div className="text-center">
           <LoaderTwo />
-          <p className="text-neutral-600 dark:text-neutral-400 mt-6 text-sm">Memuat halaman admin...</p>
+          <p className="text-neutral-600 dark:text-neutral-400 mt-6 text-sm">Memuat halaman mitra...</p>
         </div>
       </div>
     );
@@ -547,10 +560,11 @@ export default function DashboardLayout({
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.3 }}
                   src={mitraProfile.avatar}
-                  className="h-7 w-7 shrink-0 rounded-full object-cover"
+                  onError={handleAvatarError}
+                  className="h-7 w-7 shrink-0 rounded-full object-cover border border-neutral-200 dark:border-neutral-700"
                   width={50}
                   height={50}
-                  alt="Avatar"
+                  alt={`Avatar ${mitraProfile.name}`}
                   loading="lazy"
                   decoding="async"
                 />
