@@ -61,7 +61,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import SiteFooter from "@/app/footer";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/app/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/app/components/ui/dialog";
 import { Slider } from "@/app/components/ui/slider";
 
 type ServiceTag = string;
@@ -188,6 +188,7 @@ export default function MitraDaftarPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [showKtpCropModal, setShowKtpCropModal] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState<Crop>({
         unit: 'px',
@@ -226,7 +227,6 @@ export default function MitraDaftarPage() {
 
     // Error state
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [showSuccess, setShowSuccess] = useState(false);
     const [submitError, setSubmitError] = useState<string>("");
     const [isClient, setIsClient] = useState(false);
 
@@ -323,6 +323,18 @@ export default function MitraDaftarPage() {
             if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
         };
     }, [cropImageSrc]);
+
+    // Auto redirect setelah modal sukses ditutup
+    useEffect(() => {
+        if (showSuccessModal) {
+            const timer = setTimeout(() => {
+                setShowSuccessModal(false);
+                router.push("/");
+            }, 5000); // Redirect setelah 5 detik
+
+            return () => clearTimeout(timer);
+        }
+    }, [showSuccessModal, router]);
 
     const handleBackClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault();
@@ -725,12 +737,9 @@ export default function MitraDaftarPage() {
                 throw new Error(data.message || 'Terjadi kesalahan saat mendaftar');
             }
 
-            setShowSuccess(true);
+            // Tampilkan modal sukses
+            setShowSuccessModal(true);
             setStep2Completed(true);
-
-            setTimeout(() => {
-                router.push("/mitra/login");
-            }, 3000);
 
         } catch (error: any) {
             console.error('Registration error:', error);
@@ -738,7 +747,12 @@ export default function MitraDaftarPage() {
         } finally {
             setIsSubmitting(false);
         }
-    }, [validateStep2, errors, namaMitra, fotoProfil, kategoriJasa, jasaDitawarkan, deskripsi, lokasi, email, telepon, alamat, password, tipeMitra, fotoKTP, fotoDenganKTP, skck, siup, cv, hasilPekerjaan, router]);
+    }, [validateStep2, errors, namaMitra, fotoProfil, kategoriJasa, jasaDitawarkan, deskripsi, lokasi, email, telepon, alamat, password, tipeMitra, fotoKTP, fotoDenganKTP, skck, siup, cv, hasilPekerjaan]);
+
+    const handleCloseSuccessModal = useCallback(() => {
+        setShowSuccessModal(false);
+        router.push("/");
+    }, [router]);
 
     if (!isClient) {
         return (
@@ -806,25 +820,6 @@ export default function MitraDaftarPage() {
                         </div>
                     </div>
                 </div>
-
-                {/* Success Alert */}
-                <AnimatePresence>
-                    {showSuccess && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="mb-6"
-                        >
-                            <Alert className="border-[#7CE0A8] bg-[#7CE0A8]/10 dark:bg-[#7CE0A8]/20">
-                                <CheckCircle2 className="h-4 w-4 text-[#7CE0A8]" />
-                                <AlertDescription className="text-[#5AB88A] dark:text-[#7CE0A8]">
-                                    Pendaftaran berhasil! Menunggu persetujuan admin. Anda akan dialihkan ke halaman login...
-                                </AlertDescription>
-                            </Alert>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
                 {/* Error Alert */}
                 <AnimatePresence>
@@ -1846,6 +1841,40 @@ export default function MitraDaftarPage() {
                             className="bg-[#7CE0A8] hover:bg-[#6BC999]"
                         >
                             Simpan Crop
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Success Modal */}
+            <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-center text-[#7CE0A8]">Pendaftaran Berhasil</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col items-center justify-center py-6">
+                        <CheckCircle2 className="h-16 w-16 text-[#7CE0A8] mb-4" />
+                        <DialogDescription className="text-center">
+                            <p className="mb-2">
+                                <strong>Selamat! Anda telah berhasil mendaftarkan diri sebagai calon mitra kami.</strong>
+                            </p>
+                            <p className="mb-3">
+                                Pendaftaran Anda telah kami terima dan sedang dalam proses verifikasi oleh tim admin kami.
+                            </p>
+                            <p className="mb-3">
+                                Hasil persetujuan pendaftaran akan dikirimkan melalui email yang Anda daftarkan dalam waktu maksimal 1x24 jam.
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                Anda akan diarahkan ke halaman utama dalam beberapa detik...
+                            </p>
+                        </DialogDescription>
+                    </div>
+                    <DialogFooter>
+                        <Button 
+                            className="w-full bg-[#7CE0A8] hover:bg-[#6BC999]" 
+                            onClick={handleCloseSuccessModal}
+                        >
+                            Kembali ke Halaman Utama
                         </Button>
                     </DialogFooter>
                 </DialogContent>
