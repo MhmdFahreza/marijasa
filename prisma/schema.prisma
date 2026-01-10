@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-
 }
 
 // ==========================================
@@ -92,6 +91,12 @@ enum ActivityType {
   ANONYMOUS_VIEW_VENDOR
 }
 
+enum AdditionalServiceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ==========================================
 // MASTER DATA TABLES
 // ==========================================
@@ -155,10 +160,55 @@ model User {
   reviews       Review[]
   favorites     UserFavorite[]
   chat_sessions ChatSession[]
+  notifications UserNotification[]
 
   @@index([email])
   @@index([phone])
   @@map("users")
+}
+
+// ==========================================
+// NOTIFICATION TABLES
+// ==========================================
+
+model UserNotification {
+  notification_id String  @id @default(uuid()) @db.Uuid
+  user_id         String  @db.Uuid
+  title           String
+  message         String  @db.Text
+  type            String  // order, promo, system, reminder, additional_service
+  order_id        String? @db.Uuid
+  is_read         Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user    User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  booking Booking? @relation(fields: [order_id], references: [booking_id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([is_read])
+  @@index([created_at])
+  @@map("user_notifications")
+}
+
+model AdminNotification {
+  notification_id String  @id @default(uuid()) @db.Uuid
+  title           String
+  message         String  @db.Text
+  type            String  // additional_service_request, order, system
+  request_id      String? @db.Uuid
+  order_id        String? @db.Uuid
+  is_read         Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  additional_service_request AdditionalServiceRequest? @relation(fields: [request_id], references: [request_id], onDelete: SetNull)
+
+  @@index([is_read])
+  @@index([created_at])
+  @@map("admin_notifications")
 }
 
 // ==========================================
@@ -338,8 +388,9 @@ model Service {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  vendor        Vendor        @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
-  booking_items BookingItem[]
+  vendor                         Vendor                          @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  booking_items                  BookingItem[]
+  additional_service_request_items AdditionalServiceRequestItem[]
 
   @@index([vendor_id])
   @@index([is_active])
@@ -379,20 +430,36 @@ model Booking {
 
   status         BookingStatus @default(PENDING)
   payment_status PaymentStatus @default(PENDING)
+  payment_method String?
 
-  subtotal    Float
-  service_fee Float @default(0)
-  total       Float
+  subtotal        Float
+  service_fee     Float @default(0)
+  transaction_fee Float @default(0)
+  total           Float
+
+  // Rating fields
+  rating         Int?
+  rating_comment String? @db.Text
+  rating_photos  String[]
+  is_anonymous   Boolean @default(false)
+  rated_at       DateTime?
+
+  // Cancellation fields
+  cancellation_reason String? @db.Text
+  cancelled_by        String? // 'user' or 'vendor'
+  cancelled_at        DateTime?
 
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
   completed_at DateTime?
-  cancelled_at DateTime?
 
-  user   User          @relation(fields: [user_id], references: [user_id])
-  vendor Vendor        @relation(fields: [vendor_id], references: [vendor_id])
-  items  BookingItem[]
-  review Review?
+  user                       User                       @relation(fields: [user_id], references: [user_id])
+  vendor                     Vendor                     @relation(fields: [vendor_id], references: [vendor_id])
+  items                      BookingItem[]
+  review                     Review?
+  additional_service_requests AdditionalServiceRequest[]
+  notifications              UserNotification[]
+  order_history              BookingHistory[]
 
   @@index([user_id])
   @@index([vendor_id])
@@ -415,6 +482,70 @@ model BookingItem {
   @@index([booking_id])
   @@index([service_id])
   @@map("booking_items")
+}
+
+model BookingHistory {
+  history_id String  @id @default(uuid()) @db.Uuid
+  booking_id String  @db.Uuid
+  status     String
+  reason     String? @db.Text
+
+  created_at DateTime @default(now())
+
+  booking Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+
+  @@index([booking_id])
+  @@index([created_at])
+  @@map("booking_history")
+}
+
+// ==========================================
+// ADDITIONAL SERVICE REQUEST TABLES
+// ==========================================
+
+model AdditionalServiceRequest {
+  request_id  String                  @id @default(uuid()) @db.Uuid
+  booking_id  String                  @db.Uuid
+  vendor_id   String                  @db.Uuid
+  customer_name String
+  description String                  @db.Text
+  total_price Float
+  reason      String                  @db.Text
+  images      String[]
+  status      AdditionalServiceStatus @default(PENDING)
+
+  rejection_reason String?   @db.Text
+  approved_at      DateTime?
+  rejected_at      DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  booking             Booking                        @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+  items               AdditionalServiceRequestItem[]
+  admin_notifications AdminNotification[]
+
+  @@index([booking_id])
+  @@index([vendor_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("additional_service_requests")
+}
+
+model AdditionalServiceRequestItem {
+  item_id    String @id @default(uuid()) @db.Uuid
+  request_id String @db.Uuid
+  service_id String @db.Uuid
+  quantity   Int    @default(1)
+  price      Float
+  subtotal   Float
+
+  request AdditionalServiceRequest @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+  service Service                  @relation(fields: [service_id], references: [service_id])
+
+  @@index([request_id])
+  @@index([service_id])
+  @@map("additional_service_request_items")
 }
 
 // ==========================================

@@ -1,5 +1,6 @@
+// app/mitra/orders/page.tsx
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
   Breadcrumb,
@@ -35,6 +36,10 @@ import { toast } from 'sonner';
 
 // Fungsi untuk mendapatkan label service berdasarkan kategori
 const getServiceLabel = (category: string, details: any) => {
+  if (details?.selectedServices && Array.isArray(details.selectedServices)) {
+    return details.selectedServices.join(', ') || 'Layanan';
+  }
+  
   switch (category) {
     case 'ac':
       const acServices: Record<string, string> = {
@@ -43,7 +48,7 @@ const getServiceLabel = (category: string, details: any) => {
         cuci: 'Cuci AC',
         bongkar: 'Bongkar Pasang AC'
       };
-      return `${acServices[details.serviceType] || 'Layanan AC'} - ${details.acCount || 1} Unit ${details.acType || ''} ${details.acPk || ''} PK`;
+      return `${acServices[details?.serviceType] || 'Layanan AC'} - ${details?.acCount || 1} Unit`;
 
     case 'cleaning':
       const cleaningServices: Record<string, string> = {
@@ -52,28 +57,24 @@ const getServiceLabel = (category: string, details: any) => {
         renovasi: 'Pembersihan Renovasi',
         pindahan: 'Pembersihan Pindahan'
       };
-      return `${cleaningServices[details.cleaningType] || 'Pembersihan'} - ${details.areaSize || 0} m² (${details.rooms || 0} ruangan)`;
+      return `${cleaningServices[details?.cleaningType] || 'Pembersihan'} - ${details?.areaSize || 0} m²`;
 
     case 'electrical':
-      return `${details.electricalWork?.join(', ') || 'Pekerjaan Listrik'} - ${details.buildingType || ''} (${details.powerCapacity || ''} VA)`;
+      return details?.electricalWork?.join(', ') || 'Pekerjaan Listrik';
 
     case 'plumbing':
-      return `${details.plumbingIssues?.join(', ') || 'Pekerjaan Pipa'} - ${details.urgency === 'emergency' ? 'Darurat' : 'Normal'}`;
+      return details?.plumbingIssues?.join(', ') || 'Pekerjaan Pipa';
 
     case 'garden':
-      return `${details.gardenServices?.join(', ') || 'Layanan Taman'} - ${details.gardenSize || 0} m² (${details.gardenStyle || ''})`;
+      return details?.gardenServices?.join(', ') || 'Layanan Taman';
 
     case 'furniture':
-      return `${details.furnitureTypes?.join(', ') || 'Layanan Furniture'} - ${details.material || ''} (${details.finishing || ''})`;
+      return details?.furnitureTypes?.join(', ') || 'Layanan Furniture';
 
     case 'sedot-wc':
-      return `${details.serviceType || 'Layanan Sedot WC'} - ${details.totalPrice ? `Rp ${details.totalPrice.toLocaleString('id-ID')}` : ''}`;
+      return details?.serviceType || 'Layanan Sedot WC';
 
     default:
-      // Untuk layanan baru yang menggunakan selectedServices
-      if (details.selectedServices && Array.isArray(details.selectedServices)) {
-        return details.selectedServices.join(', ') || 'Layanan Umum';
-      }
       return 'Layanan Umum';
   }
 };
@@ -95,97 +96,120 @@ const getServiceIcon = (category: string) => {
 export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+    rejected: 0
+  });
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
   const itemsPerPage = 10;
 
-  // Load vendor ID dari localStorage
+  // Check authentication first
   useEffect(() => {
-    const mitraUser = localStorage.getItem('mitraUser');
-    if (mitraUser) {
+    const checkAuth = async () => {
       try {
-        const parsedMitra = JSON.parse(mitraUser);
-        setCurrentVendorId(parsedMitra.id);
+        console.log('[Orders Page] Checking authentication...');
+        const response = await fetch('/api/mitra/me', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          console.log('[Orders Page] Auth check failed, redirecting to login');
+          toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
+          router.push('/mitra/login');
+          return;
+        }
+
+        const data = await response.json();
+        if (!data.authenticated) {
+          console.log('[Orders Page] Not authenticated, redirecting to login');
+          toast.error('Anda belum login. Silakan login terlebih dahulu.');
+          router.push('/mitra/login');
+          return;
+        }
+
+        console.log('[Orders Page] Authentication verified:', data.vendor?.email);
+        setAuthChecked(true);
       } catch (error) {
-        console.error('Error parsing mitraUser:', error);
-        toast.error('Gagal memuat data vendor. Silakan login kembali.');
+        console.error('[Orders Page] Auth check error:', error);
+        toast.error('Gagal memverifikasi sesi. Silakan login kembali.');
         router.push('/mitra/login');
       }
-    } else {
-      toast.error('Anda belum login. Silakan login terlebih dahulu.');
-      router.push('/mitra/login');
-    }
+    };
+
+    checkAuth();
   }, [router]);
 
-  // Load orders dari localStorage saat komponen mount
-  useEffect(() => {
-    if (!currentVendorId) return;
+  // Load orders from API
+  const loadOrders = useCallback(async () => {
+    if (!authChecked) {
+      console.log('[Orders Page] Waiting for auth check...');
+      return;
+    }
 
-    const loadOrders = () => {
-      try {
-        setIsLoading(true);
-        const savedOrders = localStorage.getItem('allOrders');
-        if (savedOrders) {
-          const parsedOrders = JSON.parse(savedOrders);
+    try {
+      setIsLoading(true);
+      console.log('[Orders Page] Fetching orders...');
+      
+      const response = await fetch('/api/mitra/orders', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-          // Filter hanya pesanan untuk vendor yang sedang login
-          const vendorOrders = parsedOrders.filter((order: any) => {
-            return order.vendorId === currentVendorId;
-          });
+      console.log('[Orders Page] Response status:', response.status);
 
-          // Map status dari user ke status yang digunakan di mitra
-          const mappedOrders = vendorOrders.map((order: any) => {
-            let status = 'pending';
-
-            if (order.status === 'pending') {
-              status = 'pending';
-            } else if (order.status === 'in-progress') {
-              status = 'in-progress';
-            } else if (order.status === 'completed') {
-              status = 'completed';
-            } else if (order.status === 'rejected') {
-              status = 'rejected';
-            }
-
-            return {
-              ...order,
-              status: status,
-              paymentStatus: order.paymentStatus || (order.status === 'pending' ? 'unpaid' : 'paid')
-            };
-          });
-
-          setOrders(mappedOrders);
-        } else {
-          setOrders([]);
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
+          router.push('/mitra/login');
+          return;
         }
-      } catch (error) {
-        console.error('Error loading orders:', error);
-        setOrders([]);
-        toast.error('Gagal memuat data pesanan.');
-      } finally {
-        setIsLoading(false);
+        throw new Error(`Failed to fetch orders: ${response.status}`);
       }
-    };
 
-    loadOrders();
+      const data = await response.json();
+      console.log('[Orders Page] Orders data:', {
+        success: data.success,
+        ordersCount: data.orders?.length,
+        stats: data.stats
+      });
 
-    // Event listener untuk update real-time
-    const handleStorageChange = () => {
+      if (data.success) {
+        setOrders(data.orders || []);
+        setStats(data.stats || {
+          total: 0,
+          pending: 0,
+          inProgress: 0,
+          completed: 0,
+          rejected: 0
+        });
+      } else {
+        toast.error(data.message || 'Gagal memuat data pesanan');
+        setOrders([]);
+      }
+    } catch (error) {
+      console.error('[Orders Page] Error loading orders:', error);
+      toast.error('Gagal memuat data pesanan');
+      setOrders([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [authChecked, router]);
+
+  useEffect(() => {
+    if (authChecked) {
       loadOrders();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    // Polling untuk update real-time (setiap 5 detik)
-    const interval = setInterval(loadOrders, 5000);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, [currentVendorId]);
+    }
+  }, [authChecked, loadOrders]);
 
   // Reset ke halaman 1 saat tab berubah
   useEffect(() => {
@@ -198,7 +222,7 @@ export default function OrdersPage() {
     if (activeTab === 'pending') return order.status === 'pending';
     if (activeTab === 'in-progress') return order.status === 'in-progress';
     if (activeTab === 'completed') return order.status === 'completed';
-    if (activeTab === 'rejected') return order.status === 'rejected';
+    if (activeTab === 'rejected') return order.status === 'rejected' || order.status === 'cancelled';
     return true;
   });
 
@@ -228,8 +252,10 @@ export default function OrdersPage() {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       case 'in-progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'confirmed': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
   };
@@ -239,8 +265,10 @@ export default function OrdersPage() {
     switch (status) {
       case 'pending': return <Clock className="h-4 w-4 mr-1" />;
       case 'in-progress': return <Wrench className="h-4 w-4 mr-1" />;
+      case 'confirmed': return <CheckCheck className="h-4 w-4 mr-1" />;
       case 'completed': return <CheckCheck className="h-4 w-4 mr-1" />;
       case 'rejected': return <X className="h-4 w-4 mr-1" />;
+      case 'cancelled': return <X className="h-4 w-4 mr-1" />;
       default: return <AlertCircle className="h-4 w-4 mr-1" />;
     }
   };
@@ -249,15 +277,17 @@ export default function OrdersPage() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'pending': return 'Menunggu Pembayaran';
+      case 'confirmed': return 'Dikonfirmasi';
       case 'in-progress': return 'Sedang Dikerjakan';
       case 'completed': return 'Selesai';
       case 'rejected': return 'Dibatalkan';
+      case 'cancelled': return 'Dibatalkan';
       default: return status;
     }
   };
 
   // Loading state
-  if (!currentVendorId || isLoading) {
+  if (isLoading || !authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -307,7 +337,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Total Pesanan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{orders.length}</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.total}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                   <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -321,9 +351,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Menunggu Pembayaran</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
-                    {orders.filter(o => o.status === 'pending').length}
-                  </p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.pending}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
                   <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -337,9 +365,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Sedang Dikerjakan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
-                    {orders.filter(o => o.status === 'in-progress').length}
-                  </p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.inProgress}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                   <Wrench className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -353,9 +379,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Selesai</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
-                    {orders.filter(o => o.status === 'completed').length}
-                  </p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.completed}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
                   <CheckCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -369,9 +393,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Dibatalkan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
-                    {orders.filter(o => o.status === 'rejected').length}
-                  </p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.rejected}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
                   <X className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -448,7 +470,7 @@ export default function OrdersPage() {
 
                                 <div className="text-right">
                                   <p className="text-2xl font-bold text-neutral-900 dark:text-white">
-                                    Rp {order.serviceDetails.totalPrice?.toLocaleString('id-ID') || '0'}
+                                    Rp {order.serviceDetails?.totalPrice?.toLocaleString('id-ID') || '0'}
                                   </p>
                                   <p className={`text-sm ${order.paymentStatus === 'paid' ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
                                     {order.paymentStatus === 'paid' ? '✅ Lunas' : '⏳ Belum Dibayar'}
@@ -573,7 +595,7 @@ export default function OrdersPage() {
                               )}
 
                               {/* Alasan Pembatalan */}
-                              {order.status === 'rejected' && order.cancellationReason && (
+                              {(order.status === 'rejected' || order.status === 'cancelled') && order.cancellationReason && (
                                 <div className="mb-6">
                                   <h4 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
                                     <AlertCircle className="h-4 w-4" />
@@ -682,7 +704,7 @@ export default function OrdersPage() {
                                   </div>
                                 )}
 
-                                {order.status === 'rejected' && (
+                                {(order.status === 'rejected' || order.status === 'cancelled') && (
                                   <div className="w-full space-y-3">
                                     <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20">
                                       <p className="text-sm text-red-700 dark:text-red-300">

@@ -9,7 +9,7 @@ import {
   IconUserPlus,
   IconLogout,
   IconChevronDown,
-  IconChartBar,
+  IconTool,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, usePathname } from "next/navigation";
@@ -173,10 +173,10 @@ export default function AdminLayout({
       ),
     },
     {
-      label: "Reports",
-      href: "/admin/reports",
+      label: "Additional Service",
+      href: "/admin/additional-service",
       icon: (
-        <IconChartBar className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" />
+        <IconTool className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" />
       ),
     },
   ];

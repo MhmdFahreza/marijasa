@@ -103,8 +103,10 @@ export async function middleware(request: NextRequest) {
       if (pathname === '/mitra/login') {
         const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
         const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
+        const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
 
-        if (mitraSessionId && mitraAccessToken) {
+        // Only redirect if has valid session and either access or refresh token
+        if (mitraSessionId && (mitraAccessToken || mitraRefreshToken)) {
           console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
           return NextResponse.redirect(new URL("/mitra/dashboard", request.url));
         }
@@ -118,11 +120,20 @@ export async function middleware(request: NextRequest) {
     // Protected mitra routes - require authentication
     const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
     const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
+    const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
 
-    if (!mitraSessionId || !mitraAccessToken) {
+    // Must have session and at least one token (access or refresh)
+    if (!mitraSessionId || (!mitraAccessToken && !mitraRefreshToken)) {
       console.log('[Middleware] Mitra not authenticated, redirecting to login');
       const url = new URL("/mitra/login", request.url);
       return NextResponse.redirect(url);
+    }
+
+    // If access token is missing but refresh token exists, allow through
+    // The page will handle token refresh via /api/mitra/me
+    if (!mitraAccessToken && mitraRefreshToken) {
+      console.log('[Middleware] Mitra access token missing but has refresh, allowing through');
+      return NextResponse.next();
     }
 
     // Verify mitra access token by calling verify API
@@ -131,12 +142,20 @@ export async function middleware(request: NextRequest) {
       const verifyResponse = await fetch(verifyUrl.toString(), {
         method: 'GET',
         headers: {
-          'Cookie': `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken}`,
+          'Cookie': `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken}; mitra_refresh_token=${mitraRefreshToken || ''}`,
         },
       });
 
+      const verifyData = await verifyResponse.json();
+
       if (!verifyResponse.ok) {
-        console.log('[Middleware] Mitra token verification failed');
+        // If should refresh and has refresh token, allow through
+        if (verifyData.shouldRefresh && mitraRefreshToken) {
+          console.log('[Middleware] Mitra token expired, allowing through for refresh');
+          return NextResponse.next();
+        }
+
+        console.log('[Middleware] Mitra token verification failed:', verifyData.error);
         const url = new URL("/mitra/login", request.url);
         return NextResponse.redirect(url);
       }
@@ -145,6 +164,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     } catch (error) {
       console.error('[Middleware] Error verifying mitra token:', error);
+      
+      // If has refresh token, allow through to try refresh
+      if (mitraRefreshToken) {
+        console.log('[Middleware] Error but has refresh token, allowing through');
+        return NextResponse.next();
+      }
+      
       const url = new URL("/mitra/login", request.url);
       return NextResponse.redirect(url);
     }

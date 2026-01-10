@@ -1,7 +1,7 @@
 // app/riwayat_pemesanan/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Breadcrumb,
@@ -63,10 +63,10 @@ import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Separator } from "@/app/components/ui/separator";
 
-// Biaya layanan tetap (sama dengan di form)
+// Biaya layanan tetap
 const SERVICE_FEE = 10000;
 
-// Biaya transaksi untuk setiap metode pembayaran (sama dengan di form)
+// Biaya transaksi untuk setiap metode pembayaran
 const PAYMENT_FEES: Record<string, number> = {
   "dana": 1440,
   "ovo": 1440,
@@ -137,7 +137,7 @@ export default function OrderHistoryPage() {
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
     const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
-    return formatted.substring(0, 19); // Maksimal 16 digit + 3 spasi
+    return formatted.substring(0, 19);
   };
 
   // Format tanggal kadaluarsa (MM/YY)
@@ -188,249 +188,40 @@ export default function OrderHistoryPage() {
     }));
   };
 
-  // PERBAIKAN: Fungsi untuk mendapatkan layanan dari vendor yang diperbarui
-  const loadVendorServices = async (vendorName: string) => {
-    setIsLoadingServices(true);
+  // Load orders from API
+  const loadOrders = useCallback(async () => {
     try {
-      // 1. Coba dari localStorage mitraUser (jika vendor sedang login)
-      const mitraUser = JSON.parse(localStorage.getItem('mitraUser') || '{}');
-      
-      // 2. Coba dari sessionStorage updatedVendorsData (data vendor yang diperbarui)
-      const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
-      let updatedVendors: Record<string, any> = {};
-      if (updatedVendorsData) {
-        updatedVendors = JSON.parse(updatedVendorsData);
-      }
-      
-      // 3. Coba dari localStorage allVendors (data vendor global)
-      const allVendors = JSON.parse(localStorage.getItem('allVendors') || '[]');
-      
-      let vendorData = null;
-      
-      // Cari vendor berdasarkan nama dari berbagai sumber
-      // Prioritas 1: mitraUser (vendor yang sedang login)
-      if (mitraUser.name === vendorName) {
-        vendorData = mitraUser;
-      } 
-      // Prioritas 2: updatedVendorsData (sessionStorage)
-      else {
-        const updatedVendorKey = Object.keys(updatedVendors).find(key => 
-          updatedVendors[key].name === vendorName
-        );
-        if (updatedVendorKey) {
-          vendorData = updatedVendors[updatedVendorKey];
-        } 
-        // Prioritas 3: allVendors (localStorage)
-        else {
-          vendorData = allVendors.find((v: any) => v.name === vendorName);
+      setIsLoading(true);
+      const response = await fetch('/api/user/orders', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error("Silakan login terlebih dahulu");
+          window.location.href = '/login';
+          return;
         }
+        throw new Error('Failed to fetch orders');
       }
-      
-      // Jika masih tidak ditemukan, coba dari data statis Vendors
-      if (!vendorData) {
-        try {
-          // Dynamic import untuk menghindari SSR issues
-          const dataVendorModule = await import('@/app/data/dataVendor');
-          const Vendors = dataVendorModule.Vendors;
-          vendorData = Vendors.find((v: any) => v.name === vendorName);
-        } catch (importError) {
-          console.error("Error importing Vendors data:", importError);
-        }
-      }
-      
-      // Ambil layanan aktif dari vendor
-      if (vendorData && vendorData.services) {
-        const activeServices = vendorData.services.filter((s: any) => s.active) || [];
-        console.log(`Loaded ${activeServices.length} active services for ${vendorName}:`, activeServices);
-        setVendorServices(activeServices);
-      } else {
-        console.warn(`No services found for vendor: ${vendorName}`);
-        setVendorServices([]);
+
+      const data = await response.json();
+      if (data.success) {
+        setOrders(data.orders);
       }
     } catch (error) {
-      console.error("Error loading vendor services:", error);
-      setVendorServices([]);
+      console.error("Error loading orders:", error);
+      toast.error("Gagal memuat data pesanan");
+      setOrders([]);
     } finally {
-      setIsLoadingServices(false);
+      setIsLoading(false);
     }
-  };
-
-  // PERBAIKAN: Fungsi untuk sinkronisasi data vendor ke localStorage allVendors
-  const syncVendorDataToAllVendors = () => {
-    try {
-      const allVendors = JSON.parse(localStorage.getItem('allVendors') || '[]');
-      const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
-      
-      if (updatedVendorsData) {
-        const updatedVendors = JSON.parse(updatedVendorsData);
-        
-        // Update allVendors dengan data terbaru dari updatedVendors
-        Object.values(updatedVendors).forEach((updatedVendor: any) => {
-          const existingIndex = allVendors.findIndex((v: any) => v.id === updatedVendor.id);
-          if (existingIndex >= 0) {
-            allVendors[existingIndex] = { ...allVendors[existingIndex], ...updatedVendor };
-          } else {
-            allVendors.push(updatedVendor);
-          }
-        });
-        
-        localStorage.setItem('allVendors', JSON.stringify(allVendors));
-      }
-    } catch (error) {
-      console.error("Error syncing vendor data:", error);
-    }
-  };
+  }, []);
 
   useEffect(() => {
-    // Load orders dari localStorage
-    const loadOrders = () => {
-      try {
-        const savedOrders = localStorage.getItem('userOrders');
-        if (savedOrders) {
-          const parsedOrders = JSON.parse(savedOrders);
-
-          // Format orders sesuai dengan kebutuhan komponen
-          const formattedOrders = parsedOrders.map((order: any) => {
-            // Pastikan paymentDetails ada dan lengkap
-            let paymentDetails = order.paymentDetails || {};
-
-            // Jika paymentDetails tidak lengkap, hitung ulang
-            if (!paymentDetails.subtotal || paymentDetails.subtotal === 0) {
-              // Coba hitung subtotal dari service details atau total price
-              let subtotal = 0;
-
-              // Coba ambil dari order yang ada
-              if (order.servicePrice) {
-                subtotal = order.servicePrice;
-              } else if (order.totalPrice) {
-                // Kurangi service fee dan transaction fee dari total
-                const transactionFee = PAYMENT_FEES[order.paymentMethod?.toLowerCase()] || 0;
-                subtotal = order.totalPrice - SERVICE_FEE - transactionFee;
-              }
-
-              paymentDetails = {
-                subtotal: subtotal > 0 ? subtotal : 0,
-                minTransaction: 75000,
-                serviceFee: SERVICE_FEE,
-                transactionFee: PAYMENT_FEES[order.paymentMethod?.toLowerCase()] || 0,
-                total: order.totalPrice || (subtotal + SERVICE_FEE + (PAYMENT_FEES[order.paymentMethod?.toLowerCase()] || 0))
-              };
-            }
-
-            return {
-              id: order.id || order.orderId,
-              vendorName: order.vendor?.name || order.vendorName || "Vendor",
-              serviceType: order.serviceType || "Layanan",
-              serviceDate: order.serviceDate || (order.date ? new Date(order.date).toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              }) : "Tanggal belum ditentukan"),
-              serviceTime: order.serviceTime || order.time || "",
-              status: order.status || "menunggu pembayaran",
-              statusColor: getStatusColor(order.status),
-              totalPrice: order.totalPrice || 0,
-              vendorAvatar: order.vendor?.avatar || order.vendorAvatar || "",
-              orderDate: order.orderDate || new Date().toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit'
-              }),
-              paymentMethod: order.paymentMethod || "Belum Dibayar",
-              paymentId: order.paymentId || null,
-              customerInfo: {
-                name: order.customerInfo?.name || order.name || "Nama Pelanggan",
-                email: order.customerInfo?.email || order.email || "",
-                phone: order.customerInfo?.phone || order.phone || "",
-                address: order.customerInfo?.address || order.address || "",
-                gpsLink: order.customerInfo?.gpsLink || order.gpsLink || ""
-              },
-              serviceDetails: {
-                complaints: order.serviceDetails?.complaints || [],
-                services: order.serviceDetails?.services || [order.serviceType || "Layanan"],
-                repairs: order.serviceDetails?.repairs || [],
-                freon: order.serviceDetails?.freon || false,
-                installation: order.serviceDetails?.installation || false,
-                propertyType: order.serviceDetails?.propertyType || "",
-                date: order.serviceDetails?.date || order.date || "",
-                time: order.serviceDetails?.time || order.time || "",
-                budget: order.serviceDetails?.budget || ""
-              },
-              paymentDetails: paymentDetails,
-              orderHistory: order.orderHistory || [
-                {
-                  status: "Permintaan Dibuat",
-                  date: order.orderDate || new Date().toLocaleDateString('id-ID', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric'
-                  }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })
-                }
-              ],
-              vendorNotes: order.vendorNotes || "",
-              // Tambahkan rating jika ada
-              rating: order.rating || null,
-              review: order.review || "",
-              // Tambahkan vendorId untuk referensi layanan
-              vendorId: order.vendorId || null,
-              // Tambahkan additionalServices jika ada
-              additionalServices: order.additionalServices || []
-            };
-          });
-
-          setOrders(formattedOrders);
-        } else {
-          setOrders([]);
-        }
-      } catch (error) {
-        console.error("Error loading orders:", error);
-        setOrders([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadOrders();
-    // Sinkronisasi data vendor saat pertama kali load
-    syncVendorDataToAllVendors();
-
-    // Tambahkan event listener untuk update real-time
-    const handleStorageChange = () => {
-      loadOrders();
-      syncVendorDataToAllVendors();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Tambahkan listener untuk custom event vendorDataUpdated
-    const handleVendorDataUpdated = () => {
-      syncVendorDataToAllVendors();
-      // Jika modal layanan terbuka, reload layanan vendor
-      if (isAddServiceModalOpen && selectedOrder) {
-        loadVendorServices(selectedOrder.vendorName);
-      }
-    };
-
-    window.addEventListener('vendorDataUpdated', handleVendorDataUpdated);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('vendorDataUpdated', handleVendorDataUpdated);
-    };
-  }, [isAddServiceModalOpen, selectedOrder]);
-
-  // Effect untuk load services ketika order dipilih dan modal dibuka
-  useEffect(() => {
-    if (selectedOrder && isAddServiceModalOpen) {
-      loadVendorServices(selectedOrder.vendorName);
-    }
-  }, [selectedOrder, isAddServiceModalOpen]);
+  }, [loadOrders]);
 
   // Helper function untuk menentukan warna status
   const getStatusColor = (status: string) => {
@@ -455,7 +246,6 @@ export default function OrderHistoryPage() {
     } else {
       setExpandedOrderId(order.id);
       setSelectedOrder(order);
-      // Set metode pembayaran yang sudah dipilih
       if (order.paymentMethod && order.paymentMethod !== "Belum Dibayar") {
         setSelectedPayment(order.paymentMethod.toLowerCase());
       }
@@ -465,7 +255,6 @@ export default function OrderHistoryPage() {
   const handleAddServiceClick = () => {
     if (!selectedOrder) return;
     setIsAddServiceModalOpen(true);
-    // Reset form data
     setNewServiceData({
       selectedServices: [],
       quantities: {},
@@ -473,8 +262,10 @@ export default function OrderHistoryPage() {
       images: [],
       previews: []
     });
-    // Load vendor services
-    loadVendorServices(selectedOrder.vendorName);
+    // Load vendor services from order data
+    if (selectedOrder.vendorServices) {
+      setVendorServices(selectedOrder.vendorServices);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -484,13 +275,11 @@ export default function OrderHistoryPage() {
     const newFiles = Array.from(files);
     const newPreviews: string[] = [];
 
-    // Wajib ada minimal 1 foto
     if (newFiles.length === 0) {
       toast.error("Wajib mengunggah minimal 1 foto bukti");
       return;
     }
 
-    // Validasi jumlah maksimal foto
     const currentCount = newServiceData.images.length;
     if (currentCount + newFiles.length > 5) {
       toast.error("Maksimal 5 foto");
@@ -498,13 +287,11 @@ export default function OrderHistoryPage() {
     }
 
     newFiles.forEach(file => {
-      // Validasi ukuran file (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`Ukuran foto ${file.name} terlalu besar (max 5MB)`);
         return;
       }
 
-      // Validasi tipe file
       if (!file.type.startsWith('image/')) {
         toast.error(`File ${file.name} bukan gambar`);
         return;
@@ -535,7 +322,6 @@ export default function OrderHistoryPage() {
     }));
   };
 
-  // Fungsi untuk menangani pemilihan layanan
   const handleServiceSelection = (serviceId: string, checked: boolean) => {
     if (checked) {
       setNewServiceData(prev => ({
@@ -555,7 +341,6 @@ export default function OrderHistoryPage() {
     }
   };
 
-  // Fungsi untuk mengubah jumlah layanan
   const handleQuantityChange = (serviceId: string, quantity: number) => {
     if (quantity < 1) quantity = 1;
     setNewServiceData(prev => ({
@@ -564,212 +349,78 @@ export default function OrderHistoryPage() {
     }));
   };
 
-  // BUAT NOTIFIKASI UNTUK USER
-  const createUserNotification = (notification: {
-    title: string;
-    message: string;
-    type: 'order' | 'promo' | 'system' | 'reminder' | 'additional_service';
-    orderId?: string;
-  }) => {
-    const notifications = JSON.parse(localStorage.getItem('userNotifications') || '[]');
-    const newNotification = {
-      id: `notif-${Date.now()}`,
-      ...notification,
-      time: new Date().toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      date: new Date().toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      }),
-      read: false
-    };
-    notifications.unshift(newNotification);
-    localStorage.setItem('userNotifications', JSON.stringify(notifications));
-    
-    // Dispatch event untuk update notifikasi di layout
-    window.dispatchEvent(new CustomEvent('notificationUpdated', { 
-      detail: { type: 'user', notification: newNotification }
-    }));
-  };
-
-  // BUAT NOTIFIKASI UNTUK ADMIN
-  const createAdminNotification = (notification: {
-    title: string;
-    message: string;
-    type: 'additional_service_request' | 'order' | 'system';
-    requestId?: string;
-    orderId?: string;
-  }) => {
-    const adminNotifications = JSON.parse(localStorage.getItem('adminNotifications') || '[]');
-    const newNotification = {
-      id: `admin-notif-${Date.now()}`,
-      ...notification,
-      time: new Date().toISOString(),
-      read: false
-    };
-    adminNotifications.unshift(newNotification);
-    localStorage.setItem('adminNotifications', JSON.stringify(adminNotifications));
-    
-    // Dispatch event untuk update notifikasi admin
-    window.dispatchEvent(new CustomEvent('notificationUpdated', { 
-      detail: { type: 'admin', notification: newNotification }
-    }));
-  };
-
-  const handleSubmitNewService = () => {
-    // Validasi wajib: minimal 1 layanan
+  const handleSubmitNewService = async () => {
     if (newServiceData.selectedServices.length === 0) {
       toast.error("Harap pilih minimal satu layanan tambahan");
       return;
     }
 
-    // Validasi wajib: alasan
     if (!newServiceData.reason.trim()) {
       toast.error("Harap isi alasan permintaan layanan tambahan");
       return;
     }
 
-    // Validasi wajib: minimal 1 foto
     if (newServiceData.images.length === 0) {
       toast.error("Wajib mengunggah minimal 1 foto bukti");
       return;
     }
 
-    // Ambil detail layanan yang dipilih
-    const selectedServiceDetails = vendorServices
-      .filter((service: any) => newServiceData.selectedServices.includes(service.id))
-      .map((service: any) => ({
-        id: service.id,
-        name: service.name,
-        price: service.price,
-        quantity: newServiceData.quantities[service.id] || 1,
-        priceType: service.priceType,
-        description: service.description
+    try {
+      const response = await fetch('/api/user/orders/additional-service', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          selectedServices: newServiceData.selectedServices,
+          quantities: newServiceData.quantities,
+          reason: newServiceData.reason,
+          images: newServiceData.previews // Send as base64 strings
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to submit request');
+      }
+
+      const data = await response.json();
+
+      // Update local state with new additional service
+      setOrders(prevOrders => prevOrders.map(order => {
+        if (order.id === selectedOrder.id) {
+          const additionalServices = order.additionalServices || [];
+          return {
+            ...order,
+            additionalServices: [...additionalServices, data.request]
+          };
+        }
+        return order;
       }));
 
-    // Buat deskripsi dari layanan yang dipilih
-    const serviceDescription = selectedServiceDetails
-      .map((service: any) => `${service.name} (${service.quantity}x)`)
-      .join(', ');
+      setIsAddServiceModalOpen(false);
+      setShowServiceRequestModal(true);
 
-    // Hitung total harga
-    const totalPrice = selectedServiceDetails.reduce((total: number, service: any) => {
-      return total + (service.price * service.quantity);
-    }, 0);
+      setNewServiceData({
+        selectedServices: [],
+        quantities: {},
+        reason: "",
+        images: [],
+        previews: []
+      });
 
-    // Dapatkan data user
-    const userData = JSON.parse(localStorage.getItem('authData') || '{}');
-    const customerName = userData.user?.name || selectedOrder.customerInfo.name;
+      toast.success("Permintaan layanan tambahan berhasil dikirim!");
 
-    // Buat data permintaan untuk admin
-    const serviceRequest = {
-      id: `SR-${Date.now()}`,
-      orderId: selectedOrder.id,
-      vendorName: selectedOrder.vendorName,
-      customerName: customerName,
-      services: selectedServiceDetails,
-      description: serviceDescription,
-      totalPrice: totalPrice,
-      reason: newServiceData.reason,
-      images: newServiceData.previews, // Simpan sebagai base64 string
-      submittedAt: new Date().toISOString(),
-      status: "pending", // pending, approved, rejected
-      vendorId: selectedOrder.vendorId,
-      orderDetails: {
-        serviceType: selectedOrder.serviceType,
-        serviceDate: selectedOrder.serviceDate,
-        serviceTime: selectedOrder.serviceTime
-      }
-    };
-
-    // Simpan permintaan layanan ke localStorage untuk admin
-    const existingRequests = JSON.parse(localStorage.getItem('additionalServiceRequests') || '[]');
-    localStorage.setItem('additionalServiceRequests', JSON.stringify([...existingRequests, serviceRequest]));
-
-    // Simpan juga di order user dengan status "menunggu konfirmasi admin"
-    const newServiceForUser = {
-      id: serviceRequest.id,
-      orderId: selectedOrder.id,
-      vendorName: selectedOrder.vendorName,
-      services: selectedServiceDetails,
-      description: serviceDescription,
-      totalPrice: totalPrice,
-      reason: newServiceData.reason,
-      images: newServiceData.previews,
-      submittedAt: new Date().toISOString(),
-      status: "menunggu konfirmasi admin",
-      requestId: serviceRequest.id
-    };
-
-    // Update order dengan layanan tambahan (status pending)
-    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    const updatedOrders = existingOrders.map((order: any) => {
-      if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
-        const additionalServices = order.additionalServices || [];
-        return {
-          ...order,
-          additionalServices: [...additionalServices, newServiceForUser]
-        };
-      }
-      return order;
-    });
-
-    localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
-
-    // Update state orders
-    setOrders(prevOrders => prevOrders.map(order => {
-      if (order.id === selectedOrder.id) {
-        const additionalServices = order.additionalServices || [];
-        return {
-          ...order,
-          additionalServices: [...additionalServices, newServiceForUser]
-        };
-      }
-      return order;
-    }));
-
-    // BUAT NOTIFIKASI UNTUK USER
-    createUserNotification({
-      title: "Permintaan Layanan Tambahan Dikirim",
-      message: `Permintaan layanan tambahan untuk pesanan #${selectedOrder.id} telah dikirim. Menunggu konfirmasi admin.`,
-      type: 'additional_service',
-      orderId: selectedOrder.id
-    });
-
-    // BUAT NOTIFIKASI UNTUK ADMIN
-    createAdminNotification({
-      title: "Permintaan Layanan Tambahan Baru",
-      message: `${customerName} mengajukan permintaan layanan tambahan untuk pesanan #${selectedOrder.id}. Total: Rp ${totalPrice.toLocaleString('id-ID')}`,
-      type: 'additional_service_request',
-      requestId: serviceRequest.id,
-      orderId: selectedOrder.id
-    });
-
-    // Tampilkan modal konfirmasi
-    setIsAddServiceModalOpen(false);
-    setShowServiceRequestModal(true);
-
-    // Reset form data
-    setNewServiceData({
-      selectedServices: [],
-      quantities: {},
-      reason: "",
-      images: [],
-      previews: []
-    });
-
-    // Dispatch custom event untuk update real-time di admin page
-    window.dispatchEvent(new CustomEvent('additionalServiceRequested', {
-      detail: serviceRequest
-    }));
+    } catch (error: any) {
+      console.error("Error submitting additional service:", error);
+      toast.error(error.message || "Gagal mengirim permintaan layanan tambahan");
+    }
   };
 
   const handleOpenPaymentModal = (order: any) => {
     setSelectedOrder(order);
-    // Set metode pembayaran yang sudah dipilih jika ada
     if (order.paymentMethod && order.paymentMethod !== "Belum Dibayar") {
       setSelectedPayment(order.paymentMethod.toLowerCase());
     } else {
@@ -778,150 +429,115 @@ export default function OrderHistoryPage() {
     setShowPaymentModal(true);
   };
 
-  const handleSavePaymentMethod = () => {
+  const handleSavePaymentMethod = async () => {
     if (!selectedPayment) {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
       return;
     }
 
-    // Validasi untuk kartu debit/kredit
     if (selectedPayment === "debit-credit") {
       if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
         toast.error("Silakan lengkapi data kartu debit/kredit.");
         return;
       }
 
-      // Validasi format nomor kartu (minimal 12 digit)
       const cleanedCardNumber = cardData.cardNumber.replace(/\s/g, '');
       if (cleanedCardNumber.length < 12 || !/^\d+$/.test(cleanedCardNumber)) {
         toast.error("Nomor kartu tidak valid. Harus minimal 12 digit angka.");
         return;
       }
 
-      // Validasi format tanggal kadaluarsa (MM/YY)
       if (!/^\d{2}\/\d{2}$/.test(cardData.expiryDate)) {
         toast.error("Format masa berlaku tidak valid. Gunakan format MM/YY (contoh: 01/24).");
         return;
       }
 
-      // Validasi CVV (3-4 digit)
       if (!/^\d{3,4}$/.test(cardData.cvv)) {
         toast.error("CVV tidak valid. Harus 3 atau 4 digit angka.");
         return;
       }
     }
 
-    // Update data pesanan di localStorage
-    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    const updatedOrders = existingOrders.map((order: any) => {
-      if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
-        const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-        const subtotal = order.paymentDetails?.subtotal || selectedOrder.paymentDetails?.subtotal || (order.totalPrice - SERVICE_FEE - transactionFee);
-        const total = subtotal + SERVICE_FEE + transactionFee;
+    try {
+      const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
 
-        return {
-          ...order,
+      const response = await fetch('/api/user/orders', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'updatePayment',
+          orderId: selectedOrder.id,
           paymentMethod: selectedPayment,
-          paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
-          paymentDetails: {
-            subtotal: subtotal,
-            minTransaction: 75000,
-            serviceFee: SERVICE_FEE,
-            transactionFee: transactionFee,
-            total: total
-          },
-          totalPrice: total
-        };
+          transactionFee: transactionFee
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update payment method');
       }
-      return order;
-    });
 
-    localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+      // Update local state
+      const subtotal = selectedOrder.paymentDetails.subtotal || (selectedOrder.totalPrice - SERVICE_FEE - transactionFee);
+      const total = subtotal + SERVICE_FEE + transactionFee;
 
-    // Update state orders
-    setOrders(prevOrders => prevOrders.map(order => {
-      if (order.id === selectedOrder.id) {
-        const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-        const subtotal = order.paymentDetails.subtotal || (order.totalPrice - SERVICE_FEE - transactionFee);
-        const total = subtotal + SERVICE_FEE + transactionFee;
+      setOrders(prevOrders => prevOrders.map(order => {
+        if (order.id === selectedOrder.id) {
+          return {
+            ...order,
+            paymentMethod: selectedPayment,
+            paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
+            paymentDetails: {
+              ...order.paymentDetails,
+              subtotal: subtotal,
+              transactionFee: transactionFee,
+              total: total
+            },
+            totalPrice: total
+          };
+        }
+        return order;
+      }));
 
-        return {
-          ...order,
-          paymentMethod: selectedPayment,
-          paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
-          paymentDetails: {
-            ...order.paymentDetails,
-            subtotal: subtotal,
-            transactionFee: transactionFee,
-            total: total
-          },
-          totalPrice: total
-        };
-      }
-      return order;
-    }));
+      toast.success("Metode pembayaran berhasil disimpan!");
+      setShowPaymentModal(false);
+      setShowPaymentOptions(false);
 
-    toast.success("Metode pembayaran berhasil disimpan!");
-    setShowPaymentModal(false);
-    setShowPaymentOptions(false);
+    } catch (error) {
+      console.error("Error updating payment method:", error);
+      toast.error("Gagal menyimpan metode pembayaran");
+    }
   };
 
-  const handlePayNow = (order: any) => {
+  const handlePayNow = async (order: any) => {
     if (!order.paymentMethod || order.paymentMethod === "Belum Dibayar") {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
       handleOpenPaymentModal(order);
       return;
     }
 
-    // Tampilkan modal sukses
     setShowSuccessModal(true);
 
-    // Update status order menjadi "diproses" setelah pembayaran
-    setTimeout(() => {
-      const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-      const updatedOrders = existingOrders.map((o: any) => {
-        if (o.id === order.id || o.orderId === order.id) {
-          return {
-            ...o,
-            status: "diproses",
-            statusColor: "bg-blue-100 text-blue-800",
-            orderHistory: [
-              ...(o.orderHistory || []),
-              {
-                status: "Pembayaran Diterima",
-                date: new Date().toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-              }
-            ]
-          };
-        }
-        return o;
+    try {
+      const response = await fetch('/api/user/orders', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'pay',
+          orderId: order.id
+        })
       });
 
-      localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+      if (!response.ok) {
+        throw new Error('Payment failed');
+      }
 
-      // Update status di mitra (allOrders)
-      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-      const updatedAllOrders = allOrders.map((mitraOrder: any) => {
-        if (mitraOrder.id === order.id) {
-          return {
-            ...mitraOrder,
-            status: "in-progress",
-            paymentStatus: "paid"
-          };
-        }
-        return mitraOrder;
-      });
-
-      localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
-
-      // Update state orders
+      // Update local state
       setOrders(prevOrders => prevOrders.map(o => {
         if (o.id === order.id) {
           return {
@@ -947,17 +563,16 @@ export default function OrderHistoryPage() {
         return o;
       }));
 
-      // BUAT NOTIFIKASI UNTUK USER
-      createUserNotification({
-        title: "Pembayaran Berhasil",
-        message: `Pembayaran untuk pesanan #${order.id} telah berhasil. Pesanan Anda sedang diproses.`,
-        type: 'order',
-        orderId: order.id
-      });
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        toast.success("Pembayaran berhasil! Status pesanan telah diperbarui.");
+      }, 2000);
 
+    } catch (error) {
+      console.error("Error processing payment:", error);
       setShowSuccessModal(false);
-      toast.success("Pembayaran berhasil! Status pesanan telah diperbarui.");
-    }, 2000);
+      toast.error("Gagal memproses pembayaran");
+    }
   };
 
   const handleOpenCancelModal = (order: any) => {
@@ -970,7 +585,7 @@ export default function OrderHistoryPage() {
     setShowCancelModal(true);
   };
 
-  const handleCancelOrder = () => {
+  const handleCancelOrder = async () => {
     if (!cancelReason.trim()) {
       toast.error("Silakan berikan alasan pembatalan.");
       return;
@@ -978,57 +593,25 @@ export default function OrderHistoryPage() {
 
     setIsCancelling(true);
 
-    // Simulasi proses pembatalan
-    setTimeout(() => {
-      // Update data pesanan user di localStorage
-      const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-      const updatedOrders = existingOrders.map((order: any) => {
-        if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
-          return {
-            ...order,
-            status: "dibatalkan",
-            statusColor: "bg-red-100 text-red-800",
-            orderHistory: [
-              ...(order.orderHistory || []),
-              {
-                status: "Pesanan Dibatalkan",
-                date: new Date().toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                reason: cancelReason
-              }
-            ],
-            cancellationReason: cancelReason
-          };
-        }
-        return order;
+    try {
+      const response = await fetch('/api/user/orders', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'cancel',
+          orderId: selectedOrder.id,
+          reason: cancelReason
+        })
       });
 
-      localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
+      if (!response.ok) {
+        throw new Error('Failed to cancel order');
+      }
 
-      // Update status di mitra (allOrders)
-      const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-      const updatedAllOrders = allOrders.map((order: any) => {
-        if (order.id === selectedOrder.id) {
-          return {
-            ...order,
-            status: "rejected",
-            cancellationReason: cancelReason,
-            cancelledBy: "user",
-            cancelledAt: new Date().toISOString()
-          };
-        }
-        return order;
-      });
-
-      localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
-
-      // Update state orders
+      // Update local state
       setOrders(prevOrders => prevOrders.map(order => {
         if (order.id === selectedOrder.id) {
           return {
@@ -1056,23 +639,18 @@ export default function OrderHistoryPage() {
         return order;
       }));
 
-      setIsCancelling(false);
       setShowCancelModal(false);
       setCancelReason("");
-      
-      // BUAT NOTIFIKASI UNTUK USER
-      createUserNotification({
-        title: "Pesanan Dibatalkan",
-        message: `Pesanan #${selectedOrder.id} telah dibatalkan. Alasan: ${cancelReason}`,
-        type: 'order',
-        orderId: selectedOrder.id
-      });
-      
       toast.success("Pesanan berhasil dibatalkan!");
-    }, 1500);
+
+    } catch (error) {
+      console.error("Error cancelling order:", error);
+      toast.error("Gagal membatalkan pesanan");
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
-  // Fungsi untuk membuka modal konfirmasi pekerjaan selesai
   const handleOpenCompletionModal = (order: any) => {
     if (order.status !== "diproses") {
       toast.error("Hanya pesanan yang sedang diproses yang dapat dikonfirmasi selesai.");
@@ -1089,160 +667,62 @@ export default function OrderHistoryPage() {
     setShowCompletionModal(true);
   };
 
-  // Fungsi untuk mengonfirmasi pekerjaan selesai
-  const handleConfirmCompletion = () => {
+  const handleConfirmCompletion = async () => {
     if (!selectedOrder) return;
 
     const hasRating = ratingData.rating > 0;
 
-    // Update data pesanan di localStorage (userOrders)
-    const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
-    const updatedOrders = existingOrders.map((order: any) => {
-      if (order.id === selectedOrder.id || order.orderId === selectedOrder.id) {
-        const updatedOrder = {
-          ...order,
-          status: "selesai",
-          statusColor: "bg-green-100 text-green-800",
-          orderHistory: [
-            ...(order.orderHistory || []),
-            {
-              status: "Pekerjaan Selesai",
-              date: new Date().toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit'
-              })
-            }
-          ]
-        };
+    try {
+      const response = await fetch('/api/user/orders', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'complete',
+          orderId: selectedOrder.id,
+          rating: hasRating ? ratingData.rating : null,
+          comment: hasRating ? ratingData.comment : null,
+          photos: hasRating ? ratingData.photos : [],
+          isAnonymous: ratingData.isAnonymous
+        })
+      });
 
-        if (hasRating) {
-          updatedOrder.rating = ratingData.rating;
-          updatedOrder.review = ratingData.comment;
-          updatedOrder.ratingPhotos = ratingData.photos;
-          updatedOrder.isAnonymous = ratingData.isAnonymous;
-          updatedOrder.orderHistory.push({
-            status: "Rating dan Ulasan Diberikan",
-            date: new Date().toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric'
-            }) + " - " + new Date().toLocaleTimeString('id-ID', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
-        }
-
-        return updatedOrder;
+      if (!response.ok) {
+        throw new Error('Failed to complete order');
       }
-      return order;
-    });
 
-    localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
-
-    // SINKRONISASI RATING KE VENDOR
-    if (hasRating) {
-      try {
-        // Import fungsi helper
-        const { calculateNewRating } = require('@/app/data/dataVendor');
-
-        // Cari vendor berdasarkan nama
-        const allVendors = JSON.parse(localStorage.getItem('allVendors') || '[]');
-        const vendorData = allVendors.find((v: any) => v.name === selectedOrder.vendorName);
-        
-        if (vendorData) {
-          // Hitung rating baru dengan rumus: R_baru = (R_lama * n + rating_baru) / (n + 1)
-          const newRating = calculateNewRating(
-            vendorData.rating || 0,
-            vendorData.reviewCount || 0,
-            ratingData.rating
-          );
-
-          // Update data vendor di allVendors
-          const updatedAllVendors = allVendors.map((vendor: any) => {
-            if (vendor.name === selectedOrder.vendorName) {
-              return {
-                ...vendor,
-                rating: newRating,
-                reviewCount: (vendor.reviewCount || 0) + 1
-              };
-            }
-            return vendor;
-          });
-
-          localStorage.setItem('allVendors', JSON.stringify(updatedAllVendors));
-
-          // Update sessionStorage (updatedVendorsData)
-          const updatedVendorsData = sessionStorage.getItem('updatedVendorsData');
-          const updatedVendors: Record<string, any> = updatedVendorsData ? JSON.parse(updatedVendorsData) : {};
-          
-          // Find vendor by ID in updatedVendors
-          const vendorId = vendorData.id;
-          if (vendorId && updatedVendors[vendorId]) {
-            updatedVendors[vendorId].rating = newRating;
-            updatedVendors[vendorId].reviewCount = (updatedVendors[vendorId].reviewCount || 0) + 1;
-            sessionStorage.setItem('updatedVendorsData', JSON.stringify(updatedVendors));
-          }
-
-          // Update localStorage jika vendor sedang login
-          const mitraUser = localStorage.getItem('mitraUser');
-          if (mitraUser) {
-            const parsedMitra = JSON.parse(mitraUser);
-            if (parsedMitra.name === selectedOrder.vendorName) {
-              parsedMitra.rating = newRating;
-              parsedMitra.reviewCount = (parsedMitra.reviewCount || 0) + 1;
-              localStorage.setItem('mitraUser', JSON.stringify(parsedMitra));
-            }
-          }
-
-          // Trigger custom event untuk update real-time di halaman lain
-          const event = new CustomEvent('vendorDataUpdated', {
-            detail: {
-              vendorId: vendorData.id,
-              updates: {
-                rating: newRating,
-                reviewCount: (vendorData.reviewCount || 0) + 1
+      // Update local state
+      setOrders(prevOrders => prevOrders.map(order => {
+        if (order.id === selectedOrder.id) {
+          const updatedOrder = {
+            ...order,
+            status: "selesai",
+            statusColor: "bg-green-100 text-green-800",
+            orderHistory: [
+              ...order.orderHistory,
+              {
+                status: "Pekerjaan Selesai",
+                date: new Date().toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }) + " - " + new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
               }
-            }
-          });
-          window.dispatchEvent(event);
+            ]
+          };
 
-          console.log(`✅ Rating updated for vendor ${selectedOrder.vendorName}: ${newRating} (${(vendorData.reviewCount || 0) + 1} reviews)`);
-        }
-      } catch (error) {
-        console.error('Error syncing rating to vendor:', error);
-      }
-    }
-
-    // Update status di allOrders untuk mitra
-    const allOrders = JSON.parse(localStorage.getItem('allOrders') || '[]');
-    const updatedAllOrders = allOrders.map((order: any) => {
-      if (order.id === selectedOrder.id) {
-        return {
-          ...order,
-          status: "completed"
-        };
-      }
-      return order;
-    });
-
-    localStorage.setItem('allOrders', JSON.stringify(updatedAllOrders));
-
-    // Update state orders
-    setOrders(prevOrders => prevOrders.map(order => {
-      if (order.id === selectedOrder.id) {
-        const updatedOrder = {
-          ...order,
-          status: "selesai",
-          statusColor: "bg-green-100 text-green-800",
-          orderHistory: [
-            ...order.orderHistory,
-            {
-              status: "Pekerjaan Selesai",
+          if (hasRating) {
+            updatedOrder.rating = ratingData.rating;
+            updatedOrder.review = ratingData.comment;
+            updatedOrder.ratingPhotos = ratingData.photos;
+            updatedOrder.isAnonymous = ratingData.isAnonymous;
+            updatedOrder.orderHistory.push({
+              status: "Rating dan Ulasan Diberikan",
               date: new Date().toLocaleDateString('id-ID', {
                 day: 'numeric',
                 month: 'long',
@@ -1251,55 +731,32 @@ export default function OrderHistoryPage() {
                 hour: '2-digit',
                 minute: '2-digit'
               })
-            }
-          ]
-        };
+            });
+          }
 
-        if (hasRating) {
-          updatedOrder.rating = ratingData.rating;
-          updatedOrder.review = ratingData.comment;
-          updatedOrder.ratingPhotos = ratingData.photos;
-          updatedOrder.isAnonymous = ratingData.isAnonymous;
-          updatedOrder.orderHistory.push({
-            status: "Rating dan Ulasan Diberikan",
-            date: new Date().toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric'
-            }) + " - " + new Date().toLocaleTimeString('id-ID', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
+          return updatedOrder;
         }
+        return order;
+      }));
 
-        return updatedOrder;
+      setShowCompletionModal(false);
+
+      if (hasRating) {
+        setShowThankYouModal(true);
+        setTimeout(() => {
+          setShowThankYouModal(false);
+        }, 3000);
+        toast.success("Terima kasih atas rating dan ulasan Anda!");
+      } else {
+        toast.success("Pekerjaan telah dikonfirmasi selesai!");
       }
-      return order;
-    }));
 
-    setShowCompletionModal(false);
-
-    // BUAT NOTIFIKASI UNTUK USER
-    createUserNotification({
-      title: "Pekerjaan Selesai",
-      message: `Pesanan #${selectedOrder.id} telah selesai dikerjakan. ${hasRating ? 'Terima kasih atas ratingnya!' : ''}`,
-      type: 'order',
-      orderId: selectedOrder.id
-    });
-
-    if (hasRating) {
-      setShowThankYouModal(true);
-      setTimeout(() => {
-        setShowThankYouModal(false);
-      }, 3000);
-      toast.success("Terima kasih atas rating dan ulasan Anda!");
-    } else {
-      toast.success("Pekerjaan telah dikonfirmasi selesai!");
+    } catch (error) {
+      console.error("Error completing order:", error);
+      toast.error("Gagal mengkonfirmasi pesanan selesai");
     }
   };
 
-  // Fungsi untuk menangani rating bintang
   const handleStarClick = (star: number) => {
     setRatingData(prev => ({
       ...prev,
@@ -1307,7 +764,6 @@ export default function OrderHistoryPage() {
     }));
   };
 
-  // Fungsi untuk handle upload foto rating
   const handleRatingPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -1324,7 +780,6 @@ export default function OrderHistoryPage() {
     const filesToProcess = Array.from(files).slice(0, remainingSlots);
 
     filesToProcess.forEach(file => {
-      // Validasi ukuran file (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`Ukuran foto ${file.name} terlalu besar (max 5MB)`);
         return;
@@ -1343,7 +798,6 @@ export default function OrderHistoryPage() {
     });
   };
 
-  // Fungsi untuk remove foto rating
   const removeRatingPhoto = (index: number) => {
     setRatingData(prev => ({
       ...prev,
@@ -1380,7 +834,6 @@ export default function OrderHistoryPage() {
     return <Package className="h-5 w-5" />;
   };
 
-  // Fungsi untuk format harga
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('id-ID').format(price);
   };
@@ -1394,7 +847,6 @@ export default function OrderHistoryPage() {
     return subtotal + SERVICE_FEE + transactionFee;
   };
 
-  // Hitung total harga untuk layanan tambahan yang dipilih
   const calculateNewServiceTotal = () => {
     let total = 0;
     newServiceData.selectedServices.forEach(serviceId => {
@@ -1704,7 +1156,7 @@ export default function OrderHistoryPage() {
                                       <div className="mb-4 p-4 border rounded-lg bg-muted/50">
                                         <div className="flex items-center justify-between">
                                           <div>
-                                            <p className="font-medium">{order.paymentMethod}</p>
+                                            <p className="font-medium">{getPaymentMethodName(order.paymentMethod)}</p>
                                             <p className="text-sm text-muted-foreground">
                                               Biaya Transaksi: Rp {formatPrice(order.paymentDetails.transactionFee)}
                                             </p>
@@ -1712,7 +1164,10 @@ export default function OrderHistoryPage() {
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => handleOpenPaymentModal(order)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenPaymentModal(order);
+                                            }}
                                           >
                                             Ubah
                                           </Button>
@@ -1724,7 +1179,10 @@ export default function OrderHistoryPage() {
                                         <Button
                                           variant="outline"
                                           className="mt-2"
-                                          onClick={() => handleOpenPaymentModal(order)}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenPaymentModal(order);
+                                          }}
                                         >
                                           Pilih Metode Pembayaran
                                         </Button>
@@ -1748,7 +1206,10 @@ export default function OrderHistoryPage() {
                                         style={{ backgroundColor: '#7CE0A8' }}
                                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
-                                        onClick={() => handlePayNow(order)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handlePayNow(order);
+                                        }}
                                         disabled={!order.paymentMethod || order.paymentMethod === "Belum Dibayar"}
                                       >
                                         Bayar Sekarang
@@ -1935,7 +1396,10 @@ export default function OrderHistoryPage() {
                                     </p>
                                   </div>
                                   <Button
-                                    onClick={handleAddServiceClick}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddServiceClick();
+                                    }}
                                     className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
                                     disabled={order.status === "dibatalkan" || order.status === "selesai"}
                                   >
@@ -1956,23 +1420,29 @@ export default function OrderHistoryPage() {
                               Chat Vendor
                             </Button>
 
-                            {/* Tombol Konfirmasi Pekerjaan Selesai - hanya muncul jika status diproses */}
+                            {/* Tombol Konfirmasi Pekerjaan Selesai */}
                             {order.status === "diproses" && (
                               <Button
                                 className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() => handleOpenCompletionModal(order)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenCompletionModal(order);
+                                }}
                               >
                                 <CheckCircle className="h-4 w-4 mr-2" />
                                 Konfirmasi Selesai
                               </Button>
                             )}
 
-                            {/* Tombol Batalkan Pesanan - hanya muncul jika status menunggu pembayaran */}
+                            {/* Tombol Batalkan Pesanan */}
                             {order.status === "menunggu pembayaran" && (
                               <Button
                                 variant="outline"
                                 className="flex-1 min-w-[140px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => handleOpenCancelModal(order)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenCancelModal(order);
+                                }}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Batalkan Pesanan
@@ -2069,12 +1539,7 @@ export default function OrderHistoryPage() {
                       Pilih layanan tambahan yang Anda butuhkan dari vendor ini
                     </p>
 
-                    {isLoadingServices ? (
-                      <div className="text-center py-8">
-                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#7CE0A8]" />
-                        <p className="text-sm text-gray-500 mt-2">Memuat layanan...</p>
-                      </div>
-                    ) : vendorServices.length === 0 ? (
+                    {vendorServices.length === 0 ? (
                       <div className="text-center py-8 border-2 border-dashed rounded-lg">
                         <Package className="h-12 w-12 mx-auto text-gray-300 mb-2" />
                         <p className="text-gray-500">Tidak ada layanan tersedia dari vendor ini</p>
@@ -2114,8 +1579,8 @@ export default function OrderHistoryPage() {
                               <div className="text-right">
                                 <div className="font-semibold text-[#7CE0A8]">
                                   Rp {service.price.toLocaleString('id-ID')}
-                                  {service.priceType === 'hourly' && '/jam'}
-                                  {service.priceType === 'unit' && '/unit'}
+                                  {service.priceType === 'HOURLY' && '/jam'}
+                                  {service.priceType === 'UNIT' && '/unit'}
                                 </div>
                                 
                                 {newServiceData.selectedServices.includes(service.id) && (
@@ -3007,7 +2472,7 @@ export default function OrderHistoryPage() {
                       ))}
                     </div>
 
-                    {/* OPSI ANONYMOUS - Muncul hanya jika ada rating */}
+                    {/* OPSI ANONYMOUS */}
                     <AnimatePresence>
                       {ratingData.rating > 0 && (
                         <motion.div
@@ -3088,7 +2553,7 @@ export default function OrderHistoryPage() {
                       )}
 
                       {/* Upload Button */}
-                      {ratingData.photos.length < 5 && (
+                      {ratingData.photos.length < 3 && (
                         <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg cursor-pointer hover:border-[#7CE0A8] transition-colors bg-gray-50 dark:bg-gray-800">
                           <div className="flex flex-col items-center justify-center pt-2 pb-2">
                             <Camera className="h-6 w-6 text-gray-400 mb-1" />
@@ -3187,7 +2652,6 @@ export default function OrderHistoryPage() {
                   "{ratingData.comment}"
                 </p>
               )}
-              {/* TAMPILKAN FOTO JIKA ADA */}
               {ratingData.photos.length > 0 && (
                 <div className="flex gap-2 justify-center mb-4 overflow-x-auto">
                   {ratingData.photos.slice(0, 3).map((photo, idx) => (
