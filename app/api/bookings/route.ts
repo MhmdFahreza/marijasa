@@ -104,13 +104,23 @@ export async function POST(request: NextRequest) {
     console.log('[Bookings API] Booking data:', {
       orderId,
       vendorId,
-      userId
+      userId,
+      selectedServices: serviceDetails?.selectedServices,
+      quantities: serviceDetails?.quantities
     });
 
     // Validate required fields
     if (!orderId || !vendorId || !workDate || !workTime) {
       return NextResponse.json(
         { error: 'Validation Error', message: 'Data pemesanan tidak lengkap' },
+        { status: 400 }
+      );
+    }
+
+    // Validate selected services
+    if (!serviceDetails?.selectedServices || serviceDetails.selectedServices.length === 0) {
+      return NextResponse.json(
+        { error: 'Validation Error', message: 'Minimal pilih satu layanan' },
         { status: 400 }
       );
     }
@@ -127,18 +137,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate service IDs exist
+    // Validate service IDs exist and are active
     if (serviceDetails?.selectedServices?.length > 0) {
-      const existingServices = await prisma.service.findMany({
+      const services = await prisma.service.findMany({
         where: {
           service_id: {
             in: serviceDetails.selectedServices
-          }
+          },
+          vendor_id: vendorId
         },
-        select: { service_id: true }
       });
 
-      const existingIds = existingServices.map(s => s.service_id);
+      console.log('[Bookings API] Found services:', services.length);
+      console.log('[Bookings API] Services detail:', services.map(s => ({
+        id: s.service_id,
+        name: s.name,
+        is_active: s.is_active,
+        price: s.price
+      })));
+
+      const existingIds = services.map(s => s.service_id);
       const missingIds = serviceDetails.selectedServices.filter(
         (id: string) => !existingIds.includes(id)
       );
@@ -146,6 +164,18 @@ export async function POST(request: NextRequest) {
       if (missingIds.length > 0) {
         return NextResponse.json(
           { error: 'Validation Error', message: `Beberapa layanan tidak ditemukan: ${missingIds.join(', ')}` },
+          { status: 400 }
+        );
+      }
+
+      // Check if services are active
+      const inactiveServices = services.filter(s => s.is_active !== true);
+      if (inactiveServices.length > 0) {
+        return NextResponse.json(
+          { 
+            error: 'Validation Error', 
+            message: `Beberapa layanan tidak aktif: ${inactiveServices.map(s => s.name).join(', ')}` 
+          },
           { status: 400 }
         );
       }
@@ -162,9 +192,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get service prices
+    // Get service prices and calculate
     const selectedServices = serviceDetails?.selectedServices || [];
     const serviceItems = [];
+    let calculatedSubtotal = 0;
     
     for (const serviceId of selectedServices) {
       const service = await prisma.service.findUnique({
@@ -173,22 +204,29 @@ export async function POST(request: NextRequest) {
       
       if (service) {
         const quantity = serviceDetails.quantities?.[serviceId] || 1;
+        const itemSubtotal = service.price * quantity;
+        
         serviceItems.push({
           service_id: serviceId,
           quantity: quantity,
           price: service.price,
-          subtotal: service.price * quantity
+          subtotal: itemSubtotal
         });
+
+        calculatedSubtotal += itemSubtotal;
       }
     }
 
-    // Calculate total from service items
-    const calculatedSubtotal = serviceItems.reduce((sum, item) => sum + item.subtotal, 0);
-    
+    console.log('[Bookings API] Service items:', serviceItems);
+    console.log('[Bookings API] Calculated subtotal:', calculatedSubtotal);
+    console.log('[Bookings API] Provided subtotal:', subtotal);
+
     // Use provided subtotal or calculated
     const finalSubtotal = subtotal || calculatedSubtotal;
     const finalTotal = totalAmount || (finalSubtotal + serviceFee);
 
+    console.log('[Bookings API] Final subtotal:', finalSubtotal);
+    console.log('[Bookings API] Final total:', finalTotal);
     console.log('[Bookings API] Creating booking...');
 
     // Create booking
@@ -226,6 +264,7 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('[Bookings API] Booking created:', booking.booking_id);
+    console.log('[Bookings API] Booking items:', booking.items.length);
 
     return NextResponse.json(
       {
@@ -238,8 +277,16 @@ export async function POST(request: NextRequest) {
           orderId: booking.booking_number,
           status: booking.status,
           paymentStatus: booking.payment_status,
+          subtotal: booking.subtotal,
+          serviceFee: booking.service_fee,
           total: booking.total,
           scheduledDate: booking.scheduled_date,
+          items: booking.items.map(item => ({
+            serviceName: item.service.name,
+            quantity: item.quantity,
+            price: item.price,
+            subtotal: item.subtotal
+          })),
           vendor: booking.vendor
         }
       },

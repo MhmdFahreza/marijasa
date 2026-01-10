@@ -25,8 +25,10 @@ async function updateVendorTags(vendorId: string) {
       where: { vendor_id: vendorId },
       data: { tags },
     });
+
+    console.log('[Services API] Updated vendor tags:', tags);
   } catch (error) {
-    console.error('Error updating vendor tags:', error);
+    console.error('[Services API] Error updating vendor tags:', error);
   }
 }
 
@@ -68,12 +70,15 @@ export async function GET(request: NextRequest) {
       })
     ]);
 
+    console.log('[Services API GET] Total services:', services.length);
+    console.log('[Services API GET] Active services:', services.filter(s => s.is_active === true).length);
+
     return NextResponse.json({
       services,
       gallery,
     });
   } catch (error) {
-    console.error('Get services error:', error);
+    console.error('[Services API GET] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -103,12 +108,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, description, price, price_type, estimated_time, is_active } = body;
 
+    console.log('[Services API POST] Creating service:', { name, price, price_type, is_active });
+
     if (!name || !description || price === undefined) {
       return NextResponse.json(
         { error: 'Nama, deskripsi, dan harga wajib diisi' },
         { status: 400 }
       );
     }
+
+    // PERBAIKAN: Pastikan is_active adalah boolean
+    const isActiveBoolean = is_active === true || is_active === 'true' || is_active === 1;
 
     // Create service
     const service = await prisma.service.create({
@@ -119,8 +129,15 @@ export async function POST(request: NextRequest) {
         price: parseFloat(price),
         price_type,
         estimated_time,
-        is_active: is_active ?? true,
+        is_active: isActiveBoolean, // Pastikan boolean
       },
+    });
+
+    console.log('[Services API POST] Service created:', {
+      id: service.service_id,
+      name: service.name,
+      is_active: service.is_active,
+      is_active_type: typeof service.is_active
     });
 
     // Update vendor tags dengan layanan baru
@@ -131,7 +148,7 @@ export async function POST(request: NextRequest) {
       message: 'Layanan berhasil ditambahkan'
     });
   } catch (error) {
-    console.error('Create service error:', error);
+    console.error('[Services API POST] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -161,6 +178,8 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { service_id, name, description, price, price_type, estimated_time, is_active } = body;
 
+    console.log('[Services API PUT] Updating service:', { service_id, is_active });
+
     if (!service_id) {
       return NextResponse.json(
         { error: 'Service ID required' },
@@ -183,6 +202,12 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // PERBAIKAN: Pastikan is_active adalah boolean saat update
+    let isActiveBoolean = existingService.is_active;
+    if (is_active !== undefined) {
+      isActiveBoolean = is_active === true || is_active === 'true' || is_active === 1;
+    }
+
     // Update service
     const service = await prisma.service.update({
       where: { service_id },
@@ -192,9 +217,16 @@ export async function PUT(request: NextRequest) {
         price: price !== undefined ? parseFloat(price) : existingService.price,
         price_type: price_type ?? existingService.price_type,
         estimated_time: estimated_time ?? existingService.estimated_time,
-        is_active: is_active !== undefined ? is_active : existingService.is_active,
+        is_active: isActiveBoolean, // Pastikan boolean
         updated_at: new Date(),
       },
+    });
+
+    console.log('[Services API PUT] Service updated:', {
+      id: service.service_id,
+      name: service.name,
+      is_active: service.is_active,
+      is_active_type: typeof service.is_active
     });
 
     // Update vendor tags setelah edit layanan
@@ -205,7 +237,7 @@ export async function PUT(request: NextRequest) {
       message: 'Layanan berhasil diperbarui'
     });
   } catch (error) {
-    console.error('Update service error:', error);
+    console.error('[Services API PUT] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -256,6 +288,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    console.log('[Services API DELETE] Deleting service:', serviceId);
+
     // Delete service
     await prisma.service.delete({
       where: { service_id: serviceId },
@@ -268,7 +302,7 @@ export async function DELETE(request: NextRequest) {
       message: 'Layanan berhasil dihapus'
     });
   } catch (error) {
-    console.error('Delete service error:', error);
+    console.error('[Services API DELETE] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

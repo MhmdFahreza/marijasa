@@ -1,4 +1,4 @@
-// app/jasa/detailjasa/{vendorId}/form/page.tsx
+// app/jasa/detailjasa/[vendorId]/form/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -16,10 +16,9 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, Home, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2, Tag, AlertCircle } from "lucide-react";
+import { Calendar, User, Receipt, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2, Tag, AlertCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
@@ -83,7 +82,7 @@ interface Vendor {
   review_count: number;
   service_areas: string[];
   specialties: string[];
-  tags: string[]; // Tags diupdate otomatis dari nama layanan
+  tags: string[];
   category?: string;
   join_date: string;
   services?: Service[];
@@ -179,9 +178,44 @@ export default function VendorFormPage() {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('=== VENDOR API RESPONSE ===');
+        console.log('Full response:', data);
+        console.log('Vendor object:', data.vendor);
+        console.log('Services array:', data.vendor?.services);
+        console.log('Services length:', data.vendor?.services?.length);
+        
+        if (data.vendor?.services) {
+          console.log('Services detail:');
+          data.vendor.services.forEach((s: any, i: number) => {
+            console.log(`Service ${i + 1}:`, {
+              id: s.service_id || s.id,
+              name: s.name,
+              price: s.price,
+              price_type: s.priceType || s.price_type,
+              is_active: s.isActive !== undefined ? s.isActive : s.is_active,
+              is_active_type: typeof (s.isActive !== undefined ? s.isActive : s.is_active)
+            });
+          });
+        }
+        
         if (data.vendor) {
-          setVendor(data.vendor);
-          return data.vendor;
+          const normalizedVendor = {
+            ...data.vendor,
+            vendor_id: data.vendor.id || data.vendor.vendor_id,
+            services: data.vendor.services?.map((s: any) => ({
+              service_id: s.id || s.service_id,
+              name: s.name,
+              description: s.description,
+              price: s.price,
+              price_type: s.priceType || s.price_type,
+              estimated_time: s.estimatedTime || s.estimated_time,
+              is_active: s.isActive !== undefined ? s.isActive : s.is_active
+            })) || []
+          };
+          
+          console.log('Normalized vendor:', normalizedVendor);
+          setVendor(normalizedVendor);
+          return normalizedVendor;
         } else {
           toast.error("Data vendor tidak ditemukan");
           setVendor(null);
@@ -189,6 +223,7 @@ export default function VendorFormPage() {
         }
       } else {
         const errorData = await response.json();
+        console.error('API Error:', errorData);
         toast.error(errorData.error || "Gagal memuat data vendor");
         setVendor(null);
         return null;
@@ -324,7 +359,11 @@ export default function VendorFormPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validasi tanggal
+    if (!formData.selectedServices || formData.selectedServices.length === 0) {
+      toast.error("Silakan pilih minimal satu layanan");
+      return;
+    }
+
     const selectedDate = new Date(formData.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -593,11 +632,7 @@ export default function VendorFormPage() {
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
                   <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                    <a
-                      href="/"
-                      className="cursor-pointer"
-                      onClick={(e) => handleBreadcrumbClick(e, "/")}
-                    >
+                    <a href="/" className="cursor-pointer" onClick={(e) => handleBreadcrumbClick(e, "/")}>
                       Home
                     </a>
                   </motion.span>
@@ -607,11 +642,7 @@ export default function VendorFormPage() {
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
                   <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                    <a
-                      href="/jasa"
-                      className="cursor-pointer"
-                      onClick={(e) => handleBreadcrumbClick(e, "/jasa")}
-                    >
+                    <a href="/jasa" className="cursor-pointer" onClick={(e) => handleBreadcrumbClick(e, "/jasa")}>
                       Jasa
                     </a>
                   </motion.span>
@@ -676,7 +707,6 @@ export default function VendorFormPage() {
         )}
       </motion.main>
 
-      {/* Modal Sukses Ajukan Pemesanan */}
       <AnimatePresence>
         {showSuccessModal && (
           <motion.div
@@ -709,7 +739,6 @@ export default function VendorFormPage() {
         )}
       </AnimatePresence>
 
-      {/* Modal Sukses Pembayaran */}
       <AnimatePresence>
         {showPaymentSuccessModal && (
           <motion.div
@@ -820,7 +849,28 @@ function OrderForm({
     setFormData({ ...formData, minute: minute.toString() });
   };
 
-  const activeServices = vendor.services?.filter((s: any) => s.isActive) || [];
+  const activeServices = useMemo(() => {
+    if (!vendor || !vendor.services || !Array.isArray(vendor.services)) {
+      console.log('❌ No services found in vendor data');
+      return [];
+    }
+    
+    console.log('=== FILTERING SERVICES IN FORM ===');
+    console.log('Total services:', vendor.services.length);
+    
+    const filtered = vendor.services.filter((s: any) => {
+      const isActive = s.is_active === true;
+      console.log(`Service "${s.name}":`, {
+        service_id: s.service_id,
+        is_active_raw: s.is_active,
+        isActive_result: isActive
+      });
+      return isActive;
+    });
+    
+    console.log('✅ Active services:', filtered.length);
+    return filtered;
+  }, [vendor]);
 
   return (
     <>
@@ -897,7 +947,7 @@ function OrderForm({
                   <Input
                     id="gpsLink"
                     type="url"
-                    placeholder="https://maps.google.com/... atau https://maps.app.goo.gl/..."
+                    placeholder="https://maps.google.com/..."
                     required
                     value={formData.gpsLink || ""}
                     onChange={(e) => setFormData({ ...formData, gpsLink: e.target.value })}
@@ -922,9 +972,6 @@ function OrderForm({
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Tempelkan link lokasi dari Google Maps atau klik tombol "Lokasi Saya"
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -940,111 +987,124 @@ function OrderForm({
               </div>
             </div>
 
-            {/* Pilihan Layanan dari Vendor */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Receipt className="h-5 w-5" />
-                Pilih Layanan
+                Pilih Layanan *
               </h3>
 
               {activeServices.length === 0 ? (
                 <Card className="border-2 border-dashed">
                   <CardContent className="py-8 text-center">
                     <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground font-medium mb-2">
                       Vendor belum menambahkan layanan aktif.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {vendor.services && vendor.services.length > 0 
+                        ? `Vendor memiliki ${vendor.services.length} layanan, namun belum ada yang diaktifkan.`
+                        : 'Vendor belum menambahkan layanan apapun.'}
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-3">
-                  {activeServices.map((service: any) => (
-                    <Card key={service.id} className="border hover:border-[#7CE0A8] transition-colors">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-3 flex-1">
-                            <Checkbox
-                              id={service.id}
-                              checked={(formData.selectedServices || []).includes(service.id)}
-                              onCheckedChange={(checked) => {
-                                handleServiceToggle(service.id, checked as boolean);
-                              }}
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <Label htmlFor={service.id} className="font-medium cursor-pointer">
-                                  {service.name}
-                                </Label>
-                                <Badge variant="outline" className="text-xs">
-                                  {service.priceType === 'FIXED' ? 'Harga Tetap' :
-                                   service.priceType === 'HOURLY' ? 'Per Jam' :
-                                   'Per Unit'}
-                                </Badge>
+                  {activeServices.map((service: any) => {
+                    const isSelected = (formData.selectedServices || []).includes(service.service_id);
+                    
+                    return (
+                      <Card 
+                        key={service.service_id} 
+                        className={`border transition-colors ${
+                          isSelected ? 'border-[#7CE0A8] bg-[#7CE0A8]/5' : 'hover:border-[#7CE0A8]'
+                        }`}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3 flex-1">
+                              <Checkbox
+                                id={service.service_id}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                  handleServiceToggle(service.service_id, checked as boolean);
+                                }}
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <Label htmlFor={service.service_id} className="font-medium cursor-pointer">
+                                    {service.name}
+                                  </Label>
+                                  <Badge variant="outline" className="text-xs">
+                                    {service.price_type === 'FIXED' ? 'Harga Tetap' :
+                                     service.price_type === 'HOURLY' ? 'Per Jam' :
+                                     'Per Unit'}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {service.description}
+                                </p>
+                                {service.estimated_time && (
+                                  <div className="flex items-center gap-1 mt-2">
+                                    <Calendar className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">
+                                      {service.estimated_time}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {service.description}
-                              </p>
-                              {service.estimatedTime && (
-                                <div className="flex items-center gap-1 mt-2">
-                                  <Calendar className="h-3 w-3 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    {service.estimatedTime}
-                                  </span>
+                            </div>
+
+                            <div className="text-right">
+                              <div className="font-semibold text-primary">
+                                {formatPrice(service.price, service.price_type)}
+                              </div>
+
+                              {isSelected && (
+                                <div className="mt-3 flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => {
+                                      const currentQty = formData.quantities?.[service.service_id] || 1;
+                                      if (currentQty > 1) {
+                                        handleQuantityChange(service.service_id, currentQty - 1);
+                                      }
+                                    }}
+                                  >
+                                    -
+                                  </Button>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={formData.quantities?.[service.service_id] || 1}
+                                    className="w-16 text-center h-8"
+                                    onChange={(e) => {
+                                      const qty = parseInt(e.target.value) || 1;
+                                      handleQuantityChange(service.service_id, qty);
+                                    }}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => {
+                                      const currentQty = formData.quantities?.[service.service_id] || 1;
+                                      handleQuantityChange(service.service_id, currentQty + 1);
+                                    }}
+                                  >
+                                    +
+                                  </Button>
                                 </div>
                               )}
                             </div>
                           </div>
-
-                          <div className="text-right">
-                            <div className="font-semibold text-primary">
-                              {formatPrice(service.price, service.priceType)}
-                            </div>
-
-                            {(formData.selectedServices || []).includes(service.id) && (
-                              <div className="mt-3 flex items-center gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 w-8"
-                                  onClick={() => {
-                                    const currentQty = formData.quantities?.[service.id] || 1;
-                                    if (currentQty > 1) {
-                                      handleQuantityChange(service.id, currentQty - 1);
-                                    }
-                                  }}
-                                >
-                                  -
-                                </Button>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={formData.quantities?.[service.id] || 1}
-                                  className="w-16 text-center"
-                                  onChange={(e) => {
-                                    const qty = parseInt(e.target.value) || 1;
-                                    handleQuantityChange(service.id, qty);
-                                  }}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 w-8"
-                                  onClick={() => {
-                                    const currentQty = formData.quantities?.[service.id] || 1;
-                                    handleQuantityChange(service.id, currentQty + 1);
-                                  }}
-                                >
-                                  +
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
 
@@ -1063,7 +1123,7 @@ function OrderForm({
                           const selectedServices = formData.selectedServices || [];
                           let total = 0;
                           selectedServices.forEach((serviceId: string) => {
-                            const service = activeServices.find((s: any) => s.id === serviceId);
+                            const service = activeServices.find((s: any) => s.service_id === serviceId);
                             if (service) {
                               const quantity = formData.quantities?.[serviceId] || 1;
                               total += service.price * quantity;
@@ -1139,12 +1199,7 @@ function OrderForm({
             </div>
 
             <div className="flex gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={handleCancel}
-              >
+              <Button type="button" variant="outline" className="flex-1" onClick={handleCancel}>
                 Batal
               </Button>
               <Button
@@ -1180,7 +1235,6 @@ function ConfirmationStep({
   onBack,
   onConfirm,
   isProcessingPayment,
-  getServiceDescription,
   formatPrice
 }: any) {
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
@@ -1237,12 +1291,11 @@ function ConfirmationStep({
     }));
   };
 
-  // Dapatkan detail layanan yang dipilih
   const getSelectedServicesDetails = () => {
     if (!vendor || !vendor.services) return [];
     
     return formData.selectedServices.map((serviceId: string) => {
-      const service = vendor.services.find((s: any) => s.id === serviceId);
+      const service = vendor.services.find((s: any) => s.service_id === serviceId);
       const quantity = formData.quantities?.[serviceId] || 1;
       return {
         ...service,
@@ -1297,20 +1350,17 @@ function ConfirmationStep({
             </div>
           </div>
 
-          {/* Detail Layanan */}
           <div className="border-t pt-4">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="font-semibold">Detail Layanan</h4>
-            </div>
+            <h4 className="font-semibold mb-3">Detail Layanan</h4>
             <div className="space-y-3">
               {selectedServicesDetails.map((service: any) => (
-                <div key={service.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div key={service.service_id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-medium">{service.name}</p>
                     <p className="text-sm text-muted-foreground">Qty: {service.quantity}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{formatPrice(service.price, service.priceType)}</p>
+                    <p className="font-medium">{formatPrice(service.price, service.price_type)}</p>
                     <p className="text-sm text-muted-foreground">Total: Rp {(service.total).toLocaleString('id-ID')}</p>
                   </div>
                 </div>
@@ -1318,7 +1368,6 @@ function ConfirmationStep({
             </div>
           </div>
 
-          {/* Ringkasan Harga */}
           <div className="border-t pt-4">
             <h4 className="font-semibold mb-3">Ringkasan Harga</h4>
             <div className="space-y-2">
@@ -1350,7 +1399,6 @@ function ConfirmationStep({
         </CardContent>
       </Card>
 
-      {/* Pilih Metode Pembayaran */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -1358,11 +1406,7 @@ function ConfirmationStep({
               <CreditCardIcon className="h-5 w-5" />
               <span>Pilih Metode Pembayaran</span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPaymentOptions(!showPaymentOptions)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setShowPaymentOptions(!showPaymentOptions)}>
               {selectedPayment ? 'Ubah' : 'Pilih'}
             </Button>
           </CardTitle>
@@ -1377,11 +1421,7 @@ function ConfirmationStep({
                     Biaya Transaksi: Rp {PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID')}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowPaymentOptions(true)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(true)}>
                   Ubah
                 </Button>
               </div>
@@ -1389,25 +1429,17 @@ function ConfirmationStep({
           ) : (
             <div className="mb-6 p-4 border-2 border-dashed rounded-lg text-center">
               <p className="text-muted-foreground">Belum memilih metode pembayaran</p>
-              <Button
-                variant="outline"
-                className="mt-2"
-                onClick={() => setShowPaymentOptions(true)}
-              >
+              <Button variant="outline" className="mt-2" onClick={() => setShowPaymentOptions(true)}>
                 Pilih Metode Pembayaran
               </Button>
             </div>
           )}
 
-          {/* Form Kartu Debit/Kredit */}
           {selectedPayment === "debit-credit" && (
             <div className="mb-6 p-6 border rounded-lg bg-white shadow-sm">
               <div className="mb-4">
                 <h3 className="text-xl font-bold">Kartu Debit/Kredit</h3>
-                <p className="text-muted-foreground">
-                  <strong>Kartu Debit/Kredit</strong><br />
-                  Biaya Transaksi Rp2.784
-                </p>
+                <p className="text-muted-foreground">Biaya Transaksi Rp2.784</p>
               </div>
 
               <div className="space-y-6">
@@ -1417,9 +1449,7 @@ function ConfirmationStep({
                     VISA
                   </h4>
                   <div className="space-y-2">
-                    <Label htmlFor="cardNumber" className="text-sm font-medium">
-                      Nomor Kartu
-                    </Label>
+                    <Label htmlFor="cardNumber" className="text-sm font-medium">Nomor Kartu</Label>
                     <Input
                       id="cardNumber"
                       placeholder="Contoh: 1234 5678 9012 3456"
@@ -1435,9 +1465,7 @@ function ConfirmationStep({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="expiryDate" className="text-sm font-medium">
-                      Masa Berlaku
-                    </Label>
+                    <Label htmlFor="expiryDate" className="text-sm font-medium">Masa Berlaku</Label>
                     <Input
                       id="expiryDate"
                       placeholder="MM/YY"
@@ -1451,9 +1479,7 @@ function ConfirmationStep({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="cvv" className="text-sm font-medium">
-                      CVV
-                    </Label>
+                    <Label htmlFor="cvv" className="text-sm font-medium">CVV</Label>
                     <Input
                       id="cvv"
                       type="password"
@@ -1473,7 +1499,6 @@ function ConfirmationStep({
             </div>
           )}
 
-          {/* Payment Options Modal */}
           <AnimatePresence>
             {showPaymentOptions && (
               <motion.div
@@ -1494,13 +1519,7 @@ function ConfirmationStep({
                   <div className="sticky top-0 bg-white border-b px-6 py-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-semibold">Pilih Metode Pembayaran</h3>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowPaymentOptions(false)}
-                      >
-                        ✕
-                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(false)}>✕</Button>
                     </div>
                   </div>
 
@@ -1522,7 +1541,12 @@ function ConfirmationStep({
                             className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
                             onClick={() => toggleSection(category)}
                           >
-                            <span className="font-medium capitalize">{category === 'va' ? 'Virtual Account' : category === 'ewallet' ? 'E-Wallet' : category}</span>
+                            <span className="font-medium capitalize">
+                              {category === 'va' ? 'Virtual Account' : 
+                               category === 'ewallet' ? 'E-Wallet' : 
+                               category === 'card' ? 'Kartu' :
+                               category === 'qris' ? 'QRIS' : 'Tunai'}
+                            </span>
                             {expandedSections[category] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           </button>
                           <AnimatePresence>
@@ -1537,7 +1561,9 @@ function ConfirmationStep({
                                   {methods.map((method) => (
                                     <label
                                       key={method.id}
-                                      className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'}`}
+                                      className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
+                                        selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
+                                      }`}
                                     >
                                       <div className="flex items-center gap-3">
                                         <RadioGroupItem value={method.id} id={method.id} />
@@ -1585,18 +1611,11 @@ function ConfirmationStep({
                 <span className="font-medium">Estimasi Harga</span>
                 <span className="font-bold text-lg">Rp {totalPrice.toLocaleString('id-ID')}</span>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Minimum transaksi Rp75.000
-              </p>
+              <p className="text-sm text-muted-foreground">Minimum transaksi Rp75.000</p>
             </div>
 
             <div className="mt-6 flex gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={onBack}
-              >
+              <Button type="button" variant="outline" className="flex-1" onClick={onBack}>
                 Kembali
               </Button>
               <Button
