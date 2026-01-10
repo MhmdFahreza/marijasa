@@ -53,7 +53,7 @@ export default function DashboardPage() {
           { title: "Total Users", value: "1,234", color: "bg-blue-500", icon: "👤" },
           { title: "Total Mitra", value: "89", color: "bg-green-500", icon: "🤝" },
           { title: "Pending Approval", value: "12", color: "bg-amber-500", icon: "⏳" },
-          { title: "Total Transaksi", value: "4,567", color: "bg-purple-500", icon: "💰" },
+          { title: "User Mengakses Web", value: "8,932", color: "bg-purple-500", icon: "📊" },
         ].map((stat, i) => (
           <div
             key={i}
@@ -84,9 +84,9 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Aktivitas User</h3>
             <select className="text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg px-3 py-1 bg-transparent">
+              <option>Hari ini</option>
               <option>Minggu ini</option>
               <option>Bulan ini</option>
-              <option>Tahun ini</option>
             </select>
           </div>
           <div className="h-64 flex items-center justify-center">
@@ -111,46 +111,30 @@ export default function DashboardPage() {
         
         <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Transaksi Terbaru</h3>
-            <a href="/admin/transaksi" className="text-sm text-[#7CE0A8] hover:underline">
-              Lihat semua →
-            </a>
+            <h3 className="font-semibold">Aktivitas Mitra</h3>
+            <select className="text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg px-3 py-1 bg-transparent">
+              <option>Hari ini</option>
+              <option>Minggu ini</option>
+              <option>Bulan ini</option>
+            </select>
           </div>
-          <div className="space-y-3">
-            {[
-              { id: "#TRX001", user: "John Doe", amount: 250000, status: "success" },
-              { id: "#TRX002", user: "Jane Smith", amount: 150000, status: "success" },
-              { id: "#TRX003", user: "Robert Johnson", amount: 350000, status: "pending" },
-              { id: "#TRX004", user: "Sarah Williams", amount: 120000, status: "success" },
-              { id: "#TRX005", user: "Michael Brown", amount: 280000, status: "failed" },
-            ].map((transaction, i) => (
-              <div 
-                key={i} 
-                className="flex items-center justify-between p-4 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-750 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center">
-                    <span className="text-lg">💰</span>
+          <div className="h-64 flex items-center justify-center">
+            <div className="w-full">
+              <div className="flex items-end h-48 gap-2">
+                {[55, 45, 70, 50, 85, 60, 65].map((height, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center">
+                    <div 
+                      className="w-8 rounded-t-lg bg-gradient-to-t from-green-500 to-green-300"
+                      style={{ height: `${height}%` }}
+                    ></div>
+                    <span className="text-xs text-neutral-500 mt-2">H-{i+1}</span>
                   </div>
-                  <div>
-                    <p className="font-medium">{transaction.id}</p>
-                    <p className="text-sm text-neutral-500">{transaction.user}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">Rp {new Intl.NumberFormat('id-ID').format(transaction.amount)}</p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    transaction.status === 'success' 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                      : transaction.status === 'pending'
-                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                      : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                  }`}>
-                    {transaction.status === 'success' ? 'Selesai' : transaction.status === 'pending' ? 'Pending' : 'Gagal'}
-                  </span>
-                </div>
+                ))}
               </div>
-            ))}
+              <div className="border-t border-neutral-200 dark:border-neutral-700 mt-4 pt-4 text-center text-sm text-neutral-500">
+                Aktivitas mitra dalam 7 hari terakhir
+              </div>
+            </div>
           </div>
         </div>
       </div>
