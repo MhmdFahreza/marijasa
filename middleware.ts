@@ -22,6 +22,9 @@ const protectedRoutes = ["/profile", "/riwayat_pemesanan", "/vendor_favorit"];
 // Auth routes (redirect to home if already logged in)
 const authRoutes = ["/login", "/register", "/register/otp"];
 
+// Public mitra routes (don't require authentication)
+const publicMitraRoutes = ["/mitra/login", "/mitra/daftar"];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -94,17 +97,21 @@ export async function middleware(request: NextRequest) {
 
   // =============== MITRA ROUTES ===============
   if (pathname.startsWith('/mitra/')) {
-    // Allow access to login page
-    if (pathname === '/mitra/login') {
-      // If already logged in, redirect to dashboard
-      const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
-      const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
+    // Allow access to public mitra routes (login, daftar)
+    if (publicMitraRoutes.some(route => pathname === route)) {
+      // If accessing login and already logged in, redirect to dashboard
+      if (pathname === '/mitra/login') {
+        const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
+        const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
 
-      if (mitraSessionId && mitraAccessToken) {
-        console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
-        return NextResponse.redirect(new URL("/mitra/dashboard", request.url));
+        if (mitraSessionId && mitraAccessToken) {
+          console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
+          return NextResponse.redirect(new URL("/mitra/dashboard", request.url));
+        }
       }
       
+      // Allow access to /mitra/daftar without authentication
+      console.log(`[Middleware] Allowing access to public mitra route: ${pathname}`);
       return NextResponse.next();
     }
 

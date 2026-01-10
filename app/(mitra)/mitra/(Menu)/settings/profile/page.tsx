@@ -19,7 +19,6 @@ import {
   Award,
   Star,
   Shield,
-  Info,
   Tag,
   Loader2
 } from "lucide-react";
@@ -34,9 +33,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/ta
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import CitySelect from "@/app/components/ui/city-select";
-import { CITIES_ID } from "@/app/data/cities-id";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { toast } from "sonner";
+
+type City = {
+  city_id: string;
+  name: string;
+  province: string;
+};
 
 type ProfileData = {
   vendor_id: string;
@@ -59,14 +63,40 @@ type ProfileData = {
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [cities, setCities] = useState<City[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingCities, setIsLoadingCities] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [newServiceArea, setNewServiceArea] = useState("");
   const [tempProfile, setTempProfile] = useState<ProfileData | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>("");
+
+  const fetchCities = useCallback(async () => {
+    try {
+      setIsLoadingCities(true);
+      const response = await fetch('/api/master/cities', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal memuat data kota');
+      }
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        setCities(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+      toast.error('Gagal memuat data kota');
+    } finally {
+      setIsLoadingCities(false);
+    }
+  }, []);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -97,8 +127,9 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
+    fetchCities();
     fetchProfile();
-  }, [fetchProfile]);
+  }, [fetchCities, fetchProfile]);
 
   useEffect(() => {
     if (isEditing && profile) {
@@ -114,7 +145,6 @@ export default function ProfilePage() {
     try {
       let avatarUrl = tempProfile.avatar;
       
-      // Upload avatar jika ada file baru
       if (avatarFile) {
         const formData = new FormData();
         formData.append("avatar", avatarFile);
@@ -133,7 +163,6 @@ export default function ProfilePage() {
         avatarUrl = uploadData.avatarUrl;
       }
 
-      // Update profile data
       const response = await fetch('/api/mitra/profile', {
         method: 'PUT',
         headers: {
@@ -262,7 +291,6 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-neutral-900 dark:to-neutral-950">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col gap-6">
-            {/* Header Skeleton */}
             <div className="flex items-center justify-between">
               <div>
                 <Skeleton className="h-8 w-48 mb-2" />
@@ -271,15 +299,12 @@ export default function ProfilePage() {
               <Skeleton className="h-10 w-32" />
             </div>
 
-            {/* Content Skeleton */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column */}
               <div className="space-y-6">
                 <Skeleton className="h-64 rounded-xl" />
                 <Skeleton className="h-48 rounded-xl" />
               </div>
               
-              {/* Right Column */}
               <div className="lg:col-span-2 space-y-6">
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-96 rounded-xl" />
@@ -697,25 +722,34 @@ export default function ProfilePage() {
                           <Label className="text-base font-semibold">
                             Tambah Area Layanan Baru
                           </Label>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <div className="flex-1">
-                              <CitySelect
-                                value={newServiceArea}
-                                onValueChange={setNewServiceArea}
-                                placeholder="Pilih kota/daerah"
-                                cities={CITIES_ID}
-                                triggerClassName="focus:ring-[#7CE0A8]"
-                              />
+                          {isLoadingCities ? (
+                            <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-neutral-800 rounded-lg">
+                              <Loader2 className="h-4 w-4 animate-spin text-[#7CE0A8]" />
+                              <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                                Memuat data kota...
+                              </span>
                             </div>
-                            <Button
-                              onClick={handleAddServiceArea}
-                              disabled={!newServiceArea.trim() || isSaving}
-                              className="bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Tambah
-                            </Button>
-                          </div>
+                          ) : (
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <div className="flex-1">
+                                <CitySelect
+                                  value={newServiceArea}
+                                  onValueChange={setNewServiceArea}
+                                  placeholder="Pilih kota/daerah"
+                                  cities={cities.map(city => city.name)}
+                                  triggerClassName="focus:ring-[#7CE0A8]"
+                                />
+                              </div>
+                              <Button
+                                onClick={handleAddServiceArea}
+                                disabled={!newServiceArea.trim() || isSaving}
+                                className="bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Tambah
+                              </Button>
+                            </div>
+                          )}
                         </div>
 
                         <div className="space-y-3">

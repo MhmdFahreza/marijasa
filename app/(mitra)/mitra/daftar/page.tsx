@@ -28,7 +28,6 @@ import { Badge } from "@/app/components/ui/badge";
 import { AspectRatio } from "@/app/components/ui/aspect-ratio";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import CitySelect from "@/app/components/ui/city-select";
-import { CITIES_ID } from "@/app/data/cities-id";
 import {
     Upload,
     X,
@@ -69,7 +68,7 @@ type ServiceTag = string;
 type WorkImage = {
     id: string;
     file: File;
-    preview: string; // Data URL (base64)
+    preview: string;
     displayName: string;
 };
 
@@ -159,7 +158,6 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
     }
 ];
 
-// Fungsi untuk generate nama file acak
 const generateRandomFileName = (originalFile: File): string => {
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 15);
@@ -171,7 +169,6 @@ const generateRandomFileName = (originalFile: File): string => {
     return `doc_${timestamp}_${randomString}.${extension}`;
 };
 
-// Fungsi untuk membaca file sebagai Data URL (base64)
 const readFileAsDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -214,14 +211,13 @@ export default function MitraDaftarPage() {
     const [lokasi, setLokasi] = useState<string[]>([]);
     const [currentLokasi, setCurrentLokasi] = useState("");
 
-    // Form state - Step 2 (Data Pribadi) - menggunakan DocumentFile type
+    // Form state - Step 2 (Data Pribadi)
     const [email, setEmail] = useState("");
     const [telepon, setTelepon] = useState("");
     const [alamat, setAlamat] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [fotoKTP, setFotoKTP] = useState<DocumentFile>({ file: null, displayName: "" });
-    const [fotoKTPPreview, setFotoKTPPreview] = useState<string>("");
     const [fotoDenganKTP, setFotoDenganKTP] = useState<DocumentFile>({ file: null, displayName: "" });
     const [skck, setSkck] = useState<DocumentFile>({ file: null, displayName: "" });
     const [siup, setSiup] = useState<DocumentFile>({ file: null, displayName: "" });
@@ -231,18 +227,41 @@ export default function MitraDaftarPage() {
     // Error state
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [showSuccess, setShowSuccess] = useState(false);
+    const [submitError, setSubmitError] = useState<string>("");
     const [isClient, setIsClient] = useState(false);
+
+    // Cities from database
+    const [cities, setCities] = useState<string[]>([]);
+    const [isCitiesLoading, setIsCitiesLoading] = useState(true);
 
     // Track step completion
     const [step1Completed, setStep1Completed] = useState(false);
     const [step2Completed, setStep2Completed] = useState(false);
 
-    // Set isClient to true on mount (client-side only)
     useEffect(() => {
         setIsClient(true);
     }, []);
 
-    // Check if step 1 is completed
+    // Fetch cities from database
+    useEffect(() => {
+        const fetchCities = async () => {
+            try {
+                setIsCitiesLoading(true);
+                const response = await fetch('/api/master/cities');
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const cityNames = data.data.map((city: { name: string }) => city.name);
+                    setCities(cityNames);
+                }
+            } catch (error) {
+                console.error('Error fetching cities:', error);
+            } finally {
+                setIsCitiesLoading(false);
+            }
+        };
+        fetchCities();
+    }, []);
+
     useEffect(() => {
         const isStep1Complete = namaMitra.trim() !== "" &&
             fotoProfil !== null &&
@@ -255,7 +274,6 @@ export default function MitraDaftarPage() {
         setStep1Completed(isStep1Complete);
     }, [namaMitra, fotoProfil, kategoriJasa, jasaDitawarkan, deskripsi, hasilPekerjaan, lokasi]);
 
-    // Check if step 2 is completed
     useEffect(() => {
         const isStep2Complete = email.trim() !== "" &&
             /^\S+@\S+\.\S+$/.test(email) &&
@@ -274,18 +292,13 @@ export default function MitraDaftarPage() {
         setStep2Completed(isStep2Complete);
     }, [email, telepon, alamat, password, confirmPassword, fotoKTP, fotoDenganKTP, skck, siup, cv, tipeMitra]);
 
-    // Reset dokumen ketika tipe mitra berubah
     useEffect(() => {
-        // Reset dokumen saat tipe mitra berubah
-        if (fotoKTPPreview) URL.revokeObjectURL(fotoKTPPreview);
         setFotoKTP({ file: null, displayName: "" });
-        setFotoKTPPreview("");
         setFotoDenganKTP({ file: null, displayName: "" });
         setSkck({ file: null, displayName: "" });
         setSiup({ file: null, displayName: "" });
         setCv({ file: null, displayName: "" });
 
-        // Reset errors related to documents
         setErrors(prev => ({
             ...prev,
             fotoKTP: "",
@@ -296,7 +309,6 @@ export default function MitraDaftarPage() {
         }));
     }, [tipeMitra]);
 
-    // Auto-populate services when category is selected
     useEffect(() => {
         if (kategoriJasa) {
             const category = SERVICE_CATEGORIES.find(cat => cat.id === kategoriJasa);
@@ -306,7 +318,6 @@ export default function MitraDaftarPage() {
         }
     }, [kategoriJasa]);
 
-    // Cleanup URLs on unmount
     useEffect(() => {
         return () => {
             if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
@@ -320,7 +331,6 @@ export default function MitraDaftarPage() {
         router.push("/");
     }, [router, prefersReduced]);
 
-    // Step 1 handlers
     const handleFotoProfilChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -406,7 +416,6 @@ export default function MitraDaftarPage() {
         setLokasi(lokasi.filter((l) => l !== city));
     }, [lokasi]);
 
-    // Step 2 handlers
     const handleFotoKTPChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -414,11 +423,10 @@ export default function MitraDaftarPage() {
                 setErrors((prev) => ({ ...prev, fotoKTP: "Ukuran file maksimal 5MB" }));
                 return;
             }
-            // Set image for cropping
             if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
             const previewUrl = URL.createObjectURL(file);
             setCropImageSrc(previewUrl);
-            setZoom(1); // Reset zoom
+            setZoom(1);
             setShowKtpCropModal(true);
             setErrors((prev) => ({ ...prev, fotoKTP: "" }));
         }
@@ -441,7 +449,6 @@ export default function MitraDaftarPage() {
             return;
         }
 
-        // Calculate actual crop dimensions based on zoom
         const scaleX = image.naturalWidth / image.width;
         const scaleY = image.naturalHeight / image.height;
 
@@ -462,19 +469,17 @@ export default function MitraDaftarPage() {
 
         canvas.toBlob(async (blob) => {
             if (blob) {
-                if (fotoKTPPreview) URL.revokeObjectURL(fotoKTPPreview);
                 const croppedFile = new File([blob], "ktp-cropped.jpg", { type: "image/jpeg" });
                 const displayName = generateRandomFileName(croppedFile);
                 const dataUrl = await readFileAsDataURL(croppedFile);
                 setFotoKTP({ file: croppedFile, displayName, preview: dataUrl });
-                setFotoKTPPreview(dataUrl);
             }
         }, 'image/jpeg', 0.95);
 
         setShowKtpCropModal(false);
         setCropImageSrc(null);
-        setZoom(1); // Reset zoom
-    }, [cropImageSrc, crop, fotoKTPPreview]);
+        setZoom(1);
+    }, [cropImageSrc, crop]);
 
     const handleFotoDenganKTPChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -529,10 +534,8 @@ export default function MitraDaftarPage() {
         }
     }, []);
 
-    // Handler untuk menghapus dokumen
     const handleRemoveFotoKTP = useCallback(() => {
         setFotoKTP({ file: null, displayName: "" });
-        setFotoKTPPreview("");
     }, []);
 
     const handleRemoveFotoDenganKTP = useCallback(() => {
@@ -551,7 +554,6 @@ export default function MitraDaftarPage() {
         setCv({ file: null, displayName: "" });
     }, []);
 
-    // Zoom handlers
     const handleZoomIn = useCallback(() => {
         setZoom(prev => Math.min(prev + 0.1, 3));
     }, []);
@@ -560,7 +562,6 @@ export default function MitraDaftarPage() {
         setZoom(prev => Math.max(prev - 0.1, 0.5));
     }, []);
 
-    // Validation
     const validateStep1 = useCallback(() => {
         const newErrors: Record<string, string> = {};
 
@@ -655,7 +656,6 @@ export default function MitraDaftarPage() {
         return Object.keys(newErrors).length === 0;
     }, [email, telepon, alamat, password, confirmPassword, fotoKTP, fotoDenganKTP, skck, siup, cv, tipeMitra]);
 
-    // Handle step navigation
     const handleNextStep = useCallback((e: React.FormEvent) => {
         e.preventDefault();
         if (validateStep1()) {
@@ -676,9 +676,9 @@ export default function MitraDaftarPage() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
-    // Handle final submit
     const handleSubmit = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
+        setSubmitError("");
 
         if (!validateStep2()) {
             const firstError = Object.keys(errors)[0];
@@ -691,45 +691,55 @@ export default function MitraDaftarPage() {
 
         setIsSubmitting(true);
 
-        // Prepare form data
-        const formData = new FormData();
-        formData.append("namaMitra", namaMitra);
-        if (fotoProfil) formData.append("fotoProfil", fotoProfil);
-        formData.append("kategoriJasa", kategoriJasa);
-        formData.append("jasaDitawarkan", JSON.stringify(jasaDitawarkan));
-        formData.append("deskripsi", deskripsi);
-        formData.append("lokasi", JSON.stringify(lokasi));
-        formData.append("email", email);
-        formData.append("telepon", telepon);
-        formData.append("alamat", alamat);
-        formData.append("password", password);
-        formData.append("tipeMitra", tipeMitra);
-        if (fotoKTP.file) formData.append("fotoKTP", fotoKTP.file);
-        if (fotoDenganKTP.file) formData.append("fotoDenganKTP", fotoDenganKTP.file);
-        if (skck.file) formData.append("skck", skck.file);
-        if (siup.file) formData.append("siup", siup.file);
-        if (cv.file) formData.append("cv", cv.file);
+        try {
+            const formData = new FormData();
+            formData.append("namaMitra", namaMitra);
+            if (fotoProfil) formData.append("fotoProfil", fotoProfil);
+            formData.append("kategoriJasa", kategoriJasa);
+            formData.append("jasaDitawarkan", JSON.stringify(jasaDitawarkan));
+            formData.append("deskripsi", deskripsi);
+            formData.append("lokasi", JSON.stringify(lokasi));
+            formData.append("email", email);
+            formData.append("telepon", telepon);
+            formData.append("alamat", alamat);
+            formData.append("password", password);
+            formData.append("tipeMitra", tipeMitra);
+            if (fotoKTP.file) formData.append("fotoKTP", fotoKTP.file);
+            if (fotoDenganKTP.file) formData.append("fotoDenganKTP", fotoDenganKTP.file);
+            if (skck.file) formData.append("skck", skck.file);
+            if (siup.file) formData.append("siup", siup.file);
+            if (cv.file) formData.append("cv", cv.file);
 
-        // Upload hasil pekerjaan
-        hasilPekerjaan.forEach((img, index) => {
-            formData.append(`hasilPekerjaan_${index}`, img.file);
-        });
+            hasilPekerjaan.forEach((img, index) => {
+                formData.append(`hasilPekerjaan_${index}`, img.file);
+            });
 
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+            const response = await fetch('/api/mitra/register', {
+                method: 'POST',
+                body: formData,
+            });
 
-        // Show success message
-        setShowSuccess(true);
-        setIsSubmitting(false);
-        setStep2Completed(true);
+            const data = await response.json();
 
-        // Redirect after 2 seconds
-        setTimeout(() => {
-            router.push("/mitra/dashboard");
-        }, 2000);
+            if (!response.ok) {
+                throw new Error(data.message || 'Terjadi kesalahan saat mendaftar');
+            }
+
+            setShowSuccess(true);
+            setStep2Completed(true);
+
+            setTimeout(() => {
+                router.push("/mitra/login");
+            }, 3000);
+
+        } catch (error: any) {
+            console.error('Registration error:', error);
+            setSubmitError(error.message || 'Terjadi kesalahan saat mendaftar. Silakan coba lagi.');
+        } finally {
+            setIsSubmitting(false);
+        }
     }, [validateStep2, errors, namaMitra, fotoProfil, kategoriJasa, jasaDitawarkan, deskripsi, lokasi, email, telepon, alamat, password, tipeMitra, fotoKTP, fotoDenganKTP, skck, siup, cv, hasilPekerjaan, router]);
 
-    // Untuk menghindari hydration mismatch, kita tidak render apa-apa di server untuk bagian yang menggunakan URL.createObjectURL
     if (!isClient) {
         return (
             <div className="min-h-[60vh] w-full max-w-4xl mx-auto px-4 py-6">
@@ -770,7 +780,6 @@ export default function MitraDaftarPage() {
                 <div className="mb-8">
                     <div className="flex items-center justify-center">
                         <div className="flex items-center space-x-4">
-                            {/* Step 1 */}
                             <div className={`flex items-center ${currentStep === 1 ? 'text-[#7CE0A8]' : step1Completed ? 'text-[#7CE0A8]' : 'text-gray-400'}`}>
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${currentStep === 1 ? 'border-[#7CE0A8] bg-[#7CE0A8]/20' : step1Completed ? 'border-[#7CE0A8] bg-[#7CE0A8]/10' : 'border-gray-300 bg-gray-100'}`}>
                                     {step1Completed && currentStep !== 1 ? (
@@ -782,10 +791,8 @@ export default function MitraDaftarPage() {
                                 <span className="ml-2 font-medium">Daftar Mitra</span>
                             </div>
 
-                            {/* Connector Line */}
                             <div className={`w-16 h-0.5 ${currentStep === 2 || step1Completed ? 'bg-[#7CE0A8]' : 'bg-gray-300'}`}></div>
 
-                            {/* Step 2 */}
                             <div className={`flex items-center ${currentStep === 2 ? 'text-[#7CE0A8]' : step2Completed ? 'text-[#7CE0A8]' : 'text-gray-400'}`}>
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${currentStep === 2 ? 'border-[#7CE0A8] bg-[#7CE0A8]/20' : step2Completed ? 'border-[#7CE0A8] bg-[#7CE0A8]/10' : 'border-gray-300 bg-gray-100'}`}>
                                     {step2Completed && currentStep !== 2 ? (
@@ -812,7 +819,26 @@ export default function MitraDaftarPage() {
                             <Alert className="border-[#7CE0A8] bg-[#7CE0A8]/10 dark:bg-[#7CE0A8]/20">
                                 <CheckCircle2 className="h-4 w-4 text-[#7CE0A8]" />
                                 <AlertDescription className="text-[#5AB88A] dark:text-[#7CE0A8]">
-                                    Pendaftaran berhasil! Anda akan dialihkan ke dashboard mitra...
+                                    Pendaftaran berhasil! Menunggu persetujuan admin. Anda akan dialihkan ke halaman login...
+                                </AlertDescription>
+                            </Alert>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Error Alert */}
+                <AnimatePresence>
+                    {submitError && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="mb-6"
+                        >
+                            <Alert className="border-destructive bg-destructive/10">
+                                <AlertCircle className="h-4 w-4 text-destructive" />
+                                <AlertDescription className="text-destructive">
+                                    {submitError}
                                 </AlertDescription>
                             </Alert>
                         </motion.div>
@@ -843,7 +869,7 @@ export default function MitraDaftarPage() {
 
                         <CardContent className="p-6">
                             <form onSubmit={handleNextStep} className="space-y-8">
-                                {/* 1. Nama Mitra */}
+                                {/* Nama Mitra */}
                                 <div id="namaMitra" className="space-y-2">
                                     <Label htmlFor="nama-mitra" className="text-base font-semibold">
                                         Nama Mitra <span className="text-destructive">*</span>
@@ -866,7 +892,7 @@ export default function MitraDaftarPage() {
                                     )}
                                 </div>
 
-                                {/* 2. Foto Profil */}
+                                {/* Foto Profil */}
                                 <div id="fotoProfil" className="space-y-2">
                                     <Label className="text-base font-semibold">
                                         Foto Profil <span className="text-destructive">*</span>
@@ -922,7 +948,7 @@ export default function MitraDaftarPage() {
                                     </div>
                                 </div>
 
-                                {/* 3. Kategori Jasa */}
+                                {/* Kategori Jasa */}
                                 <div id="kategoriJasa" className="space-y-2">
                                     <Label className="text-base font-semibold">
                                         Kategori Jasa <span className="text-destructive">*</span>
@@ -959,7 +985,7 @@ export default function MitraDaftarPage() {
                                     )}
                                 </div>
 
-                                {/* 4. Jasa yang Ditawarkan */}
+                                {/* Jasa yang Ditawarkan */}
                                 <div id="jasaDitawarkan" className="space-y-2">
                                     <Label htmlFor="jasa-input" className="text-base font-semibold">
                                         Layanan yang Ditawarkan <span className="text-destructive">*</span>
@@ -1016,7 +1042,7 @@ export default function MitraDaftarPage() {
                                     )}
                                 </div>
 
-                                {/* 5. Deskripsi */}
+                                {/* Deskripsi */}
                                 <div id="deskripsi" className="space-y-2">
                                     <Label htmlFor="deskripsi-textarea" className="text-base font-semibold">
                                         Deskripsi Mitra <span className="text-destructive">*</span>
@@ -1043,7 +1069,7 @@ export default function MitraDaftarPage() {
                                     )}
                                 </div>
 
-                                {/* 6. Hasil Pekerjaan */}
+                                {/* Hasil Pekerjaan */}
                                 <div id="hasilPekerjaan" className="space-y-2">
                                     <Label className="text-base font-semibold">
                                         Hasil Pekerjaan <span className="text-destructive">*</span>
@@ -1102,7 +1128,7 @@ export default function MitraDaftarPage() {
                                     )}
                                 </div>
 
-                                {/* 7. Lokasi/Jangkauan Area */}
+                                {/* Lokasi */}
                                 <div id="lokasi" className="space-y-2">
                                     <Label className="text-base font-semibold">
                                         Lokasi/Jangkauan Area <span className="text-destructive">*</span>
@@ -1115,14 +1141,14 @@ export default function MitraDaftarPage() {
                                         <CitySelect
                                             value={currentLokasi}
                                             onValueChange={setCurrentLokasi}
-                                            placeholder="Pilih kota"
-                                            cities={CITIES_ID}
+                                            placeholder={isCitiesLoading ? "Memuat kota..." : "Pilih kota"}
+                                            cities={cities}
                                             triggerClassName="flex-1 focus:ring-[#7CE0A8]"
                                         />
                                         <Button
                                             type="button"
                                             onClick={handleAddLokasi}
-                                            disabled={!currentLokasi}
+                                            disabled={!currentLokasi || isCitiesLoading}
                                             className="h-12 px-6 bg-[#7CE0A8] hover:bg-[#6BC999] text-white"
                                         >
                                             <Plus className="h-4 w-4 mr-2" />
@@ -1414,7 +1440,7 @@ export default function MitraDaftarPage() {
                                         Dokumen Pendukung
                                     </h3>
 
-                                    {/* Foto KTP */}
+                                    {/* Foto KTP - FIXED: Only show filename, no preview */}
                                     <div id="fotoKTP" className="space-y-2">
                                         <Label className="text-base font-semibold">
                                             Foto KTP <span className="text-destructive">*</span>
@@ -1423,25 +1449,15 @@ export default function MitraDaftarPage() {
                                             Upload foto KTP yang jelas. Format: JPG, PNG. Maksimal 5MB.
                                         </p>
                                         <div className="flex flex-col sm:flex-row gap-4 items-center">
-                                            {fotoKTPPreview ? (
-                                                <div className="relative w-48 h-32 rounded-lg overflow-hidden border-2 border-[#7CE0A8]/30">
-                                                    <img
-                                                        src={fotoKTPPreview}
-                                                        alt="Preview KTP"
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <label
-                                                    htmlFor="foto-ktp-input"
-                                                    className="w-48 h-32 rounded-lg border-2 border-dashed border-[#7CE0A8]/50 flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors"
-                                                >
-                                                    <Camera className="h-8 w-8 text-[#7CE0A8] mb-2" />
-                                                    <span className="text-xs text-center text-[#7CE0A8] px-2">
-                                                        Foto KTP
-                                                    </span>
-                                                </label>
-                                            )}
+                                            <label
+                                                htmlFor="foto-ktp-input"
+                                                className="w-48 h-32 rounded-lg border-2 border-dashed border-[#7CE0A8]/50 flex flex-col items-center justify-center cursor-pointer hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-colors"
+                                            >
+                                                <Camera className="h-8 w-8 text-[#7CE0A8] mb-2" />
+                                                <span className="text-xs text-center text-[#7CE0A8] px-2">
+                                                    Upload Foto KTP
+                                                </span>
+                                            </label>
                                             <input
                                                 id="foto-ktp-input"
                                                 type="file"
@@ -1728,74 +1744,69 @@ export default function MitraDaftarPage() {
                 </div>
             </main>
 
-            {/* KTP Crop Modal dengan Zoom */}
+            {/* KTP Crop Modal - FIXED: Reduced height */}
             <Dialog open={showKtpCropModal} onOpenChange={setShowKtpCropModal}>
-                <DialogContent className="max-w-4xl">
+                <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle className="text-[#7CE0A8]">Crop Foto KTP</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
                         <p className="text-sm text-muted-foreground">
-                            Sesuaikan area crop sesuai dengan ukuran KTP untuk hasil yang optimal
+                            Sesuaikan area crop dengan batas KTP
                         </p>
-
+                    </DialogHeader>
+                    
+                    <div className="flex-1 flex flex-col gap-3 overflow-hidden">
                         {/* Zoom Controls */}
-                        <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
-                            <div className="flex items-center gap-4">
-                                <span className="text-sm font-medium">Zoom: {zoom.toFixed(1)}x</span>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleZoomOut}
-                                        disabled={zoom <= 0.5}
-                                        className="h-8 w-8"
-                                    >
-                                        <Minus className="h-4 w-4" />
-                                    </Button>
-                                    <Slider
-                                        value={[zoom]}
-                                        min={0.5}
-                                        max={3}
-                                        step={0.1}
-                                        onValueChange={([value]) => setZoom(value)}
-                                        className="w-32"
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleZoomIn}
-                                        disabled={zoom >= 3}
-                                        className="h-8 w-8"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setZoom(1)}
-                                >
-                                    Reset Zoom
-                                </Button>
-                            </div>
+                        <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg">
+                            <span className="text-xs font-medium whitespace-nowrap">Zoom: {zoom.toFixed(1)}x</span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleZoomOut}
+                                disabled={zoom <= 0.5}
+                                className="h-7 w-7 p-0"
+                            >
+                                <Minus className="h-3 w-3" />
+                            </Button>
+                            <Slider
+                                value={[zoom]}
+                                min={0.5}
+                                max={3}
+                                step={0.1}
+                                onValueChange={([value]) => setZoom(value)}
+                                className="flex-1"
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleZoomIn}
+                                disabled={zoom >= 3}
+                                className="h-7 w-7 p-0"
+                            >
+                                <Plus className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setZoom(1)}
+                                className="h-7 text-xs"
+                            >
+                                Reset
+                            </Button>
                         </div>
 
+                        {/* Crop Area - FIXED: max-h-[50vh] instead of 500px */}
                         {cropImageSrc && (
-                            <div className="relative max-h-[500px] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div className="relative max-h-[50vh] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50">
                                 <ReactCrop
                                     crop={crop}
                                     onChange={(c) => setCrop(c)}
-                                    aspect={853 / 540} // KTP aspect ratio
+                                    aspect={853 / 540}
                                     minWidth={300}
                                     minHeight={200}
                                     ruleOfThirds
-                                    className="bg-gray-50"
                                 >
                                     <img
                                         ref={imageRef}
@@ -1812,21 +1823,13 @@ export default function MitraDaftarPage() {
                             </div>
                         )}
 
-                        <div className="text-sm text-muted-foreground">
-                            <p className="font-medium mb-2">Pastikan semua informasi KTP terbaca dengan jelas:</p>
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>Nama lengkap</li>
-                                <li>NIK</li>
-                                <li>Tempat/tanggal lahir</li>
-                                <li>Alamat</li>
-                                <li>Foto wajah</li>
-                            </ul>
-                            <p className="mt-3 text-amber-600 dark:text-amber-400">
-                                Tips: Gunakan zoom untuk memperjelas detail, lalu atur area crop sesuai dengan batas KTP
-                            </p>
-                        </div>
+                        {/* Instructions - SIMPLIFIED */}
+                        <p className="text-xs text-muted-foreground">
+                            <span className="text-amber-600 dark:text-amber-400 font-medium">Tips:</span> Gunakan zoom untuk detail, lalu atur area crop sesuai batas KTP
+                        </p>
                     </div>
-                    <DialogFooter>
+
+                    <DialogFooter className="gap-2">
                         <Button
                             variant="outline"
                             onClick={() => {

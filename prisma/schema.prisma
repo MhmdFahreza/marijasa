@@ -62,6 +62,11 @@ enum MessageType {
   FILE
 }
 
+enum PartnerType {
+  INDIVIDU
+  PERUSAHAAN
+}
+
 // ==========================================
 // MASTER DATA TABLES
 // ==========================================
@@ -221,6 +226,10 @@ model Vendor {
   tags          String[]
   category      String?
 
+  // Additional fields for registration
+  address      String?      @db.Text
+  partner_type PartnerType  @default(INDIVIDU)
+
   join_date  DateTime @default(now())
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -232,11 +241,30 @@ model Vendor {
   favorited_by  UserFavorite[]
   withdrawals   Withdrawal[]
   chat_sessions ChatSession[]
+  documents     VendorDocument[]
 
   @@index([email])
   @@index([status])
   @@index([category])
   @@map("vendors")
+}
+
+model VendorDocument {
+  document_id   String @id @default(uuid()) @db.Uuid
+  vendor_id     String @db.Uuid
+  document_type String // ktp, selfie_ktp, skck, siup, cv
+  file_url      String @db.Text
+  file_name     String
+  file_type     String // image/jpeg, application/pdf, etc.
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@index([document_type])
+  @@map("vendor_documents")
 }
 
 model Service {
