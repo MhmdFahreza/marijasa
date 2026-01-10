@@ -53,59 +53,144 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { user, isAuthenticated } = useAuth();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastNotificationCountRef = useRef<number>(0);
+  const lastNotificationIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef<boolean>(true);
+  const audioInitializedRef = useRef<boolean>(false);
 
-  // Initialize notification sound
-  useEffect(() => {
-    // Create notification sound (you can replace this with a URL to an audio file)
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  // Initialize AudioContext dengan user interaction
+  const initializeAudio = useCallback(() => {
+    if (audioInitializedRef.current) return true;
     
-    const createNotificationSound = () => {
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
+    try {
+      if (typeof window !== "undefined" && !audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || 
+          (window as any).webkitAudioContext)();
+        
+        // Resume context jika suspended
+        if (audioContextRef.current.state === "suspended") {
+          audioContextRef.current.resume().then(() => {
+            console.log("[Notification] AudioContext resumed");
+            audioInitializedRef.current = true;
+          });
+        } else {
+          audioInitializedRef.current = true;
+          console.log("[Notification] AudioContext initialized");
+        }
+        return true;
+      }
+    } catch (error) {
+      console.error("[Notification] Failed to initialize audio:", error);
+    }
+    return false;
+  }, []);
+
+  // Initialize audio on first user interaction
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      if (initializeAudio()) {
+        document.removeEventListener("click", handleUserInteraction);
+        document.removeEventListener("keydown", handleUserInteraction);
+        document.removeEventListener("touchstart", handleUserInteraction);
+      }
     };
 
-    audioRef.current = { play: createNotificationSound } as any;
-  }, []);
+    document.addEventListener("click", handleUserInteraction);
+    document.addEventListener("keydown", handleUserInteraction);
+    document.addEventListener("touchstart", handleUserInteraction);
+
+    return () => {
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("keydown", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+      
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        audioContextRef.current.close();
+      }
+    };
+  }, [initializeAudio]);
 
   // Calculate unread count
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Play notification sound
+  // Play notification sound - Instant and reliable
   const playNotificationSound = useCallback(() => {
     try {
-      if (audioRef.current) {
-        audioRef.current.play();
+      if (!audioContextRef.current || !audioInitializedRef.current) {
+        console.warn("[Notification] Audio not ready, attempting init...");
+        initializeAudio();
+        
+        // Retry after short delay
+        setTimeout(() => {
+          if (audioContextRef.current && audioInitializedRef.current) {
+            playTones(audioContextRef.current);
+          }
+        }, 100);
+        return;
+      }
+
+      const audioContext = audioContextRef.current;
+      
+      if (audioContext.state === "suspended") {
+        audioContext.resume().then(() => {
+          playTones(audioContext);
+        });
+      } else {
+        playTones(audioContext);
       }
     } catch (error) {
       console.error("[Notification] Error playing sound:", error);
     }
-  }, []);
+  }, [initializeAudio]);
+
+  // Helper function to play tones - INSTANT
+  const playTones = (audioContext: AudioContext) => {
+    try {
+      const currentTime = audioContext.currentTime;
+      
+      // Two-tone notification bell sound
+      playTone(audioContext, 880, currentTime, 0.1);
+      playTone(audioContext, 660, currentTime + 0.1, 0.15);
+
+      console.log("[Notification] 🔔 Sound played!");
+    } catch (error) {
+      console.error("[Notification] Error in playTones:", error);
+    }
+  };
+
+  // Create and play a single tone
+  const playTone = (
+    audioContext: AudioContext,
+    frequency: number,
+    startTime: number,
+    duration: number
+  ) => {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = frequency;
+    oscillator.type = "sine";
+
+    gainNode.gain.setValueAtTime(0, startTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.005);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+    oscillator.start(startTime);
+    oscillator.stop(startTime + duration);
+  };
 
   // Fetch notifications from API
   const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated || !user) {
-      console.log("[Notification] Not authenticated, skipping fetch");
       return;
     }
 
     try {
       setIsLoading(true);
-      console.log("[Notification] Fetching notifications from API...");
 
       const response = await fetch("/api/notifications", {
         method: "GET",
@@ -138,24 +223,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             createdAt: notif.created_at,
           }));
 
-          // Check if there are new notifications
-          const newNotificationCount = formattedNotifications.filter(
-            (n: Notification) => !n.read
-          ).length;
+          // Detect NEW notifications by comparing IDs
+          const currentIds = new Set<string>(formattedNotifications.map((n: Notification) => n.id));
+          const newNotifications = formattedNotifications.filter(
+            (n: Notification) => !n.read && !lastNotificationIdsRef.current.has(n.id)
+          );
 
-          if (
-            lastNotificationCountRef.current > 0 &&
-            newNotificationCount > lastNotificationCountRef.current
-          ) {
-            // New notification arrived, play sound
+          // Update notifications state
+          setNotifications(formattedNotifications);
+
+          // Play sound for NEW unread notifications (skip initial load)
+          if (!isInitialLoadRef.current && newNotifications.length > 0) {
+            console.log(`[Notification] 🔔 ${newNotifications.length} new notification(s)!`);
             playNotificationSound();
           }
 
-          lastNotificationCountRef.current = newNotificationCount;
-          setNotifications(formattedNotifications);
+          // Mark initial load as complete
+          if (isInitialLoadRef.current) {
+            isInitialLoadRef.current = false;
+            console.log("[Notification] Initial load complete");
+          }
+
+          // Update last known IDs
+          lastNotificationIdsRef.current = currentIds;
+
           console.log(
-            "[Notification] Notifications loaded:",
-            formattedNotifications.length
+            `[Notification] Total: ${formattedNotifications.length} | Unread: ${formattedNotifications.filter((n: Notification) => !n.read).length}`
           );
         }
       } else {
@@ -223,6 +316,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           setNotifications((prev) =>
             prev.filter((notif) => notif.id !== notificationId)
           );
+          // Remove from tracking
+          lastNotificationIdsRef.current.delete(notificationId);
         }
       } catch (error) {
         console.error("[Notification] Error deleting notification:", error);
@@ -245,6 +340,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         setNotifications([]);
+        lastNotificationIdsRef.current.clear();
       }
     } catch (error) {
       console.error("[Notification] Error deleting all notifications:", error);
@@ -254,7 +350,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Reset notifications (call on logout)
   const resetNotifications = useCallback(() => {
     setNotifications([]);
-    lastNotificationCountRef.current = 0;
+    lastNotificationIdsRef.current.clear();
+    isInitialLoadRef.current = true;
     console.log("[Notification] Notifications reset");
   }, []);
 
@@ -268,22 +365,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       };
 
       setNotifications((prev) => [newNotification, ...prev]);
-      playNotificationSound();
+      lastNotificationIdsRef.current.add(newNotification.id);
+      
       console.log("[Notification] New notification added:", newNotification.title);
+      playNotificationSound();
     },
     [playNotificationSound]
   );
 
-  // Auto-fetch notifications when auth state changes
+  // Auto-fetch notifications - FASTER POLLING (10 seconds)
   useEffect(() => {
     if (isAuthenticated && user) {
       // Initial fetch
       fetchNotifications();
 
-      // Set up polling interval (every 10 seconds)
+      // Fast polling for instant notifications (10 seconds)
       pollingIntervalRef.current = setInterval(() => {
         fetchNotifications();
-      }, 10000);
+      }, 10000); // 10 seconds for faster updates
 
       return () => {
         if (pollingIntervalRef.current) {
@@ -291,7 +390,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
       };
     } else {
-      // Clear notifications and stop polling when user logs out
       resetNotifications();
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
