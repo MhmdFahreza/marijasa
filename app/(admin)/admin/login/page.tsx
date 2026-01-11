@@ -55,11 +55,11 @@ function AdminLoginContent() {
               <div className="flex flex-wrap justify-center gap-2 xl:gap-3 mt-4 xl:mt-6">
                 <div className="flex items-center gap-2 px-3 xl:px-4 py-1.5 xl:py-2 bg-white/80 dark:bg-neutral-800/80 rounded-full shadow-sm backdrop-blur-sm">
                   <span className="text-base xl:text-lg">🔐</span>
-                  <span className="text-xs xl:text-sm font-medium text-neutral-700 dark:text-neutral-300">Akses Terkontrol</span>
+                  <span className="text-xs xl:text-sm font-medium text-neutral-700 dark:text-neutral-300">Manajemen Mitra</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 xl:px-4 py-1.5 xl:py-2 bg-white/80 dark:bg-neutral-800/80 rounded-full shadow-sm backdrop-blur-sm">
                   <span className="text-base xl:text-lg">📊</span>
-                  <span className="text-xs xl:text-sm font-medium text-neutral-700 dark:text-neutral-300">Analitik Lengkap</span>
+                  <span className="text-xs xl:text-sm font-medium text-neutral-700 dark:text-neutral-300">Manajemen User</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 xl:px-4 py-1.5 xl:py-2 bg-white/80 dark:bg-neutral-800/80 rounded-full shadow-sm backdrop-blur-sm">
                   <span className="text-base xl:text-lg">⚙️</span>
