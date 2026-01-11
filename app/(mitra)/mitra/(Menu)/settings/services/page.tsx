@@ -1,4 +1,4 @@
-// app/mitra/dashboard/services/page.tsx - COMPLETE & FIXED VERSION
+// app/mitra/dashboard/services/page.tsx - REAL-TIME UPDATE VERSION
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -130,6 +130,7 @@ export default function ServicesPage() {
 
   const [workImages, setWorkImages] = useState<WorkImage[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   const [currentImage, setCurrentImage] = useState<WorkImage | null>(null);
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
@@ -138,7 +139,6 @@ export default function ServicesPage() {
   const [vendorData, setVendorData] = useState<any>(null);
   const [priceInput, setPriceInput] = useState<string>("");
 
-  // ✅ FIXED: Fetch data dengan gallery terpisah
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -171,7 +171,7 @@ export default function ServicesPage() {
         console.log('[Services Page] Services loaded:', servicesData.services?.length || 0);
       }
 
-      // ✅ FIXED: Fetch gallery separately from dedicated endpoint
+      // Fetch gallery
       const galleryResponse = await fetch('/api/mitra/gallery', {
         method: 'GET',
         credentials: 'include',
@@ -341,7 +341,7 @@ export default function ServicesPage() {
     }
   };
 
-  // ✅ FIXED: Improved image upload handler
+  // ✅ FIXED: Real-time upload tanpa reload
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     
@@ -351,9 +351,11 @@ export default function ServicesPage() {
     }
 
     setIsUploadingImage(true);
+    setUploadingCount(files.length);
 
     try {
       let successCount = 0;
+      const newImages: WorkImage[] = [];
       
       for (const file of files) {
         console.log('[Upload] Processing file:', file.name, 'size:', file.size);
@@ -393,28 +395,37 @@ export default function ServicesPage() {
 
         const result = await response.json();
         console.log('[Upload] Success:', result);
-        successCount++;
+        
+        // ✅ Tambahkan gambar baru ke array untuk update state
+        if (result.gallery) {
+          newImages.push(result.gallery);
+          successCount++;
+        }
       }
 
       if (successCount > 0) {
-        // Refresh gallery data
-        console.log('[Upload] Refreshing gallery...');
-        await fetchData();
-        setSuccessMessage(`${successCount} foto berhasil diupload`);
+        // ✅ Update state langsung tanpa fetch ulang
+        setWorkImages(prevImages => [...prevImages, ...newImages]);
+        
+        const message = `${successCount} foto berhasil diupload`;
+        setSuccessMessage(message);
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
-        toast.success(`${successCount} foto berhasil diupload`);
+        toast.success(message);
+        
+        console.log('[Upload] State updated with new images:', newImages.length);
       }
     } catch (error: any) {
       console.error('[Upload] Error uploading images:', error);
       toast.error(error.message || 'Gagal mengupload gambar');
     } finally {
       setIsUploadingImage(false);
+      setUploadingCount(0);
       e.target.value = ''; // Reset input
     }
   };
 
-  // ✅ FIXED: Improved image delete handler
+  // ✅ FIXED: Real-time delete tanpa reload
   const handleDeleteImage = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus foto ini?")) return;
 
@@ -435,8 +446,9 @@ export default function ServicesPage() {
 
       console.log('[Delete] Success');
       
-      // Update local state immediately
-      setWorkImages(workImages.filter(img => img.gallery_id !== id));
+      // ✅ Update state langsung tanpa fetch ulang
+      setWorkImages(prevImages => prevImages.filter(img => img.gallery_id !== id));
+      
       setSuccessMessage("Foto berhasil dihapus");
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
@@ -536,6 +548,22 @@ export default function ServicesPage() {
               <Check className="h-4 w-4 text-[#7CE0A8]" />
               <AlertDescription className="text-[#5AB88A]">
                 {successMessage}
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+
+        {/* ✅ Upload Progress Indicator */}
+        {isUploadingImage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-900/20">
+              <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+              <AlertDescription className="text-blue-700 dark:text-blue-300">
+                Mengupload {uploadingCount} foto... Mohon tunggu
               </AlertDescription>
             </Alert>
           </motion.div>
@@ -823,11 +851,12 @@ export default function ServicesPage() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        {workImages.map((image) => (
+                        {workImages.map((image, index) => (
                           <motion.div
                             key={image.gallery_id}
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: index * 0.05 }}
                             className="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-[#7CE0A8]/50 transition-all"
                           >
                             <AspectRatio ratio={4 / 3}>
