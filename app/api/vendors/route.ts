@@ -15,15 +15,71 @@ const CATEGORY_DB_MAPPING: Record<string, string[]> = {
   'pembersihanrumah': ['cleaning', 'pembersihan'],
 };
 
-// Keywords untuk matching dengan tags/specialties (Bahasa Indonesia)
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'ac': ['ac', 'air conditioner', 'pendingin', 'cooling', 'split', 'cassette', 'central'],
-  'sedotwc': ['sedot', 'wc', 'toilet', 'septic', 'saluran', 'mampet'],
-  'furnitur': ['furnitur', 'furniture', 'mebel', 'lemari', 'kursi', 'meja', 'kitchen set', 'rak'],
-  'ledeng': ['ledeng', 'plumbing', 'pipa', 'air', 'wastafel', 'kran', 'pompa', 'kloset', 'toren', 'kebocoran'],
-  'kebun': ['kebun', 'taman', 'garden', 'landscape', 'tanaman', 'rumput', 'pemangkasan', 'vertical'],
-  'listrik': ['listrik', 'electrical', 'kabel', 'instalasi', 'lampu', 'panel', 'mcb', 'wiring'],
-  'pembersihanrumah': ['bersih', 'cleaning', 'cuci', 'pembersihan', 'sofa', 'carpet', 'sanitasi', 'deep cleaning'],
+// Keywords untuk matching - LEBIH SPESIFIK dan terstruktur
+const CATEGORY_KEYWORDS: Record<string, {
+  primary: string[];      // Kata kunci utama - paling penting
+  secondary: string[];    // Kata kunci pendukung
+  exclude: string[];      // Kata yang HARUS TIDAK ADA (anti-pattern)
+}> = {
+  'ac': {
+    primary: ['ac', 'air conditioner', 'pendingin udara'],
+    secondary: ['split', 'cassette', 'central', 'freon', 'kompresor'],
+    exclude: []
+  },
+  'sedotwc': {
+    primary: ['sedot wc', 'sedot', 'septic tank', 'septik'],
+    secondary: ['toilet', 'wc', 'saluran mampet', 'closet'],
+    exclude: []
+  },
+  'furnitur': {
+    primary: ['furnitur', 'furniture', 'mebel', 'kitchen set'],
+    secondary: ['lemari', 'kursi', 'meja', 'rak', 'kayu jati'],
+    exclude: []
+  },
+  'ledeng': {
+    primary: ['ledeng', 'plumbing', 'pipa air', 'tukang pipa'],
+    secondary: ['wastafel', 'kran', 'pompa air', 'kloset', 'toren', 'kebocoran'],
+    exclude: []
+  },
+  'kebun': {
+    primary: ['taman', 'kebun', 'landscape', 'landscaping'],
+    secondary: ['tanaman', 'rumput', 'pemangkasan', 'vertical garden'],
+    exclude: []
+  },
+  'listrik': {
+    primary: ['listrik', 'electrical', 'instalasi listrik', 'tukang listrik'],
+    secondary: ['kabel', 'lampu', 'panel listrik', 'mcb', 'wiring'],
+    exclude: []
+  },
+  'pembersihanrumah': {
+    primary: [
+      'pembersihan rumah',
+      'bersih rumah', 
+      'cleaning service',
+      'cuci rumah',
+      'sanitasi rumah',
+      'deep cleaning rumah'
+    ],
+    secondary: [
+      'pel lantai',
+      'sapu',
+      'pembersihan kamar',
+      'pembersihan dapur',
+      'pembersihan kamar mandi',
+      'cuci jendela',
+      'cuci kaca',
+      'poles lantai'
+    ],
+    exclude: [
+      'cuci ac',       // Ini kategori AC
+      'cuci sofa',     // Ini lebih ke furniture cleaning
+      'sedot',         // Ini kategori sedot WC
+      'septic',        // Ini kategori sedot WC
+      'taman',         // Ini kategori kebun
+      'listrik',       // Ini kategori listrik
+      'pipa'           // Ini kategori ledeng
+    ]
+  },
 };
 
 // Normalize string for matching
@@ -31,86 +87,167 @@ function normalizeString(str: string): string {
   return str
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(/\s+/g, ' ')
+    .replace(/[^\w\s]/g, ''); // Remove special characters
 }
 
-// Check if text contains any keyword
-function containsKeyword(text: string, keywords: string[]): boolean {
+// Check if text contains keyword with exact/partial matching
+function containsKeyword(text: string, keyword: string, exact: boolean = false): boolean {
   const normalizedText = normalizeString(text);
+  const normalizedKeyword = normalizeString(keyword);
   
-  return keywords.some(keyword => {
-    const normalizedKeyword = normalizeString(keyword);
+  if (exact) {
+    // Exact match: keyword must be standalone word(s)
+    const regex = new RegExp(`\\b${normalizedKeyword}\\b`, 'i');
+    return regex.test(normalizedText);
+  } else {
+    // Partial match
     return normalizedText.includes(normalizedKeyword);
-  });
+  }
 }
 
-// Function to check if vendor matches category
-function matchesCategory(vendor: any, categorySlug: string): boolean {
-  // 1. Check direct category match with database values
+// Calculate match score for a vendor
+function calculateMatchScore(vendor: any, categorySlug: string): number {
+  let score = 0;
+  const keywords = CATEGORY_KEYWORDS[categorySlug];
   const dbCategories = CATEGORY_DB_MAPPING[categorySlug] || [categorySlug];
+  
+  if (!keywords) {
+    console.log(`⚠️ No keywords defined for category: ${categorySlug}`);
+    return 0;
+  }
+
+  // CRITICAL: Check for exclusion keywords first
+  const allText = [
+    vendor.name || '',
+    vendor.description || '',
+    ...(vendor.tags || []),
+    ...(vendor.specialties || []),
+    ...(vendor.services?.map((s: any) => `${s.name} ${s.description || ''}`) || [])
+  ].join(' ');
+
+  for (const excludeKeyword of keywords.exclude) {
+    if (containsKeyword(allText, excludeKeyword, true)) {
+      console.log(`❌ [Exclude] "${vendor.name}" - contains excluded keyword: "${excludeKeyword}"`);
+      return -1000; // Negative score = exclude completely
+    }
+  }
+
+  // 1. HIGHEST PRIORITY: Direct category match (100 points)
   if (vendor.category && dbCategories.some(dbCat => 
     normalizeString(vendor.category) === normalizeString(dbCat)
   )) {
-    console.log(`✅ [Match] "${vendor.name}" - category match: ${vendor.category}`);
-    return true;
+    score += 100;
+    console.log(`✅ [+100] "${vendor.name}" - exact category match: ${vendor.category}`);
   }
 
-  // 2. Get keywords for matching tags/specialties
-  const keywords = CATEGORY_KEYWORDS[categorySlug] || [categorySlug];
-  
-  // 3. Check in tags (PRIORITY - most reliable)
-  if (vendor.tags && Array.isArray(vendor.tags) && vendor.tags.length > 0) {
+  // 2. HIGH PRIORITY: Primary keywords in tags (50 points each)
+  if (vendor.tags && Array.isArray(vendor.tags)) {
     for (const tag of vendor.tags) {
       if (typeof tag === 'string' && tag.trim()) {
-        if (containsKeyword(tag, keywords)) {
-          console.log(`✅ [Match] "${vendor.name}" - tag match: "${tag}"`);
-          return true;
+        for (const keyword of keywords.primary) {
+          if (containsKeyword(tag, keyword, true)) {
+            score += 50;
+            console.log(`✅ [+50] "${vendor.name}" - primary keyword in tag: "${tag}"`);
+          }
         }
       }
     }
   }
 
-  // 4. Check in specialties
-  if (vendor.specialties && Array.isArray(vendor.specialties) && vendor.specialties.length > 0) {
+  // 3. MEDIUM-HIGH PRIORITY: Primary keywords in specialties (40 points each)
+  if (vendor.specialties && Array.isArray(vendor.specialties)) {
     for (const specialty of vendor.specialties) {
       if (typeof specialty === 'string' && specialty.trim()) {
-        if (containsKeyword(specialty, keywords)) {
-          console.log(`✅ [Match] "${vendor.name}" - specialty match: "${specialty}"`);
-          return true;
+        for (const keyword of keywords.primary) {
+          if (containsKeyword(specialty, keyword, true)) {
+            score += 40;
+            console.log(`✅ [+40] "${vendor.name}" - primary keyword in specialty: "${specialty}"`);
+          }
         }
       }
     }
   }
 
-  // 5. Check in vendor name
-  if (vendor.name && containsKeyword(vendor.name, keywords)) {
-    console.log(`✅ [Match] "${vendor.name}" - name match`);
-    return true;
-  }
-
-  // 6. Check in description
-  if (vendor.description && containsKeyword(vendor.description, keywords)) {
-    console.log(`✅ [Match] "${vendor.name}" - description match`);
-    return true;
-  }
-
-  // 7. Check in services
-  if (vendor.services && Array.isArray(vendor.services)) {
-    for (const service of vendor.services) {
-      if (service.name && containsKeyword(service.name, keywords)) {
-        console.log(`✅ [Match] "${vendor.name}" - service name match: "${service.name}"`);
-        return true;
-      }
-      if (service.description && containsKeyword(service.description, keywords)) {
-        console.log(`✅ [Match] "${vendor.name}" - service description match`);
-        return true;
+  // 4. MEDIUM PRIORITY: Primary keywords in vendor name (30 points)
+  if (vendor.name) {
+    for (const keyword of keywords.primary) {
+      if (containsKeyword(vendor.name, keyword, true)) {
+        score += 30;
+        console.log(`✅ [+30] "${vendor.name}" - primary keyword in name`);
       }
     }
   }
 
-  console.log(`❌ [No Match] "${vendor.name}"`);
-  return false;
+  // 5. MEDIUM PRIORITY: Primary keywords in service names (25 points each)
+  if (vendor.services && Array.isArray(vendor.services)) {
+    for (const service of vendor.services) {
+      if (service.name) {
+        for (const keyword of keywords.primary) {
+          if (containsKeyword(service.name, keyword, true)) {
+            score += 25;
+            console.log(`✅ [+25] "${vendor.name}" - primary keyword in service: "${service.name}"`);
+          }
+        }
+      }
+    }
+  }
+
+  // 6. LOWER PRIORITY: Secondary keywords in tags (15 points each)
+  if (vendor.tags && Array.isArray(vendor.tags)) {
+    for (const tag of vendor.tags) {
+      if (typeof tag === 'string' && tag.trim()) {
+        for (const keyword of keywords.secondary) {
+          if (containsKeyword(tag, keyword, false)) {
+            score += 15;
+            console.log(`✅ [+15] "${vendor.name}" - secondary keyword in tag: "${tag}"`);
+          }
+        }
+      }
+    }
+  }
+
+  // 7. LOWER PRIORITY: Secondary keywords in specialties (12 points each)
+  if (vendor.specialties && Array.isArray(vendor.specialties)) {
+    for (const specialty of vendor.specialties) {
+      if (typeof specialty === 'string' && specialty.trim()) {
+        for (const keyword of keywords.secondary) {
+          if (containsKeyword(specialty, keyword, false)) {
+            score += 12;
+            console.log(`✅ [+12] "${vendor.name}" - secondary keyword in specialty: "${specialty}"`);
+          }
+        }
+      }
+    }
+  }
+
+  // 8. LOWEST PRIORITY: Primary keywords in description (10 points)
+  if (vendor.description) {
+    for (const keyword of keywords.primary) {
+      if (containsKeyword(vendor.description, keyword, false)) {
+        score += 10;
+        console.log(`✅ [+10] "${vendor.name}" - primary keyword in description`);
+        break; // Only count once for description
+      }
+    }
+  }
+
+  // 9. MINIMAL PRIORITY: Secondary keywords in description (5 points)
+  if (vendor.description) {
+    for (const keyword of keywords.secondary) {
+      if (containsKeyword(vendor.description, keyword, false)) {
+        score += 5;
+        console.log(`✅ [+5] "${vendor.name}" - secondary keyword in description`);
+        break; // Only count once for description
+      }
+    }
+  }
+
+  return score;
 }
+
+// Minimum score threshold to be considered a match
+const MINIMUM_MATCH_SCORE = 25; // Must have at least one strong indicator
 
 export async function GET(request: NextRequest) {
   try {
@@ -215,20 +352,34 @@ export async function GET(request: NextRequest) {
 
     console.log('[Vendors API] Total vendors before category filter:', vendors.length);
 
-    // Apply category filter with intelligent matching
+    // Apply category filter with intelligent scoring
     let filteredVendors = vendors;
     if (category) {
-      const keywords = CATEGORY_KEYWORDS[category] || [category];
-      const dbCategories = CATEGORY_DB_MAPPING[category] || [category];
+      console.log(`\n[Vendors API] 🎯 Filtering by category: "${category}"`);
+      console.log('[Vendors API] DB category values:', CATEGORY_DB_MAPPING[category]);
+      console.log('[Vendors API] Primary keywords:', CATEGORY_KEYWORDS[category]?.primary);
+      console.log('[Vendors API] Exclude keywords:', CATEGORY_KEYWORDS[category]?.exclude);
+      console.log('[Vendors API] Starting scoring...\n');
       
-      console.log(`[Vendors API] Filtering by category slug: "${category}"`);
-      console.log('[Vendors API] DB category values:', dbCategories);
-      console.log('[Vendors API] Keywords for matching:', keywords);
-      console.log('[Vendors API] Starting category matching...\n');
+      // Calculate scores for all vendors
+      const vendorsWithScores = vendors.map(vendor => ({
+        vendor,
+        score: calculateMatchScore(vendor, category)
+      }));
+
+      // Filter vendors with score >= minimum threshold
+      filteredVendors = vendorsWithScores
+        .filter(({ score }) => {
+          const matches = score >= MINIMUM_MATCH_SCORE;
+          return matches;
+        })
+        .sort((a, b) => b.score - a.score) // Sort by score descending
+        .map(({ vendor, score }) => {
+          console.log(`\n✅ [MATCHED] "${vendor.name}" - Final Score: ${score}`);
+          return vendor;
+        });
       
-      filteredVendors = vendors.filter(vendor => matchesCategory(vendor, category));
-      
-      console.log(`\n[Vendors API] ✨ Category filter result: ${filteredVendors.length} of ${vendors.length} vendors matched`);
+      console.log(`\n[Vendors API] ✨ Category filter result: ${filteredVendors.length} of ${vendors.length} vendors matched (min score: ${MINIMUM_MATCH_SCORE})\n`);
     }
 
     // Format response
