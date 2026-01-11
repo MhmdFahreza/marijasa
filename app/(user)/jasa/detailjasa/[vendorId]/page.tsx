@@ -37,10 +37,16 @@ type Review = {
   id: string
   userName: string
   userEmail: string
-  userAvatar?: string
+  userAvatar?: string | null
   rating: number
   comment: string
   date: string
+  photos?: string[]
+  response?: {
+    vendorReply: string
+    replyDate: string
+  }
+  isAnonymous?: boolean
 }
 
 export default function VendorDetailPage() {
@@ -73,6 +79,10 @@ export default function VendorDetailPage() {
 
       if (response.ok) {
         const data = await response.json()
+        
+        console.log('[Vendor Detail] Reviews received:', data.vendor.reviews)
+        
+        // ✅ Reviews sudah diparsing di API, langsung gunakan
         setVendor(data.vendor)
         setReviews(data.vendor.reviews || [])
       } else {
@@ -127,9 +137,10 @@ export default function VendorDetailPage() {
     return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate)
   }, [checkFavorite])
 
-  // Listen for reviews update event
+  // ✅ REAL-TIME: Listen for reviews update event (from mitra dashboard)
   useEffect(() => {
     const handleReviewsUpdate = () => {
+      console.log('[Vendor Detail] Reviews updated, reloading...')
       loadVendor()
     }
 
@@ -192,8 +203,6 @@ export default function VendorDetailPage() {
 
       if (response.ok) {
         setIsFavorite(!isFavorite)
-
-        // Dispatch event untuk update favorites page
         window.dispatchEvent(new CustomEvent('favoritesUpdated'))
       } else {
         const error = await response.json()
@@ -550,7 +559,7 @@ export default function VendorDetailPage() {
 
                               <div className="flex flex-col md:flex-row md:items-start gap-3 md:gap-4">
                                 <Avatar className="h-12 w-12 md:h-14 md:w-14 flex-shrink-0 ring-2 ring-[#7CE0A8]/20">
-                                  <AvatarImage src={review.userAvatar} alt={review.userName} />
+                                  <AvatarImage src={review.userAvatar || undefined} alt={review.userName} />
                                   <AvatarFallback className="bg-gradient-to-br from-[#7CE0A8]/20 to-[#7CE0A8]/10">
                                     <User className="h-6 w-6 text-[#7CE0A8]" />
                                   </AvatarFallback>
@@ -579,9 +588,49 @@ export default function VendorDetailPage() {
                                     </span>
                                   </div>
 
-                                  <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4 mb-3">
+                                  {/* ✅ FIXED: Display parsed comment - NO METADATA */}
+                                  <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed mb-3 whitespace-pre-wrap">
                                     {review.comment}
                                   </p>
+
+                                  {/* ✅ Display photos if available */}
+                                  {review.photos && review.photos.length > 0 && (
+                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
+                                      {review.photos.map((photo: string, idx: number) => (
+                                        <img
+                                          key={idx}
+                                          src={photo}
+                                          alt={`Review photo ${idx + 1}`}
+                                          className="w-16 h-16 md:w-20 md:h-20 rounded-lg object-cover flex-shrink-0 cursor-pointer hover:scale-105 transition-transform"
+                                          onClick={() => setSelectedPhoto(photo)}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* ✅ Display vendor response if available */}
+                                  {review.response && (
+                                    <div className="mt-3 p-3 bg-gradient-to-r from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg border border-[#7CE0A8]/20">
+                                      <div className="flex items-start gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-[#7CE0A8] flex items-center justify-center flex-shrink-0">
+                                          <MessageCircle className="w-3 h-3 text-white" />
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="font-semibold text-[#7CE0A8] text-sm">
+                                              Balasan Vendor
+                                            </span>
+                                            <span className="text-xs text-neutral-500">
+                                              {review.response.replyDate}
+                                            </span>
+                                          </div>
+                                          <p className="text-sm text-gray-700 dark:text-gray-300">
+                                            {review.response.vendorReply}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </motion.div>

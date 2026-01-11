@@ -65,7 +65,7 @@ type FormattedReview = {
     replyDate: string
   }
   helpfulCount: number
-  mitraLikes?: string[]
+  mitraLikes: string[] // ✅ Changed from optional to required with default []
   isAnonymous?: boolean
 }
 
@@ -102,6 +102,7 @@ export default function UlasanPage() {
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState<string>('')
 
+  // ✅ IMPROVED: Parse review metadata dari comment string
   const parseReviewMetadata = (comment: string | null) => {
     if (!comment) {
       return {
@@ -109,7 +110,7 @@ export default function UlasanPage() {
         photos: [],
         response: undefined,
         helpfulCount: 0,
-        mitraLikes: [],
+        mitraLikes: [], // ✅ Always return array, never undefined
         isAnonymous: false
       }
     }
@@ -118,61 +119,97 @@ export default function UlasanPage() {
     let photos: string[] = []
     let response: { vendorReply: string; replyDate: string } | undefined
     let helpfulCount = 0
-    let mitraLikes: string[] = []
+    let mitraLikes: string[] = [] // ✅ Initialize as empty array
     let isAnonymous = false
 
     try {
-      if (comment.includes('|PHOTOS|')) {
-        const parts = comment.split('|PHOTOS|')
-        mainComment = parts[0]
-        
-        if (parts[1]) {
-          const photoStr = parts[1].split('|RESPONSE|')[0].split('|LIKES|')[0].split('|ANONYMOUS|')[0]
-          photos = JSON.parse(photoStr)
+      // ✅ Step 1: Extract main comment (sebelum metadata pertama)
+      const firstMetadataIndex = comment.search(/\|(PHOTOS|RESPONSE|LIKES|ANONYMOUS)\|/)
+      if (firstMetadataIndex !== -1) {
+        mainComment = comment.substring(0, firstMetadataIndex).trim()
+      } else {
+        // No metadata, return comment as is
+        return {
+          mainComment: comment.trim(),
+          photos: [],
+          response: undefined,
+          helpfulCount: 0,
+          mitraLikes: [],
+          isAnonymous: false
         }
       }
 
-      if (comment.includes('|RESPONSE|')) {
-        const responsePart = comment.split('|RESPONSE|')[1]
-        if (responsePart) {
-          const responseStr = responsePart.split('|LIKES|')[0].split('|ANONYMOUS|')[0]
-          const responseData = JSON.parse(responseStr)
-          
-          response = {
-            vendorReply: responseData.reply,
-            replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })
+      // ✅ Step 2: Extract photos
+      if (comment.includes('|PHOTOS|')) {
+        const photoMatch = comment.match(/\|PHOTOS\|(.*?)(?=\|(RESPONSE|LIKES|ANONYMOUS)\||$)/)
+        if (photoMatch && photoMatch[1]) {
+          try {
+            photos = JSON.parse(photoMatch[1])
+          } catch (e) {
+            console.error('[Reviews] Failed to parse photos:', e)
           }
         }
       }
 
-      if (comment.includes('|LIKES|')) {
-        const likesPart = comment.split('|LIKES|')[1]
-        if (likesPart) {
-          const likesStr = likesPart.split('|ANONYMOUS|')[0]
-          const likesData = JSON.parse(likesStr)
-          helpfulCount = likesData.count || 0
-          mitraLikes = likesData.mitraLikes || []
+      // ✅ Step 3: Extract response
+      if (comment.includes('|RESPONSE|')) {
+        const responseMatch = comment.match(/\|RESPONSE\|(.*?)(?=\|(LIKES|ANONYMOUS)\||$)/)
+        if (responseMatch && responseMatch[1]) {
+          try {
+            const responseData = JSON.parse(responseMatch[1])
+            response = {
+              vendorReply: responseData.reply,
+              replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })
+            }
+          } catch (e) {
+            console.error('[Reviews] Failed to parse response:', e)
+          }
         }
       }
 
+      // ✅ Step 4: Extract likes
+      if (comment.includes('|LIKES|')) {
+        const likesMatch = comment.match(/\|LIKES\|(.*?)(?=\|ANONYMOUS\||$)/)
+        if (likesMatch && likesMatch[1]) {
+          try {
+            const likesData = JSON.parse(likesMatch[1])
+            helpfulCount = likesData.count || 0
+            mitraLikes = Array.isArray(likesData.mitraLikes) ? likesData.mitraLikes : []
+          } catch (e) {
+            console.error('[Reviews] Failed to parse likes:', e)
+            mitraLikes = [] // ✅ Set to empty array on error
+          }
+        }
+      }
+
+      // ✅ Step 5: Check anonymous flag
       if (comment.includes('|ANONYMOUS|')) {
         isAnonymous = true
       }
 
     } catch (error) {
       console.error('[Reviews] Error parsing metadata:', error)
+      // Return safe defaults on error
+      return {
+        mainComment: comment.split('|')[0].trim(),
+        photos: [],
+        response: undefined,
+        helpfulCount: 0,
+        mitraLikes: [], // ✅ Always return array
+        isAnonymous: false
+      }
     }
 
     return {
-      mainComment,
+      mainComment: mainComment.trim(),
       photos,
       response,
       helpfulCount,
-      mitraLikes,
+      mitraLikes, // ✅ Always an array, never undefined
       isAnonymous
     }
   }
@@ -265,6 +302,15 @@ export default function UlasanPage() {
         const serviceType = review.booking.items[0]?.service?.name || 'Layanan'
         const metadata = parseReviewMetadata(review.comment)
         
+        // ✅ Debug logging
+        console.log('[Reviews] Parsing review:', {
+          original: review.comment,
+          parsed: metadata.mainComment,
+          hasMetadata: review.comment?.includes('|'),
+          response: metadata.response,
+          photos: metadata.photos?.length || 0
+        })
+        
         return {
           id: review.review_id,
           booking_id: review.booking_id,
@@ -274,14 +320,14 @@ export default function UlasanPage() {
           userEmail: review.user.email,
           userAvatar: metadata.isAnonymous ? undefined : (review.user.avatar || undefined),
           rating: review.rating,
-          comment: metadata.mainComment,
+          comment: metadata.mainComment, // ✅ HANYA mainComment yang ditampilkan
           serviceType,
           date: dateString,
           dateTimestamp: timestamp,
           photos: metadata.photos,
           response: metadata.response,
           helpfulCount: metadata.helpfulCount,
-          mitraLikes: metadata.mitraLikes,
+          mitraLikes: metadata.mitraLikes || [], // ✅ Ensure always array
           isAnonymous: metadata.isAnonymous
         }
       })
@@ -319,8 +365,29 @@ export default function UlasanPage() {
     }
   }
 
+  // ✅ REAL-TIME UPDATE: Like review tanpa reload
   const handleLikeReview = async (reviewId: string) => {
     try {
+      // Optimistic update
+      setReviews((prevReviews) =>
+        prevReviews.map((review) => {
+          if (review.id === reviewId) {
+            const currentLikes = review.mitraLikes || []
+            const isLiked = currentLikes.includes(vendorId)
+            return {
+              ...review,
+              mitraLikes: isLiked
+                ? currentLikes.filter((id) => id !== vendorId)
+                : [...currentLikes, vendorId],
+              helpfulCount: isLiked
+                ? Math.max(0, review.helpfulCount - 1)
+                : review.helpfulCount + 1,
+            }
+          }
+          return review
+        })
+      )
+
       const response = await fetch(`/api/mitra/reviews/${reviewId}/like`, {
         method: 'POST',
         headers: {
@@ -331,11 +398,14 @@ export default function UlasanPage() {
       })
 
       if (!response.ok) {
+        // Rollback on error
+        loadReviews()
         throw new Error('Failed to like review')
       }
 
       const data = await response.json()
       
+      // Update dengan data dari server untuk sinkronisasi
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
@@ -349,6 +419,7 @@ export default function UlasanPage() {
         })
       )
 
+      // Dispatch event untuk update di page lain
       window.dispatchEvent(new CustomEvent('reviewsUpdated'))
 
     } catch (error) {
@@ -356,10 +427,37 @@ export default function UlasanPage() {
     }
   }
 
+  // ✅ REAL-TIME UPDATE: Reply tanpa reload
   const handleReplySubmit = async (reviewId: string) => {
     if (!replyText.trim()) return
 
     try {
+      const tempReplyDate = new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+
+      // Optimistic update
+      setReviews((prevReviews) =>
+        prevReviews.map((review) => {
+          if (review.id === reviewId) {
+            return {
+              ...review,
+              response: {
+                vendorReply: replyText,
+                replyDate: tempReplyDate
+              }
+            }
+          }
+          return review
+        })
+      )
+
+      // Clear form
+      setReplyingTo(null)
+      setReplyText('')
+
       const response = await fetch(`/api/mitra/reviews/${reviewId}/reply`, {
         method: 'POST',
         headers: {
@@ -373,11 +471,14 @@ export default function UlasanPage() {
       })
 
       if (!response.ok) {
+        // Rollback on error
+        loadReviews()
         throw new Error('Failed to submit reply')
       }
 
       const data = await response.json()
       
+      // Update dengan data dari server untuk sinkronisasi
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
@@ -390,9 +491,7 @@ export default function UlasanPage() {
         })
       )
 
-      setReplyingTo(null)
-      setReplyText('')
-
+      // Dispatch event untuk update di page lain
       window.dispatchEvent(new CustomEvent('reviewsUpdated'))
 
     } catch (error) {
@@ -608,9 +707,8 @@ export default function UlasanPage() {
         <div className="space-y-4 md:space-y-6">
           <AnimatePresence>
             {sortedReviews.map((review, index) => {
-              const isLiked =
-                review.mitraLikes &&
-                review.mitraLikes.includes(vendorId)
+              const currentLikes = review.mitraLikes || []
+              const isLiked = currentLikes.includes(vendorId)
 
               return (
                 <motion.div
@@ -660,7 +758,7 @@ export default function UlasanPage() {
 
                   <div className="mb-4">
                     <p
-                      className={`text-neutral-700 dark:text-neutral-300 ${
+                      className={`text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap ${
                         !expandedReviews.includes(review.id) &&
                         review.comment.length > 100
                           ? 'line-clamp-2'
@@ -760,7 +858,10 @@ export default function UlasanPage() {
 
                     {review.response && (
                       <button
-                        onClick={() => setReplyingTo(review.id)}
+                        onClick={() => {
+                          setReplyingTo(review.id)
+                          setReplyText(review.response?.vendorReply || '')
+                        }}
                         className="text-sm text-[#7CE0A8] hover:text-[#5DD494] font-medium transition-colors"
                       >
                         Edit Balasan
@@ -785,7 +886,8 @@ export default function UlasanPage() {
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={() => handleReplySubmit(review.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#5DD494] transition-colors"
+                          disabled={!replyText.trim()}
+                          className="flex items-center gap-2 px-4 py-2 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#5DD494] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Send className="w-4 h-4" />
                           Kirim Balasan

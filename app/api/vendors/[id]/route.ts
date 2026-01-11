@@ -4,7 +4,7 @@ import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
 
-// Parse review metadata helper
+// Parse review metadata helper - IMPROVED & ROBUST
 function parseReviewComment(comment: string | null) {
   if (!comment) return { mainComment: '', photos: [], response: undefined, isAnonymous: false }
 
@@ -14,43 +14,70 @@ function parseReviewComment(comment: string | null) {
   let isAnonymous = false
 
   try {
-    if (comment.includes('|PHOTOS|')) {
-      const parts = comment.split('|PHOTOS|')
-      mainComment = parts[0]
-      
-      if (parts[1]) {
-        const photoStr = parts[1].split('|RESPONSE|')[0].split('|LIKES|')[0].split('|ANONYMOUS|')[0]
-        photos = JSON.parse(photoStr)
+    // ✅ Step 1: Extract main comment (sebelum metadata pertama)
+    const firstMetadataIndex = comment.search(/\|(PHOTOS|RESPONSE|LIKES|ANONYMOUS)\|/)
+    if (firstMetadataIndex !== -1) {
+      mainComment = comment.substring(0, firstMetadataIndex).trim()
+    } else {
+      // No metadata, return comment as is
+      return {
+        mainComment: comment.trim(),
+        photos: [],
+        response: undefined,
+        isAnonymous: false
       }
     }
 
-    if (comment.includes('|RESPONSE|')) {
-      const responsePart = comment.split('|RESPONSE|')[1]
-      if (responsePart) {
-        const responseStr = responsePart.split('|LIKES|')[0].split('|ANONYMOUS|')[0]
-        const responseData = JSON.parse(responseStr)
-        
-        response = {
-          vendorReply: responseData.reply,
-          replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })
+    // ✅ Step 2: Extract photos using regex
+    if (comment.includes('|PHOTOS|')) {
+      const photoMatch = comment.match(/\|PHOTOS\|(.*?)(?=\|(RESPONSE|LIKES|ANONYMOUS)\||$)/)
+      if (photoMatch && photoMatch[1]) {
+        try {
+          photos = JSON.parse(photoMatch[1])
+        } catch (e) {
+          console.error('[Vendor Detail] Failed to parse photos:', e)
         }
       }
     }
 
+    // ✅ Step 3: Extract response using regex
+    if (comment.includes('|RESPONSE|')) {
+      const responseMatch = comment.match(/\|RESPONSE\|(.*?)(?=\|(LIKES|ANONYMOUS)\||$)/)
+      if (responseMatch && responseMatch[1]) {
+        try {
+          const responseData = JSON.parse(responseMatch[1])
+          response = {
+            vendorReply: responseData.reply,
+            replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })
+          }
+        } catch (e) {
+          console.error('[Vendor Detail] Failed to parse response:', e)
+        }
+      }
+    }
+
+    // ✅ Step 4: Check anonymous flag
     if (comment.includes('|ANONYMOUS|')) {
       isAnonymous = true
     }
 
   } catch (error) {
     console.error('[Vendor Detail] Error parsing review metadata:', error)
+    // Return safe defaults on error
+    return {
+      mainComment: comment.split('|')[0].trim(),
+      photos: [],
+      response: undefined,
+      isAnonymous: false
+    }
   }
 
   return {
-    mainComment: mainComment.split('|')[0],
+    mainComment: mainComment.trim(),
     photos,
     response,
     isAnonymous
@@ -150,13 +177,22 @@ export async function GET(
       reviews: vendor.reviews.map(review => {
         const metadata = parseReviewComment(review.comment)
         
+        // ✅ Debug logging
+        console.log('[Vendor Detail API] Parsing review:', {
+          original: review.comment?.substring(0, 100),
+          parsed: metadata.mainComment?.substring(0, 100),
+          hasMetadata: review.comment?.includes('|'),
+          response: !!metadata.response,
+          photos: metadata.photos?.length || 0
+        })
+        
         return {
           id: review.review_id,
           userName: metadata.isAnonymous ? 'Anonymous' : review.user.name,
           userEmail: review.user.email,
           userAvatar: metadata.isAnonymous ? null : review.user.avatar,
           rating: review.rating,
-          comment: metadata.mainComment,
+          comment: metadata.mainComment, // ✅ HANYA mainComment yang ditampilkan
           photos: metadata.photos,
           response: metadata.response,
           isAnonymous: metadata.isAnonymous,
