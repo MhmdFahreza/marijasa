@@ -16,7 +16,6 @@ import {
   Globe,
   Briefcase,
   Clock,
-  Award,
   Star,
   Shield,
   Tag,
@@ -265,27 +264,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleAddSpecialty = () => {
-    if (!tempProfile) return;
-    
-    const newSpecialty = prompt("Masukkan keahlian baru:");
-    if (newSpecialty?.trim() && !tempProfile.specialties.includes(newSpecialty.trim())) {
-      setTempProfile({
-        ...tempProfile,
-        specialties: [...tempProfile.specialties, newSpecialty.trim()]
-      });
-    }
-  };
-
-  const handleRemoveSpecialty = (index: number) => {
-    if (!tempProfile) return;
-    
-    setTempProfile({
-      ...tempProfile,
-      specialties: tempProfile.specialties.filter((_, i) => i !== index)
-    });
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-neutral-900 dark:to-neutral-950">
@@ -302,7 +280,6 @@ export default function ProfilePage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="space-y-6">
                 <Skeleton className="h-64 rounded-xl" />
-                <Skeleton className="h-48 rounded-xl" />
               </div>
               
               <div className="lg:col-span-2 space-y-6">
@@ -532,58 +509,6 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Specialties Card */}
-            <Card className="mt-6 border-[#7CE0A8]/20 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 py-4">
-                <CardTitle className="text-lg text-[#7CE0A8] flex items-center gap-2">
-                  <Award className="h-5 w-5" />
-                  Keahlian Spesial
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4">
-                <div className="flex flex-wrap gap-2">
-                  {isEditing ? (
-                    <>
-                      {tempProfile.specialties.map((specialty, index) => (
-                        <Badge
-                          key={index}
-                          className="px-3 py-1.5 bg-[#7CE0A8]/20 text-[#5AB88A] border-[#7CE0A8]/30 flex items-center gap-1"
-                        >
-                          {specialty}
-                          <button
-                            onClick={() => handleRemoveSpecialty(index)}
-                            className="ml-1 text-[#5AB88A] hover:text-[#4a9c7a]"
-                            disabled={isSaving}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                      <Button
-                        onClick={handleAddSpecialty}
-                        variant="outline"
-                        size="sm"
-                        className="border-dashed border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10"
-                        disabled={isSaving}
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Tambah
-                      </Button>
-                    </>
-                  ) : (
-                    profile.specialties.map((specialty, index) => (
-                      <Badge
-                        key={index}
-                        className="px-3 py-1.5 bg-[#7CE0A8]/20 text-[#5AB88A] border-[#7CE0A8]/30"
-                      >
-                        {specialty}
-                      </Badge>
-                    ))
-                  )}
-                </div>
               </CardContent>
             </Card>
           </div>
