@@ -79,12 +79,12 @@ export async function GET(request: NextRequest) {
     let monthlyIncome = 0;
     let totalOrders = allBookings.length;
     let completedOrders = 0;
-    let pendingOrders = 0;      // PENDING (waiting payment)
+    let pendingOrders = 0;      // PENDING (waiting payment) + CONFIRMED/IN_PROGRESS (sedang dikerjakan)
     let inProgressOrders = 0;   // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
 
     const transactions: any[] = [];
 
-    // Process bookings
+    // Process bookings dengan logika yang diperbaiki
     allBookings.forEach((booking) => {
       const bookingDate = new Date(booking.created_at);
       
@@ -116,7 +116,23 @@ export async function GET(request: NextRequest) {
       } else if ((booking.status === "CONFIRMED" || booking.status === "IN_PROGRESS") && booking.payment_status === "PAID") {
         // Order sudah dibayar tapi belum selesai = masuk pending balance (belum bisa ditarik)
         inProgressOrders++;
+        // Status yang sedang diproses juga masuk ke pending (menunggu selesai)
+        // Ini yang memberikan kontribusi ke totalPending di card
+        pendingOrders++;
         pendingBalance += vendorEarnings;
+
+        transactions.push({
+          id: `INC-${booking.booking_id}`,
+          type: "income",
+          amount: vendorEarnings,
+          date: booking.created_at.toISOString(),
+          description: `Pembayaran dari ${booking.user.name} (Sedang Diproses)`,
+          customerName: booking.user.name,
+          orderId: booking.booking_id,
+          bookingNumber: booking.booking_number,
+          status: "IN_PROGRESS",
+          paymentMethod: "transfer_bank",
+        });
 
         // Check if in current month
         if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
@@ -125,6 +141,19 @@ export async function GET(request: NextRequest) {
       } else if (booking.status === "PENDING") {
         // Order belum dibayar = waiting payment
         pendingOrders++;
+
+        transactions.push({
+          id: `INC-${booking.booking_id}`,
+          type: "income",
+          amount: vendorEarnings,
+          date: booking.created_at.toISOString(),
+          description: `Menunggu Pembayaran dari ${booking.user.name}`,
+          customerName: booking.user.name,
+          orderId: booking.booking_id,
+          bookingNumber: booking.booking_number,
+          status: "PENDING",
+          paymentMethod: "belum_dibayar",
+        });
       }
     });
 
@@ -178,6 +207,18 @@ export async function GET(request: NextRequest) {
     // Merge all transactions
     const allTransactions = [...transactions, ...withdrawalTransactions];
 
+    // Debug logging
+    console.log('[Dashboard Stats]', {
+      totalOrders,
+      completedOrders,
+      pendingOrders,
+      inProgressOrders,
+      availableBalance,
+      pendingBalance,
+      monthlyIncome,
+      monthlyWithdrawal
+    });
+
     // Return dashboard data
     return NextResponse.json({
       vendorId: vendor.vendor_id,
@@ -188,7 +229,7 @@ export async function GET(request: NextRequest) {
       monthlyWithdrawal,
       totalOrders,
       completedOrders,
-      pendingOrders,         // PENDING (waiting payment)
+      pendingOrders,         // PENDING (waiting payment) + CONFIRMED/IN_PROGRESS (sedang dikerjakan)
       inProgressOrders,      // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
       vendorRating: vendor.rating,
       vendorReviewCount: vendor.review_count,
