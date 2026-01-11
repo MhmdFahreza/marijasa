@@ -21,7 +21,7 @@ import {
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
-import { Send, CheckCircle2, Heart, MessageCircle, ImageIcon, User, X as CloseIcon, Star } from 'lucide-react'
+import { Send, CheckCircle2, Heart, MessageCircle, ImageIcon, User, X as CloseIcon, Star, ThumbsUp } from 'lucide-react'
 import SiteFooter from '@/app/footer'
 import { LoaderTwo } from '@/app/components/transition/loader'
 import { RatingStars } from '@/app/components/ui/rating-stars'
@@ -47,6 +47,9 @@ type Review = {
     replyDate: string
   }
   isAnonymous?: boolean
+  helpfulCount?: number
+  mitraLikes?: string[]
+  vendorLiked?: boolean
 }
 
 export default function VendorDetailPage() {
@@ -588,7 +591,7 @@ export default function VendorDetailPage() {
                                     </span>
                                   </div>
 
-                                  {/* ✅ FIXED: Display parsed comment - NO METADATA */}
+                                  {/* ✅ Comment */}
                                   <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed mb-3 whitespace-pre-wrap">
                                     {review.comment}
                                   </p>
@@ -630,6 +633,25 @@ export default function VendorDetailPage() {
                                         </div>
                                       </div>
                                     </div>
+                                  )}
+
+                                  {/* ✅ NEW: Helpful Counter - Seperti di Dashboard Mitra */}
+                                  {review.helpfulCount !== undefined && review.helpfulCount > 0 && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: -5 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      className="mt-3 flex items-center gap-2 text-[#7CE0A8]"
+                                    >
+                                      <ThumbsUp className="w-4 h-4 fill-[#7CE0A8]" />
+                                      <span className="text-sm font-medium">
+                                        Membantu {review.helpfulCount}
+                                      </span>
+                                      {review.vendorLiked && (
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                          • {vendor.name} menemukan ini membantu
+                                        </span>
+                                      )}
+                                    </motion.div>
                                   )}
                                 </div>
                               </div>

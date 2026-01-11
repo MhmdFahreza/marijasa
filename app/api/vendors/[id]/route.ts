@@ -6,12 +6,21 @@ export const runtime = "nodejs";
 
 // Parse review metadata helper - IMPROVED & ROBUST
 function parseReviewComment(comment: string | null) {
-  if (!comment) return { mainComment: '', photos: [], response: undefined, isAnonymous: false }
+  if (!comment) return { 
+    mainComment: '', 
+    photos: [], 
+    response: undefined, 
+    isAnonymous: false,
+    helpfulCount: 0,
+    mitraLikes: []
+  }
 
   let mainComment = comment
   let photos: string[] = []
   let response: { vendorReply: string; replyDate: string } | undefined
   let isAnonymous = false
+  let helpfulCount = 0
+  let mitraLikes: string[] = []
 
   try {
     // ✅ Step 1: Extract main comment (sebelum metadata pertama)
@@ -24,7 +33,9 @@ function parseReviewComment(comment: string | null) {
         mainComment: comment.trim(),
         photos: [],
         response: undefined,
-        isAnonymous: false
+        isAnonymous: false,
+        helpfulCount: 0,
+        mitraLikes: []
       }
     }
 
@@ -60,7 +71,21 @@ function parseReviewComment(comment: string | null) {
       }
     }
 
-    // ✅ Step 4: Check anonymous flag
+    // ✅ Step 4: Extract likes
+    if (comment.includes('|LIKES|')) {
+      const likesMatch = comment.match(/\|LIKES\|(.*?)(?=\|ANONYMOUS\||$)/)
+      if (likesMatch && likesMatch[1]) {
+        try {
+          const likesData = JSON.parse(likesMatch[1])
+          helpfulCount = likesData.count || 0
+          mitraLikes = Array.isArray(likesData.mitraLikes) ? likesData.mitraLikes : []
+        } catch (e) {
+          console.error('[Vendor Detail] Failed to parse likes:', e)
+        }
+      }
+    }
+
+    // ✅ Step 5: Check anonymous flag
     if (comment.includes('|ANONYMOUS|')) {
       isAnonymous = true
     }
@@ -72,7 +97,9 @@ function parseReviewComment(comment: string | null) {
       mainComment: comment.split('|')[0].trim(),
       photos: [],
       response: undefined,
-      isAnonymous: false
+      isAnonymous: false,
+      helpfulCount: 0,
+      mitraLikes: []
     }
   }
 
@@ -80,7 +107,9 @@ function parseReviewComment(comment: string | null) {
     mainComment: mainComment.trim(),
     photos,
     response,
-    isAnonymous
+    isAnonymous,
+    helpfulCount,
+    mitraLikes
   }
 }
 
@@ -177,13 +206,18 @@ export async function GET(
       reviews: vendor.reviews.map(review => {
         const metadata = parseReviewComment(review.comment)
         
+        // ✅ Check if vendor liked this review
+        const vendorLiked = metadata.mitraLikes.includes(vendor.vendor_id)
+        
         // ✅ Debug logging
         console.log('[Vendor Detail API] Parsing review:', {
           original: review.comment?.substring(0, 100),
           parsed: metadata.mainComment?.substring(0, 100),
           hasMetadata: review.comment?.includes('|'),
           response: !!metadata.response,
-          photos: metadata.photos?.length || 0
+          photos: metadata.photos?.length || 0,
+          helpfulCount: metadata.helpfulCount,
+          vendorLiked
         })
         
         return {
@@ -196,6 +230,9 @@ export async function GET(
           photos: metadata.photos,
           response: metadata.response,
           isAnonymous: metadata.isAnonymous,
+          helpfulCount: metadata.helpfulCount,
+          mitraLikes: metadata.mitraLikes,
+          vendorLiked, // ✅ NEW: Flag untuk UI
           date: review.created_at.toISOString(),
         }
       }),
