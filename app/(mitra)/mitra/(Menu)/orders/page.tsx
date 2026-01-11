@@ -273,7 +273,7 @@ export default function OrdersPage() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'waiting-payment': return 'Menunggu Pembayaran';
-      case 'pending': return 'Sedang Diproses';
+      case 'pending': return 'Pending';
       case 'completed': return 'Selesai';
       case 'cancelled': return 'Dibatalkan';
       default: return status;
@@ -367,7 +367,7 @@ export default function OrdersPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Sedang Diproses</p>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Pending</p>
                   <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.pending}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
@@ -413,7 +413,7 @@ export default function OrdersPage() {
               <TabsList className="grid grid-cols-5 mb-6">
                 <TabsTrigger value="all" className="text-sm md:text-base">Semua</TabsTrigger>
                 <TabsTrigger value="waiting-payment" className="text-sm md:text-base">Menunggu</TabsTrigger>
-                <TabsTrigger value="pending" className="text-sm md:text-base">Diproses</TabsTrigger>
+                <TabsTrigger value="pending" className="text-sm md:text-base">Pending</TabsTrigger>
                 <TabsTrigger value="completed" className="text-sm md:text-base">Selesai</TabsTrigger>
                 <TabsTrigger value="cancelled" className="text-sm md:text-base">Dibatalkan</TabsTrigger>
               </TabsList>
