@@ -225,7 +225,7 @@ const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: nu
   );
 };
 
-// Voice Message Player - FIXED VERSION
+// Voice Message Player
 const VoiceMessagePlayer = ({ msg, isUser }: { msg: Message; isUser: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -516,6 +516,7 @@ export default function UserChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const hasMarkedAsReadRef = useRef(false);
 
   const vendorName = currentSession?.mitraName || "Vendor";
   const vendorAvatar = currentSession?.mitraAvatar || "/store.svg";
@@ -558,45 +559,78 @@ export default function UserChatPage() {
     load();
   }, [currentUser?.id, authLoading]);
 
-  // Load messages
+  // Load messages and mark as read
   useEffect(() => {
     if (!currentUser?.id || !selectedVendorId) {
       setCurrentSession(null);
       setMessages([]);
+      hasMarkedAsReadRef.current = false;
       return;
     }
+    
     const load = async () => {
       const session = await chatService.getOrCreateSession(currentUser.id, selectedVendorId);
       if (session) {
         setCurrentSession(session);
         setMessages(session.messages || []);
-        await chatService.markAsRead(currentUser.id, selectedVendorId, "user");
+        
+        // Mark as read immediately when opening chat
+        if (!hasMarkedAsReadRef.current) {
+          await chatService.markAsRead(currentUser.id, selectedVendorId, "user");
+          hasMarkedAsReadRef.current = true;
+          
+          // Refresh chat list to update unread count
+          const sessions = await chatService.getUserSessions(currentUser.id);
+          setChatList(sessions || []);
+        }
       }
     };
     load();
   }, [currentUser?.id, selectedVendorId]);
 
-  // Polling
+  // Polling with auto mark as read
   useEffect(() => {
     if (!currentUser?.id || !selectedVendorId) return;
+    
     const poll = async () => {
       const msgs = await chatService.getMessages(currentUser.id, selectedVendorId);
       if (msgs && msgs.length > messages.length) {
         setMessages(msgs);
+        
+        // Auto mark as read when new messages arrive
         await chatService.markAsRead(currentUser.id, selectedVendorId, "user");
+        
+        // Refresh chat list to update unread count
+        const sessions = await chatService.getUserSessions(currentUser.id);
+        setChatList(sessions || []);
       }
     };
+    
     pollingRef.current = setInterval(poll, 3000);
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+    return () => { 
+      if (pollingRef.current) clearInterval(pollingRef.current); 
+    };
   }, [currentUser?.id, selectedVendorId, messages.length]);
+
+  // Reset mark as read flag when changing chat
+  useEffect(() => {
+    hasMarkedAsReadRef.current = false;
+  }, [selectedVendorId]);
 
   const scrollToBottom = useCallback(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), []);
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
-  const handleSelectChat = (vendorId: string) => {
+  const handleSelectChat = async (vendorId: string) => {
     setSelectedVendorId(vendorId);
     router.push(`/chat/${vendorId}`);
     setIsSidebarOpen(false);
+    
+    // Mark as read when selecting chat
+    if (currentUser?.id) {
+      await chatService.markAsRead(currentUser.id, vendorId, "user");
+      const sessions = await chatService.getUserSessions(currentUser.id);
+      setChatList(sessions || []);
+    }
   };
 
   const handleVoiceCall = async () => {
@@ -618,7 +652,14 @@ export default function UserChatPage() {
     if (!newMessage.trim() || !currentUser?.id || !selectedVendorId || isSending) return;
     setIsSending(true);
     const sent = await chatService.sendTextMessage(currentUser.id, selectedVendorId, currentUser.id, "user", newMessage.trim());
-    if (sent) { setMessages(prev => [...prev, sent]); setNewMessage(""); }
+    if (sent) { 
+      setMessages(prev => [...prev, sent]); 
+      setNewMessage(""); 
+      
+      // Refresh chat list after sending
+      const sessions = await chatService.getUserSessions(currentUser.id);
+      setChatList(sessions || []);
+    }
     setIsSending(false);
   };
 
@@ -626,7 +667,13 @@ export default function UserChatPage() {
     if (!currentUser?.id || !selectedVendorId) return;
     setShowVoiceRecorder(false);
     const sent = await chatService.sendVoiceMessage(currentUser.id, selectedVendorId, currentUser.id, "user", blob, duration);
-    if (sent) setMessages(prev => [...prev, sent]);
+    if (sent) {
+      setMessages(prev => [...prev, sent]);
+      
+      // Refresh chat list after sending
+      const sessions = await chatService.getUserSessions(currentUser.id);
+      setChatList(sessions || []);
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -635,7 +682,13 @@ export default function UserChatPage() {
     let sent: Message | null = null;
     if (file.type.startsWith("image/")) sent = await chatService.sendImageMessage(currentUser.id, selectedVendorId, currentUser.id, "user", file);
     else if (file.type.startsWith("video/")) sent = await chatService.sendVideoMessage(currentUser.id, selectedVendorId, currentUser.id, "user", file);
-    if (sent) setMessages(prev => [...prev, sent!]);
+    if (sent) {
+      setMessages(prev => [...prev, sent!]);
+      
+      // Refresh chat list after sending
+      const sessions = await chatService.getUserSessions(currentUser.id);
+      setChatList(sessions || []);
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -644,7 +697,13 @@ export default function UserChatPage() {
     setShowCameraModal(false);
     const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
     const sent = await chatService.sendImageMessage(currentUser.id, selectedVendorId, currentUser.id, "user", file);
-    if (sent) setMessages(prev => [...prev, sent]);
+    if (sent) {
+      setMessages(prev => [...prev, sent]);
+      
+      // Refresh chat list after sending
+      const sessions = await chatService.getUserSessions(currentUser.id);
+      setChatList(sessions || []);
+    }
   };
 
   const handleEmojiSelect = (emoji: string) => { setNewMessage(prev => prev + emoji); setShowEmojiPicker(false); };
