@@ -90,7 +90,7 @@ async function safeFetch(url: string, options?: RequestInit) {
   }
 }
 
-// Initialize a call
+// Initialize a call - FIXED: Now sends receiverId and receiverType to API
 export async function initiateCall(
   userId: string,
   vendorId: string,
@@ -99,13 +99,17 @@ export async function initiateCall(
   callType: CallType
 ): Promise<CallData | null> {
   try {
+    // Determine receiverId and receiverType based on who's calling
+    const receiverId = callerType === 'user' ? vendorId : userId;
+    const receiverType = callerType === 'user' ? 'mitra' : 'user';
+    
     const data = await safeFetch('/api/call/initiate', {
       method: 'POST',
       body: JSON.stringify({
-        userId,
-        vendorId,
         callerId,
         callerType,
+        receiverId,
+        receiverType,
         callType,
       }),
     });
@@ -287,8 +291,6 @@ export async function getPendingSignals(
 }
 
 // Check for incoming calls
-// FIXED: Changed parameter names from participantId/participantType to receiverId/receiverType
-// to match what the API expects
 export async function checkIncomingCalls(
   receiverId: string,
   receiverType: 'user' | 'mitra'

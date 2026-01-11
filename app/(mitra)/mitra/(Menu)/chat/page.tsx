@@ -225,7 +225,7 @@ const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: nu
   );
 };
 
-// Voice Message Player - FIXED VERSION
+// Voice Message Player - FIXED VERSION with AbortError handling
 const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -235,6 +235,7 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const waveformHeights = useRef<number[]>(Array.from({ length: 30 }, () => Math.random() * 20 + 10));
+  const isTogglingRef = useRef(false); // Prevent rapid toggling
 
   useEffect(() => {
     if (!msg.fileUrl) {
@@ -266,15 +267,37 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
       }
     };
 
-    const handleError = () => {
+    const handleError = (e: Event) => {
+      console.error('Audio error:', e);
       setHasError(true);
       setIsLoading(false);
+    };
+
+    const handlePause = () => {
+      setIsPlaying(false);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
+    const handlePlay = () => {
+      setIsPlaying(true);
+      if (!intervalRef.current) {
+        intervalRef.current = setInterval(() => {
+          if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+          }
+        }, 50);
+      }
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('play', handlePlay);
 
     audio.preload = 'metadata';
     audio.src = msg.fileUrl;
@@ -284,6 +307,8 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('play', handlePlay);
       if (intervalRef.current) clearInterval(intervalRef.current);
       audio.pause();
       audio.src = '';
@@ -292,28 +317,41 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   }, [msg.fileUrl]);
 
   const togglePlayPause = async () => {
-    if (!audioRef.current || hasError || isLoading) return;
+    if (!audioRef.current || hasError || isLoading || isTogglingRef.current) return;
+
+    // Prevent rapid toggling
+    isTogglingRef.current = true;
 
     try {
       if (isPlaying) {
+        // Stop playing
         audioRef.current.pause();
-        setIsPlaying(false);
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
+        // Note: state will be updated via event listener
       } else {
-        await audioRef.current.play();
-        setIsPlaying(true);
-        intervalRef.current = setInterval(() => {
-          if (audioRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
-          }
-        }, 50);
+        // Start playing
+        const playPromise = audioRef.current.play();
+        
+        if (playPromise !== undefined) {
+          await playPromise;
+          // Note: state will be updated via event listener
+        }
       }
-    } catch (err) {
-      console.error('Audio playback error:', err);
-      setHasError(true);
+    } catch (err: any) {
+      // Handle AbortError and other play errors gracefully
+      if (err.name === 'AbortError') {
+        console.log('Play interrupted - this is normal');
+      } else if (err.name === 'NotAllowedError') {
+        console.error('Autoplay prevented - user interaction required');
+        setHasError(true);
+      } else {
+        console.error('Audio playback error:', err);
+        setHasError(true);
+      }
+    } finally {
+      // Allow toggling again after a short delay
+      setTimeout(() => {
+        isTogglingRef.current = false;
+      }, 200);
     }
   };
 
@@ -333,10 +371,10 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
       <div className="p-3 flex items-center gap-3">
         <button
           onClick={togglePlayPause}
-          disabled={isLoading}
+          disabled={isLoading || isTogglingRef.current}
           className={`h-10 w-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
             isMitra ? "bg-white/20 hover:bg-white/30 text-white" : "bg-[#7CE0A8] hover:bg-[#6BD099] text-white"
-          } ${isLoading ? "opacity-50" : ""}`}
+          } ${isLoading || isTogglingRef.current ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -532,20 +570,17 @@ export default function MitraChatPage() {
     onError: (error) => { console.error('Call error:', error); alert(error); setShowCallModal(false); },
   });
 
-  // Load current mitra from auth - FIXED
+  // Load current mitra from auth
   useEffect(() => {
     const loadCurrentMitra = async () => {
       setAuthLoading(true);
       try {
-        // Try /api/mitra/me first
         let data = await safeFetch("/api/mitra/me");
         
-        // If that fails, try /api/mitra/verify
         if (!data?.vendor && !data?.mitra) {
           data = await safeFetch("/api/mitra/verify");
         }
         
-        // If still no data, try /api/mitra/profile
         if (!data?.vendor && !data?.mitra) {
           data = await safeFetch("/api/mitra/profile");
           if (data?.vendor) {
