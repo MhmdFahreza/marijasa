@@ -10,7 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator
 } from "@/app/components/ui/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { Card, CardContent } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import {
@@ -21,7 +21,6 @@ import {
   User,
   Mail,
   Phone,
-  Wrench,
   MessageSquare,
   AlertCircle,
   ChevronLeft,
@@ -100,9 +99,9 @@ export default function OrdersPage() {
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
-    inProgress: 0,
+    waitingPayment: 0,
     completed: 0,
-    rejected: 0
+    cancelled: 0
   });
   const [activeTab, setActiveTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -189,9 +188,9 @@ export default function OrdersPage() {
         setStats(data.stats || {
           total: 0,
           pending: 0,
-          inProgress: 0,
+          waitingPayment: 0,
           completed: 0,
-          rejected: 0
+          cancelled: 0
         });
       } else {
         toast.error(data.message || 'Gagal memuat data pesanan');
@@ -220,10 +219,10 @@ export default function OrdersPage() {
   // Filter orders berdasarkan tab aktif
   const filteredOrders = orders.filter(order => {
     if (activeTab === 'all') return true;
+    if (activeTab === 'waiting-payment') return order.status === 'waiting-payment';
     if (activeTab === 'pending') return order.status === 'pending';
-    if (activeTab === 'in-progress') return order.status === 'in-progress';
     if (activeTab === 'completed') return order.status === 'completed';
-    if (activeTab === 'rejected') return order.status === 'rejected' || order.status === 'cancelled';
+    if (activeTab === 'cancelled') return order.status === 'cancelled';
     return true;
   });
 
@@ -251,11 +250,9 @@ export default function OrdersPage() {
   // Fungsi untuk mendapatkan warna badge berdasarkan status
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'in-progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'confirmed': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'waiting-payment': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'pending': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
     }
@@ -264,11 +261,9 @@ export default function OrdersPage() {
   // Fungsi untuk mendapatkan icon berdasarkan status
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case 'waiting-payment': return <Clock className="h-4 w-4 mr-1" />;
       case 'pending': return <Clock className="h-4 w-4 mr-1" />;
-      case 'in-progress': return <Wrench className="h-4 w-4 mr-1" />;
-      case 'confirmed': return <CheckCheck className="h-4 w-4 mr-1" />;
       case 'completed': return <CheckCheck className="h-4 w-4 mr-1" />;
-      case 'rejected': return <X className="h-4 w-4 mr-1" />;
       case 'cancelled': return <X className="h-4 w-4 mr-1" />;
       default: return <AlertCircle className="h-4 w-4 mr-1" />;
     }
@@ -277,13 +272,20 @@ export default function OrdersPage() {
   // Fungsi untuk mendapatkan label status
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'pending': return 'Menunggu Pembayaran';
-      case 'confirmed': return 'Dikonfirmasi';
-      case 'in-progress': return 'Sedang Dikerjakan';
+      case 'waiting-payment': return 'Menunggu Pembayaran';
+      case 'pending': return 'Sedang Diproses';
       case 'completed': return 'Selesai';
-      case 'rejected': return 'Dibatalkan';
       case 'cancelled': return 'Dibatalkan';
       default: return status;
+    }
+  };
+
+  // Fungsi untuk mendapatkan label payment status
+  const getPaymentLabel = (paymentStatus: string) => {
+    switch (paymentStatus) {
+      case 'paid': return 'Lunas';
+      case 'pending': return 'Belum Lunas';
+      default: return 'Belum Lunas';
     }
   };
 
@@ -352,7 +354,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Menunggu Pembayaran</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.pending}</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.waitingPayment}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
                   <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -365,11 +367,11 @@ export default function OrdersPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Sedang Dikerjakan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.inProgress}</p>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight whitespace-nowrap">Sedang Diproses</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.pending}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                  <Wrench className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
             </CardContent>
@@ -394,7 +396,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-tight">Dibatalkan</p>
-                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.rejected}</p>
+                  <p className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{stats.cancelled}</p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
                   <X className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -410,10 +412,10 @@ export default function OrdersPage() {
             <Tabs defaultValue="all" onValueChange={setActiveTab}>
               <TabsList className="grid grid-cols-5 mb-6">
                 <TabsTrigger value="all" className="text-sm md:text-base">Semua</TabsTrigger>
-                <TabsTrigger value="pending" className="text-sm md:text-base">Menunggu</TabsTrigger>
-                <TabsTrigger value="in-progress" className="text-sm md:text-base">Dikerjakan</TabsTrigger>
+                <TabsTrigger value="waiting-payment" className="text-sm md:text-base">Menunggu</TabsTrigger>
+                <TabsTrigger value="pending" className="text-sm md:text-base">Diproses</TabsTrigger>
                 <TabsTrigger value="completed" className="text-sm md:text-base">Selesai</TabsTrigger>
-                <TabsTrigger value="rejected" className="text-sm md:text-base">Dibatalkan</TabsTrigger>
+                <TabsTrigger value="cancelled" className="text-sm md:text-base">Dibatalkan</TabsTrigger>
               </TabsList>
 
               <TabsContent value={activeTab} className="mt-0">
@@ -471,10 +473,10 @@ export default function OrdersPage() {
 
                                 <div className="text-right">
                                   <p className="text-2xl font-bold text-neutral-900 dark:text-white">
-                                    Rp {order.serviceDetails?.totalPrice?.toLocaleString('id-ID') || '0'}
+                                    Rp {order.vendorEarnings?.toLocaleString('id-ID') || '0'}
                                   </p>
                                   <p className={`text-sm ${order.paymentStatus === 'paid' ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
-                                    {order.paymentStatus === 'paid' ? '✅ Lunas' : '⏳ Belum Dibayar'}
+                                    {order.paymentStatus === 'paid' ? '✅ Lunas' : '⏳ Belum Lunas'}
                                   </p>
                                 </div>
                               </div>
@@ -586,23 +588,23 @@ export default function OrdersPage() {
                                 </div>
                               </div>
 
-                              {/* Additional Notes */}
-                              {order.additionalNotes && (
+                              {/* Customer Notes */}
+                              {order.customerNotes && order.customerNotes !== '-' && (
                                 <div className="mb-6">
                                   <h4 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
                                     <MessageSquare className="h-4 w-4" />
-                                    Catatan Tambahan dari Pelanggan
+                                    Catatan dari Pelanggan
                                   </h4>
                                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                                     <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                                      {order.additionalNotes}
+                                      {order.customerNotes}
                                     </p>
                                   </div>
                                 </div>
                               )}
 
                               {/* Alasan Pembatalan */}
-                              {(order.status === 'rejected' || order.status === 'cancelled') && order.cancellationReason && (
+                              {order.status === 'cancelled' && order.cancellationReason && (
                                 <div className="mb-6">
                                   <h4 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
                                     <AlertCircle className="h-4 w-4" />
@@ -633,7 +635,7 @@ export default function OrdersPage() {
 
                               {/* Action Buttons */}
                               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
-                                {order.status === 'pending' && (
+                                {order.status === 'waiting-payment' && (
                                   <div className="w-full">
                                     <div className="mb-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
                                       <p className="text-sm text-yellow-700 dark:text-yellow-300">
@@ -650,7 +652,7 @@ export default function OrdersPage() {
                                   </div>
                                 )}
 
-                                {order.status === 'in-progress' && (
+                                {order.status === 'pending' && (
                                   <div className="w-full">
                                     <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                                       <p className="text-sm text-blue-700 dark:text-blue-300">
@@ -685,7 +687,7 @@ export default function OrdersPage() {
                                   </div>
                                 )}
 
-                                {(order.status === 'rejected' || order.status === 'cancelled') && (
+                                {order.status === 'cancelled' && (
                                   <div className="w-full space-y-3">
                                     <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20">
                                       <p className="text-sm text-red-700 dark:text-red-300">

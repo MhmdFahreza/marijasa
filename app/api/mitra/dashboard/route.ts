@@ -73,30 +73,33 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Calculate statistics
-    let availableBalance = 0;
-    let pendingBalance = 0;
+    // Calculate statistics dengan logic baru
+    let availableBalance = 0;  // Hanya dari COMPLETED
+    let pendingBalance = 0;    // Dari CONFIRMED/IN_PROGRESS yang sudah PAID
     let monthlyIncome = 0;
     let totalOrders = allBookings.length;
     let completedOrders = 0;
-    let pendingOrders = 0;
-    let inProgressOrders = 0;
+    let pendingOrders = 0;      // PENDING (waiting payment)
+    let inProgressOrders = 0;   // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
 
     const transactions: any[] = [];
 
     // Process bookings
     allBookings.forEach((booking) => {
       const bookingDate = new Date(booking.created_at);
+      
+      // Yang masuk ke vendor = subtotal saja (tidak termasuk transaction_fee)
+      const vendorEarnings = booking.subtotal;
 
       if (booking.status === "COMPLETED" && booking.payment_status === "PAID") {
+        // Order selesai = masuk available balance (bisa ditarik)
         completedOrders++;
-        const orderAmount = booking.total;
-        availableBalance += orderAmount;
+        availableBalance += vendorEarnings;
 
         transactions.push({
           id: `INC-${booking.booking_id}`,
           type: "income",
-          amount: orderAmount,
+          amount: vendorEarnings,
           date: booking.created_at.toISOString(),
           description: `Pembayaran dari ${booking.user.name}`,
           customerName: booking.user.name,
@@ -108,20 +111,24 @@ export async function GET(request: NextRequest) {
 
         // Check if in current month
         if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
-          monthlyIncome += orderAmount;
+          monthlyIncome += vendorEarnings;
         }
-      } else if (booking.status === "IN_PROGRESS") {
+      } else if ((booking.status === "CONFIRMED" || booking.status === "IN_PROGRESS") && booking.payment_status === "PAID") {
+        // Order sudah dibayar tapi belum selesai = masuk pending balance (belum bisa ditarik)
         inProgressOrders++;
-        if (booking.payment_status === "PAID") {
-          pendingBalance += booking.total;
+        pendingBalance += vendorEarnings;
+
+        // Check if in current month
+        if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
+          monthlyIncome += vendorEarnings;
         }
-      } else if (booking.status === "PENDING" || booking.status === "CONFIRMED") {
+      } else if (booking.status === "PENDING") {
+        // Order belum dibayar = waiting payment
         pendingOrders++;
       }
     });
 
     // Fetch withdrawals from database
-    // Note: This requires the Withdrawal model to be added to your schema
     let monthlyWithdrawal = 0;
     let totalWithdrawn = 0;
     let withdrawalTransactions: any[] = [];
@@ -165,7 +172,7 @@ export async function GET(request: NextRequest) {
       // If Withdrawal table doesn't exist yet, continue with default values
     }
 
-    // Adjust available balance
+    // Adjust available balance (kurangi yang sudah ditarik)
     availableBalance = Math.max(0, availableBalance - totalWithdrawn);
 
     // Merge all transactions
@@ -175,14 +182,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       vendorId: vendor.vendor_id,
       vendorName: vendor.name,
-      availableBalance,
-      pendingBalance,
+      availableBalance,      // Saldo yang bisa ditarik (dari COMPLETED - withdrawn)
+      pendingBalance,        // Saldo pending (dari CONFIRMED/IN_PROGRESS yang paid, belum bisa ditarik)
       monthlyIncome,
       monthlyWithdrawal,
       totalOrders,
       completedOrders,
-      pendingOrders,
-      inProgressOrders,
+      pendingOrders,         // PENDING (waiting payment)
+      inProgressOrders,      // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
       vendorRating: vendor.rating,
       vendorReviewCount: vendor.review_count,
       totalRevenue: availableBalance + pendingBalance,

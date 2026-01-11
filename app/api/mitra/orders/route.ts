@@ -225,6 +225,28 @@ export async function GET(request: NextRequest) {
         cleanAddress = cleanAddress.replace(gpsPattern, '').trim();
       }
 
+      // Map status sesuai requirement
+      // PENDING = waiting-payment (belum bayar)
+      // CONFIRMED/IN_PROGRESS = pending (sudah bayar, sedang dikerjakan)
+      // COMPLETED = completed (sudah selesai)
+      // CANCELLED = cancelled
+      let frontendStatus = 'waiting-payment';
+      if (order.status === 'PENDING') {
+        frontendStatus = 'waiting-payment';
+      } else if (order.status === 'CONFIRMED' || order.status === 'IN_PROGRESS') {
+        frontendStatus = 'pending';
+      } else if (order.status === 'COMPLETED') {
+        frontendStatus = 'completed';
+      } else if (order.status === 'CANCELLED') {
+        frontendStatus = 'cancelled';
+      }
+
+      // Vendor earnings = subtotal saja (tanpa biaya transaksi)
+      const vendorEarnings = order.subtotal;
+
+      // Customer notes dari field notes (bukan dari payment)
+      const customerNotes = order.notes || '-';
+
       return {
         id: order.booking_number,
         serviceCategory,
@@ -247,23 +269,24 @@ export async function GET(request: NextRequest) {
         gpsLink: extractedGpsLink,
         workDate: order.scheduled_date,
         workTime: order.scheduled_time,
-        additionalNotes: order.notes,
-        status: order.status.toLowerCase().replace('_', '-'),
+        customerNotes: customerNotes,
+        status: frontendStatus,
         paymentStatus: order.payment_status.toLowerCase(),
         orderDate: order.created_at,
         cancellationReason: order.cancellation_reason,
         cancelledBy: order.cancelled_by,
         cancelledAt: order.cancelled_at,
+        vendorEarnings: vendorEarnings, // Yang masuk ke mitra = subtotal saja
       };
     });
 
     // Calculate stats
     const stats = {
       total: transformedOrders.length,
+      waitingPayment: transformedOrders.filter((o) => o.status === 'waiting-payment').length,
       pending: transformedOrders.filter((o) => o.status === 'pending').length,
-      inProgress: transformedOrders.filter((o) => o.status === 'in-progress').length,
       completed: transformedOrders.filter((o) => o.status === 'completed').length,
-      rejected: transformedOrders.filter((o) => o.status === 'cancelled' || o.status === 'rejected').length,
+      cancelled: transformedOrders.filter((o) => o.status === 'cancelled').length,
     };
 
     console.log('[Mitra Orders API] Success:', {

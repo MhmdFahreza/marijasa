@@ -1,4 +1,4 @@
-// app/api/user/orders/route.ts (FIXED - Remove Manual review_count Update)
+// app/api/user/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 
@@ -130,6 +130,11 @@ export async function GET(request: NextRequest) {
     }
 
     const formattedOrders = bookings.map(booking => {
+      // Status mapping sesuai requirement baru:
+      // PENDING = menunggu pembayaran
+      // CONFIRMED/IN_PROGRESS = diproses (sudah bayar)
+      // COMPLETED = selesai
+      // CANCELLED = dibatalkan
       const statusMap: Record<string, string> = {
         'PENDING': 'menunggu pembayaran',
         'CONFIRMED': 'diproses',
@@ -302,10 +307,13 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'pay': {
+        // UPDATED: User bayar -> status CONFIRMED (pending di frontend)
+        // payment_status jadi PAID
+        // Masuk ke pending balance mitra (belum bisa ditarik)
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
           data: {
-            status: 'CONFIRMED',
+            status: 'CONFIRMED',  // Status jadi CONFIRMED (pending di frontend)
             payment_status: 'PAID',
             order_history: {
               create: {
@@ -334,6 +342,7 @@ export async function PUT(request: NextRequest) {
       case 'cancel': {
         const { reason } = data;
 
+        // Hanya bisa cancel jika status PENDING (menunggu pembayaran)
         if (booking.status !== 'PENDING') {
           return NextResponse.json(
             { error: 'Bad Request', message: 'Pesanan tidak dapat dibatalkan' },
@@ -377,7 +386,16 @@ export async function PUT(request: NextRequest) {
         const { rating, comment, photos, isAnonymous } = data;
 
         console.log(`[Complete Order] Starting completion for booking ${booking.booking_id}`);
+        console.log(`[Complete Order] Current status: ${booking.status}`);
         console.log(`[Complete Order] Rating provided: ${rating}`);
+
+        // UPDATED: Hanya bisa complete jika status CONFIRMED atau IN_PROGRESS
+        if (booking.status !== 'CONFIRMED' && booking.status !== 'IN_PROGRESS') {
+          return NextResponse.json(
+            { error: 'Bad Request', message: 'Hanya pesanan yang sedang diproses yang dapat dikonfirmasi selesai' },
+            { status: 400 }
+          );
+        }
 
         const existingReview = await prisma.review.findUnique({
           where: { booking_id: booking.booking_id }
@@ -391,9 +409,9 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // ✅ CRITICAL FIX: Remove manual review_count update
-        // Let the database handle count through relations
         const result = await prisma.$transaction(async (tx) => {
+          // Update booking ke COMPLETED
+          // Ini akan pindahkan saldo dari pending ke available di mitra
           const updateData: any = {
             status: 'COMPLETED',
             completed_at: new Date(),
@@ -435,8 +453,7 @@ export async function PUT(request: NextRequest) {
 
             console.log(`[Complete Order] Review created successfully`);
 
-            // ✅ CRITICAL FIX: Hanya update average rating, TIDAK update review_count
-            // review_count akan dihitung otomatis dari relasi
+            // Update vendor average rating
             const allReviews = await tx.review.findMany({
               where: { vendor_id: booking.vendor_id },
               select: { rating: true }
@@ -450,13 +467,12 @@ export async function PUT(request: NextRequest) {
               console.log(`  - Total reviews: ${allReviews.length}`);
               console.log(`  - New average: ${newAverageRating}`);
 
-              // ✅ HANYA UPDATE RATING, TIDAK UPDATE review_count
+              // HANYA update rating, tidak update review_count
+              // review_count dihitung otomatis dari relasi
               await tx.vendor.update({
                 where: { vendor_id: booking.vendor_id },
                 data: {
                   rating: newAverageRating,
-                  // ❌ REMOVED: review_count: allReviews.length
-                  // Biarkan field ini untuk backward compatibility tapi tidak di-update
                 }
               });
 

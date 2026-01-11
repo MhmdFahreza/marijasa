@@ -1,3 +1,4 @@
+// app/mitra/dashboard/page.tsx
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
@@ -31,8 +32,7 @@ import {
   Plus,
   X,
   Info,
-  Star,
-  Lock
+  Star
 } from 'lucide-react';
 import { Separator } from "@/app/components/ui/separator";
 import {
@@ -57,6 +57,7 @@ import { id } from 'date-fns/locale';
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/app/components/ui/tooltip";
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 // Data dummy untuk metode pembayaran
 const paymentMethods = [
@@ -89,18 +90,18 @@ const WithdrawDialog = ({
 
   const handleWithdraw = () => {
     if (!withdrawAmount || !selectedMethod) {
-      alert('Harap isi jumlah dan pilih metode penarikan');
+      toast.error('Harap isi jumlah dan pilih metode penarikan');
       return;
     }
 
     const amount = parseInt(withdrawAmount.replace(/\D/g, ''));
     if (amount > balance) {
-      alert('Jumlah penarikan melebihi saldo tersedia');
+      toast.error('Jumlah penarikan melebihi saldo tersedia');
       return;
     }
 
     if (amount < 50000) {
-      alert('Minimum penarikan adalah Rp 50.000');
+      toast.error('Minimum penarikan adalah Rp 50.000');
       return;
     }
 
@@ -354,7 +355,7 @@ export default function DashboardPage() {
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [currentVendor, setCurrentVendor] = useState<any>(null);
 
-  // PERBAIKAN: Load data hanya sekali saat mount
+  // Load data hanya sekali saat mount
   useEffect(() => {
     let isMounted = true;
 
@@ -370,6 +371,7 @@ export default function DashboardPage() {
 
         if (!verifyResponse.ok) {
           console.log('[Dashboard] Verification failed, redirecting to login');
+          toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
           router.push('/mitra/login');
           return;
         }
@@ -420,6 +422,7 @@ export default function DashboardPage() {
         console.error('[Dashboard] Initialization error:', error);
         if (isMounted) {
           setIsLoading(false);
+          toast.error('Gagal memuat data dashboard');
           router.push('/mitra/login');
         }
       }
@@ -430,9 +433,9 @@ export default function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, []); // PENTING: Dependency array kosong agar hanya run sekali
+  }, [router]);
 
-  // PERBAIKAN: Manual refresh function
+  // Manual refresh function
   const handleRefresh = async () => {
     if (!currentVendor?.id) {
       console.log('[Dashboard] No vendor ID for refresh');
@@ -472,9 +475,11 @@ export default function DashboardPage() {
       setTransactionHistory(data.transactions || []);
       setIsLoading(false);
 
+      toast.success('Data berhasil diperbarui');
       console.log('[Dashboard] Refresh complete');
     } catch (error) {
       console.error('[Dashboard] Refresh error:', error);
+      toast.error('Gagal memperbarui data');
       setIsLoading(false);
     }
   };
@@ -554,7 +559,7 @@ export default function DashboardPage() {
 
   const handleWithdraw = async (amount: number, method: string) => {
     if (!currentVendor?.id) {
-      alert('Error: Vendor ID tidak ditemukan');
+      toast.error('Error: Vendor ID tidak ditemukan');
       return;
     }
 
@@ -587,11 +592,13 @@ export default function DashboardPage() {
       setWithdrawLoading(false);
       setShowWithdrawDialog(false);
 
+      toast.success('Penarikan berhasil diproses!');
+
       // Reload dashboard data
       handleRefresh();
     } catch (error) {
       console.error('Error processing withdrawal:', error);
-      alert('Gagal memproses penarikan. Silakan coba lagi.');
+      toast.error('Gagal memproses penarikan. Silakan coba lagi.');
       setWithdrawLoading(false);
     }
   };
@@ -614,7 +621,7 @@ export default function DashboardPage() {
     );
   };
 
-  // PERBAIKAN: Tampilkan loading state yang lebih baik
+  // Tampilkan loading state
   if (isLoading && !currentVendor) {
     return (
       <motion.div
@@ -736,7 +743,7 @@ export default function DashboardPage() {
                     <Clock className="h-6 w-6" />
                   </div>
                   <Badge className="bg-white/20 text-white border-0">
-                    Diproses
+                    Belum Bisa Ditarik
                   </Badge>
                 </div>
                 <p className="text-sm opacity-90 mb-1">Saldo Pending</p>
@@ -849,7 +856,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 text-xs md:text-sm text-neutral-500 mt-1">
                       <span className="text-green-600">{statData.completedOrders} selesai</span>
                       <span>•</span>
-                      <span className="text-yellow-600">{statData.pendingOrders} pending</span>
+                      <span className="text-yellow-600">{statData.pendingOrders} Pending</span>
                     </div>
                   </div>
                   <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
