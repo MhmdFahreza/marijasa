@@ -38,12 +38,12 @@ const RATING_LABELS: Record<string, string> = {
 };
 
 const DISPLAY_LIMITS = [
-    { value: "5", label: "5 Vendor" },
-    { value: "10", label: "10 Vendor" },
-    { value: "20", label: "20 Vendor" },
-    { value: "50", label: "50 Vendor" },
-    { value: "100", label: "100 Vendor" },
-    { value: "all", label: "Semua Vendor" },
+    { value: "5", label: "Tampilkan: 5" },
+    { value: "10", label: "Tampilkan: 10" },
+    { value: "20", label: "Tampilkan: 20" },
+    { value: "50", label: "Tampilkan: 50" },
+    { value: "100", label: "Tampilkan: 100" },
+    { value: "all", label: "Tampilkan: Semua" },
 ];
 
 interface FilterBarProps {
@@ -134,7 +134,7 @@ export default function FilterBar({
         .catch(error => {
             if (error.name !== 'AbortError') {
                 console.error('Error fetching master data:', error);
-                setDataReady(true); // Still set ready to show UI
+                setDataReady(true);
             }
         });
         
@@ -268,10 +268,10 @@ export default function FilterBar({
         }
 
         if (displayLimit && displayLimit !== "10") {
-            const limitLabel = DISPLAY_LIMITS.find(l => l.value === displayLimit)?.label || displayLimit;
+            const limitLabel = DISPLAY_LIMITS.find(l => l.value === displayLimit)?.label || `Tampilkan: ${displayLimit}`;
             chips.push({
                 key: "limit",
-                label: `Tampilkan: ${limitLabel}`
+                label: limitLabel
             });
         }
 

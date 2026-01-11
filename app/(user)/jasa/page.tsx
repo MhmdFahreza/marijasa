@@ -27,8 +27,6 @@ import { PopupLoginModal } from "@/app/components/ui/popup-login-modal";
 
 const FilterBar = dynamic(() => import("@/app/components/ui/FilterBar"), { ssr: false });
 
-const ITEMS_PER_PAGE = 10;
-
 interface Category {
   category_id: string;
   slug: string;
@@ -302,33 +300,47 @@ export default function JasaPage() {
     return () => window.removeEventListener('favoriteToggled', handleFavoriteToggled as EventListener);
   }, []);
 
-  // Calculate display based on limit
-  const displayedVendors = useMemo(() => {
+  // Calculate items per page based on displayLimit
+  const itemsPerPage = useMemo(() => {
     if (displayLimit === 'all') {
-      return vendors;
+      return vendors.length || 1; // Show all vendors on one page
     }
-    const limit = parseInt(displayLimit);
-    return vendors.slice(0, limit);
-  }, [vendors, displayLimit]);
+    return parseInt(displayLimit) || 10;
+  }, [displayLimit, vendors.length]);
 
-  const totalPages = Math.max(1, Math.ceil(displayedVendors.length / ITEMS_PER_PAGE));
+  // Calculate total pages
+  const totalPages = useMemo(() => {
+    if (displayLimit === 'all') {
+      return 1; // Only one page when showing all
+    }
+    return Math.max(1, Math.ceil(vendors.length / itemsPerPage));
+  }, [vendors.length, itemsPerPage, displayLimit]);
 
   // Calculate current page vendors
   const { startIndex, endIndex, currentVendors } = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    const current = displayedVendors.slice(start, end);
+    if (displayLimit === 'all') {
+      // Show all vendors
+      return { 
+        startIndex: 0, 
+        endIndex: vendors.length, 
+        currentVendors: vendors 
+      };
+    }
+
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const current = vendors.slice(start, end);
     
     return { startIndex: start, endIndex: end, currentVendors: current };
-  }, [currentPage, displayedVendors]);
+  }, [currentPage, vendors, itemsPerPage, displayLimit]);
 
   // Auto-fix pagination if current page is out of bounds
   useEffect(() => {
-    if (displayedVendors.length > 0 && currentVendors.length === 0 && currentPage > 1) {
+    if (vendors.length > 0 && currentVendors.length === 0 && currentPage > 1) {
       console.log('[JasaPage] Current page out of bounds, resetting to page 1');
       setCurrentPage(1);
     }
-  }, [displayedVendors.length, currentVendors.length, currentPage]);
+  }, [vendors.length, currentVendors.length, currentPage]);
 
   const handleHomeClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -466,6 +478,21 @@ export default function JasaPage() {
     return `vendors-${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}-${renderKey}`;
   }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit, currentPage, renderKey]);
 
+  // Pagination info text
+  const paginationInfo = useMemo(() => {
+    if (vendors.length === 0) return "";
+    
+    if (displayLimit === 'all') {
+      return `Menampilkan semua ${vendors.length} vendor`;
+    }
+    
+    const start = startIndex + 1;
+    const end = Math.min(endIndex, vendors.length);
+    const limit = itemsPerPage;
+    
+    return `Menampilkan ${start}-${end} dari ${vendors.length} vendor (${limit} per halaman)`;
+  }, [vendors.length, displayLimit, startIndex, endIndex, itemsPerPage]);
+
   return (
     <>
       <motion.main
@@ -523,7 +550,7 @@ export default function JasaPage() {
               animate={{ opacity: isFilterLoading ? 0.5 : 1 }}
               transition={{ duration: 0.15 }}
             >
-              {displayedVendors.length === 0 ? (
+              {vendors.length === 0 ? (
                 <EmptyState
                   onResetFilters={handleResetFilters}
                   selectedCategory={selectedCategory}
@@ -565,7 +592,8 @@ export default function JasaPage() {
                     ))}
                   </motion.section>
 
-                  {totalPages > 1 && (
+                  {/* Show pagination only if displayLimit is not 'all' and totalPages > 1 */}
+                  {displayLimit !== 'all' && totalPages > 1 && (
                     <motion.div
                       className="mt-8 mb-6"
                       initial={{ opacity: 0 }}
@@ -588,10 +616,10 @@ export default function JasaPage() {
                     </motion.div>
                   )}
 
-                  {displayedVendors.length > 0 && (
+                  {/* Pagination info */}
+                  {vendors.length > 0 && (
                     <div className="mt-4 text-center text-sm text-muted-foreground">
-                      Menampilkan {currentVendors.length} dari {displayedVendors.length} vendor
-                      {vendors.length !== displayedVendors.length && ` (Total: ${vendors.length} vendor)`}
+                      {paginationInfo}
                     </div>
                   )}
                 </>
