@@ -1,4 +1,4 @@
-// app/api/vendors/route.ts
+// app/api/vendors/route.ts (FIXED - Consistent Review Count)
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
 
@@ -107,16 +107,13 @@ function containsKeyword(text: string, keyword: string, exact: boolean = false):
 // Extract search keywords from query
 function extractSearchKeywords(query: string): string[] {
   const normalized = normalizeString(query);
-  // Split by space and filter out common words
   const commonWords = ['di', 'dari', 'ke', 'untuk', 'yang', 'dan', 'atau', 'dengan', 'pada', 'oleh', 'daerah', 'area', 'wilayah', 'kota'];
   const words = normalized.split(' ').filter(word => 
     word.length > 2 && !commonWords.includes(word)
   );
   
-  // Also keep the full query as a keyword
   const keywords = [normalized, ...words];
-  
-  return [...new Set(keywords)]; // Remove duplicates
+  return [...new Set(keywords)];
 }
 
 // Calculate search relevance score
@@ -128,18 +125,14 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
   console.log(`[Search] Keywords extracted:`, keywords);
 
   for (const keyword of keywords) {
-    // 1. HIGHEST PRIORITY: Exact match in vendor name (100 points)
     if (vendor.name && containsKeyword(vendor.name, keyword, true)) {
       score += 100;
       console.log(`✅ [+100] Exact match in vendor name`);
-    }
-    // Partial match in vendor name (50 points)
-    else if (vendor.name && containsKeyword(vendor.name, keyword, false)) {
+    } else if (vendor.name && containsKeyword(vendor.name, keyword, false)) {
       score += 50;
       console.log(`✅ [+50] Partial match in vendor name`);
     }
 
-    // 2. HIGH PRIORITY: Match in tags (80 points each)
     if (vendor.tags && Array.isArray(vendor.tags)) {
       for (const tag of vendor.tags) {
         if (typeof tag === 'string' && tag.trim()) {
@@ -154,7 +147,6 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
       }
     }
 
-    // 3. HIGH PRIORITY: Match in specialties (70 points each)
     if (vendor.specialties && Array.isArray(vendor.specialties)) {
       for (const specialty of vendor.specialties) {
         if (typeof specialty === 'string' && specialty.trim()) {
@@ -169,7 +161,6 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
       }
     }
 
-    // 4. MEDIUM-HIGH PRIORITY: Match in service areas / location (60 points each)
     if (vendor.service_areas && Array.isArray(vendor.service_areas)) {
       for (const area of vendor.service_areas) {
         if (typeof area === 'string' && area.trim()) {
@@ -184,7 +175,6 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
       }
     }
 
-    // 5. MEDIUM PRIORITY: Match in service names (50 points each)
     if (vendor.services && Array.isArray(vendor.services)) {
       for (const service of vendor.services) {
         if (service.name) {
@@ -199,7 +189,6 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
       }
     }
 
-    // 6. LOWER PRIORITY: Match in description (20 points)
     if (vendor.description) {
       if (containsKeyword(vendor.description, keyword, true)) {
         score += 20;
@@ -210,7 +199,6 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
       }
     }
 
-    // 7. LOWER PRIORITY: Match in service descriptions (15 points each)
     if (vendor.services && Array.isArray(vendor.services)) {
       for (const service of vendor.services) {
         if (service.description && containsKeyword(service.description, keyword, false)) {
@@ -236,7 +224,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     return 0;
   }
 
-  // CRITICAL: Check for exclusion keywords first
   const allText = [
     vendor.name || '',
     vendor.description || '',
@@ -252,7 +239,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 1. HIGHEST PRIORITY: Direct category match (100 points)
   if (vendor.category && dbCategories.some(dbCat => 
     normalizeString(vendor.category) === normalizeString(dbCat)
   )) {
@@ -260,7 +246,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     console.log(`✅ [+100] "${vendor.name}" - exact category match: ${vendor.category}`);
   }
 
-  // 2. HIGH PRIORITY: Primary keywords in tags (50 points each)
   if (vendor.tags && Array.isArray(vendor.tags)) {
     for (const tag of vendor.tags) {
       if (typeof tag === 'string' && tag.trim()) {
@@ -274,7 +259,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 3. MEDIUM-HIGH PRIORITY: Primary keywords in specialties (40 points each)
   if (vendor.specialties && Array.isArray(vendor.specialties)) {
     for (const specialty of vendor.specialties) {
       if (typeof specialty === 'string' && specialty.trim()) {
@@ -288,7 +272,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 4. MEDIUM PRIORITY: Primary keywords in vendor name (30 points)
   if (vendor.name) {
     for (const keyword of keywords.primary) {
       if (containsKeyword(vendor.name, keyword, true)) {
@@ -298,7 +281,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 5. MEDIUM PRIORITY: Primary keywords in service names (25 points each)
   if (vendor.services && Array.isArray(vendor.services)) {
     for (const service of vendor.services) {
       if (service.name) {
@@ -312,7 +294,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 6. LOWER PRIORITY: Secondary keywords in tags (15 points each)
   if (vendor.tags && Array.isArray(vendor.tags)) {
     for (const tag of vendor.tags) {
       if (typeof tag === 'string' && tag.trim()) {
@@ -326,7 +307,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 7. LOWER PRIORITY: Secondary keywords in specialties (12 points each)
   if (vendor.specialties && Array.isArray(vendor.specialties)) {
     for (const specialty of vendor.specialties) {
       if (typeof specialty === 'string' && specialty.trim()) {
@@ -340,7 +320,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 8. LOWEST PRIORITY: Primary keywords in description (10 points)
   if (vendor.description) {
     for (const keyword of keywords.primary) {
       if (containsKeyword(vendor.description, keyword, false)) {
@@ -351,7 +330,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     }
   }
 
-  // 9. MINIMAL PRIORITY: Secondary keywords in description (5 points)
   if (vendor.description) {
     for (const keyword of keywords.secondary) {
       if (containsKeyword(vendor.description, keyword, false)) {
@@ -365,7 +343,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
   return score;
 }
 
-// Minimum score thresholds
 const MINIMUM_CATEGORY_SCORE = 25;
 const MINIMUM_SEARCH_SCORE = 20;
 
@@ -383,15 +360,12 @@ export async function GET(request: NextRequest) {
       status: 'ACTIVE',
     };
 
-    // Filter by city (service areas) - ONLY if NO search query
-    // Jika ada search query, city filtering dilakukan via search scoring
     if (city && !search) {
       where.service_areas = {
         has: city,
       };
     }
 
-    // Filter by rating
     if (rating && rating !== 'semuarating') {
       if (rating === '5') {
         where.rating = 5;
@@ -405,7 +379,7 @@ export async function GET(request: NextRequest) {
 
     console.log('[Vendors API] Fetching vendors from database...');
 
-    // Fetch ALL active vendors (we'll filter by search and category later)
+    // ✅ CRITICAL FIX: Include reviews relasi untuk count yang konsisten
     const vendors = await prisma.vendor.findMany({
       where,
       include: {
@@ -420,6 +394,12 @@ export async function GET(request: NextRequest) {
             created_at: 'asc',
           },
         },
+        // ✅ TAMBAHKAN: Include reviews untuk count yang akurat
+        reviews: {
+          select: {
+            review_id: true, // Minimal select untuk efisiensi
+          },
+        },
       },
       orderBy: {
         rating: 'desc',
@@ -430,7 +410,6 @@ export async function GET(request: NextRequest) {
 
     let filteredVendors = vendors;
 
-    // STEP 1: Apply SEARCH filter with intelligent scoring
     if (search && search.trim()) {
       console.log(`\n[Vendors API] 🔍 Applying search filter for: "${search}"`);
       
@@ -450,12 +429,8 @@ export async function GET(request: NextRequest) {
       console.log(`[Vendors API] ✨ Search filter result: ${filteredVendors.length} of ${vendors.length} vendors matched`);
     }
 
-    // STEP 2: Apply CATEGORY filter with intelligent scoring
     if (category) {
       console.log(`\n[Vendors API] 🎯 Applying category filter: "${category}"`);
-      console.log('[Vendors API] DB category values:', CATEGORY_DB_MAPPING[category]);
-      console.log('[Vendors API] Primary keywords:', CATEGORY_KEYWORDS[category]?.primary);
-      console.log('[Vendors API] Exclude keywords:', CATEGORY_KEYWORDS[category]?.exclude);
       
       const vendorsWithCategoryScores = filteredVendors.map(vendor => ({
         vendor,
@@ -473,9 +448,12 @@ export async function GET(request: NextRequest) {
       console.log(`[Vendors API] ✨ Category filter result: ${filteredVendors.length} vendors matched`);
     }
 
-    // Format response
     const formattedVendors = filteredVendors.map(vendor => {
       const activeServicesCount = vendor.services.filter(s => s.is_active === true).length;
+
+      // ✅ CRITICAL FIX: Gunakan reviews.length dari relasi, BUKAN review_count dari database
+      // Ini memastikan konsistensi dengan detail page
+      const actualReviewCount = vendor.reviews?.length || 0;
 
       return {
         id: vendor.vendor_id,
@@ -488,8 +466,9 @@ export async function GET(request: NextRequest) {
         verified: vendor.verified,
         status: vendor.status,
         rating: vendor.rating,
-        reviewCount: vendor.review_count,
-        review_count: vendor.review_count,
+        // ✅ GUNAKAN: actualReviewCount dari relasi
+        reviewCount: actualReviewCount,
+        review_count: actualReviewCount,
         serviceAreas: vendor.service_areas,
         service_areas: vendor.service_areas,
         specialties: vendor.specialties,

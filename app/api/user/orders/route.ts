@@ -1,8 +1,7 @@
-// app/api/user/orders/route.ts (UPDATED with notifications)
+// app/api/user/orders/route.ts (FIXED - Remove Manual review_count Update)
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 
-// Helper function to get user ID from session
 async function getUserIdFromSession(request: NextRequest): Promise<string | null> {
   const sessionId = request.cookies.get('session_id')?.value;
   const accessToken = request.cookies.get('access_token')?.value;
@@ -33,7 +32,6 @@ async function getUserIdFromSession(request: NextRequest): Promise<string | null
   return null;
 }
 
-// GET - Fetch all orders for the logged-in user
 export async function GET(request: NextRequest) {
   try {
     const userId = await getUserIdFromSession(request);
@@ -256,7 +254,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT - Update order (payment, cancellation, completion, rating)
 export async function PUT(request: NextRequest) {
   try {
     const userId = await getUserIdFromSession(request);
@@ -318,7 +315,6 @@ export async function PUT(request: NextRequest) {
           }
         });
 
-        // CREATE NOTIFICATION
         await prisma.userNotification.create({
           data: {
             user_id: userId,
@@ -361,7 +357,6 @@ export async function PUT(request: NextRequest) {
           }
         });
 
-        // CREATE NOTIFICATION
         await prisma.userNotification.create({
           data: {
             user_id: userId,
@@ -381,71 +376,120 @@ export async function PUT(request: NextRequest) {
       case 'complete': {
         const { rating, comment, photos, isAnonymous } = data;
 
-        const updateData: any = {
-          status: 'COMPLETED',
-          completed_at: new Date(),
-          order_history: {
-            create: {
-              status: 'Pekerjaan Selesai'
-            }
+        console.log(`[Complete Order] Starting completion for booking ${booking.booking_id}`);
+        console.log(`[Complete Order] Rating provided: ${rating}`);
+
+        const existingReview = await prisma.review.findUnique({
+          where: { booking_id: booking.booking_id }
+        });
+
+        if (existingReview) {
+          console.log(`[Complete Order] ⚠️ Review already exists, preventing duplicate`);
+          return NextResponse.json(
+            { error: 'Bad Request', message: 'Rating sudah pernah diberikan untuk pesanan ini' },
+            { status: 400 }
+          );
+        }
+
+        // ✅ CRITICAL FIX: Remove manual review_count update
+        // Let the database handle count through relations
+        const result = await prisma.$transaction(async (tx) => {
+          const updateData: any = {
+            status: 'COMPLETED',
+            completed_at: new Date(),
+          };
+
+          if (rating && rating > 0) {
+            updateData.rating = rating;
+            updateData.rating_comment = comment || null;
+            updateData.rating_photos = photos || [];
+            updateData.is_anonymous = isAnonymous || false;
+            updateData.rated_at = new Date();
           }
-        };
 
-        if (rating && rating > 0) {
-          updateData.rating = rating;
-          updateData.rating_comment = comment;
-          updateData.rating_photos = photos || [];
-          updateData.is_anonymous = isAnonymous || false;
-          updateData.rated_at = new Date();
+          const updatedBooking = await tx.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: updateData
+          });
 
-          await prisma.review.create({
+          await tx.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
-              user_id: userId,
-              vendor_id: booking.vendor_id,
-              rating: rating,
-              comment: comment
+              status: 'Pekerjaan Selesai',
+              reason: null
             }
           });
 
-          const vendor = await prisma.vendor.findUnique({
-            where: { vendor_id: booking.vendor_id }
-          });
+          if (rating && rating > 0) {
+            console.log(`[Complete Order] Creating review with rating ${rating}`);
 
-          if (vendor) {
-            const newReviewCount = vendor.review_count + 1;
-            const newRating = ((vendor.rating * vendor.review_count) + rating) / newReviewCount;
-
-            await prisma.vendor.update({
-              where: { vendor_id: booking.vendor_id },
+            await tx.review.create({
               data: {
-                rating: newRating,
-                review_count: newReviewCount
+                booking_id: booking.booking_id,
+                user_id: userId,
+                vendor_id: booking.vendor_id,
+                rating: rating,
+                comment: comment || null
+              }
+            });
+
+            console.log(`[Complete Order] Review created successfully`);
+
+            // ✅ CRITICAL FIX: Hanya update average rating, TIDAK update review_count
+            // review_count akan dihitung otomatis dari relasi
+            const allReviews = await tx.review.findMany({
+              where: { vendor_id: booking.vendor_id },
+              select: { rating: true }
+            });
+
+            if (allReviews.length > 0) {
+              const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
+              const newAverageRating = totalRating / allReviews.length;
+
+              console.log(`[Complete Order] Vendor ${booking.vendor_id} rating update:`);
+              console.log(`  - Total reviews: ${allReviews.length}`);
+              console.log(`  - New average: ${newAverageRating}`);
+
+              // ✅ HANYA UPDATE RATING, TIDAK UPDATE review_count
+              await tx.vendor.update({
+                where: { vendor_id: booking.vendor_id },
+                data: {
+                  rating: newAverageRating,
+                  // ❌ REMOVED: review_count: allReviews.length
+                  // Biarkan field ini untuk backward compatibility tapi tidak di-update
+                }
+              });
+
+              console.log(`[Complete Order] ✅ Vendor rating updated successfully`);
+            }
+
+            await tx.bookingHistory.create({
+              data: {
+                booking_id: booking.booking_id,
+                status: 'Rating dan Ulasan Diberikan',
+                reason: null
               }
             });
           }
 
-          updateData.order_history.create = [
-            { status: 'Pekerjaan Selesai' },
-            { status: 'Rating dan Ulasan Diberikan' }
-          ];
+          return updatedBooking;
+        });
+
+        console.log(`[Complete Order] ✅ Transaction completed successfully`);
+
+        try {
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: 'Pesanan Selesai',
+              message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
+              type: 'completion',
+              order_id: booking.booking_id
+            }
+          });
+        } catch (notifError) {
+          console.error('[Complete Order] Error creating notification:', notifError);
         }
-
-        await prisma.booking.update({
-          where: { booking_id: booking.booking_id },
-          data: updateData
-        });
-
-        // CREATE NOTIFICATION
-        await prisma.userNotification.create({
-          data: {
-            user_id: userId,
-            title: 'Pesanan Selesai',
-            message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
-            type: 'completion',
-            order_id: booking.booking_id
-          }
-        });
 
         return NextResponse.json({
           success: true,

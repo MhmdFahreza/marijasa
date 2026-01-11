@@ -1,4 +1,4 @@
-// app/api/vendors/[id]/route.ts
+// app/api/vendors/[id]/route.ts (FIXED - Consistent Review Count)
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
 
@@ -37,8 +37,6 @@ export async function GET(
             created_at: 'desc',
           },
         },
-        // PERBAIKAN: Ambil SEMUA services, tidak filter di query
-        // Filter dilakukan di frontend berdasarkan is_active
         services: {
           orderBy: {
             created_at: 'asc',
@@ -56,17 +54,14 @@ export async function GET(
     }
 
     console.log('[Vendor Detail API] Services found:', vendor.services?.length || 0);
-    console.log('[Vendor Detail API] Services detail:', vendor.services?.map(s => ({
-      id: s.service_id,
-      name: s.name,
-      is_active: s.is_active,
-      is_active_type: typeof s.is_active
-    })));
+    console.log('[Vendor Detail API] Reviews found:', vendor.reviews?.length || 0);
 
-    // Format the response dengan normalisasi yang konsisten
+    // ✅ CRITICAL FIX: Gunakan reviews.length dari relasi untuk konsistensi
+    const actualReviewCount = vendor.reviews?.length || 0;
+
     const formattedVendor = {
       id: vendor.vendor_id,
-      vendor_id: vendor.vendor_id, // Tambahkan untuk backward compatibility
+      vendor_id: vendor.vendor_id,
       name: vendor.name,
       email: vendor.email,
       phone: vendor.phone,
@@ -75,10 +70,11 @@ export async function GET(
       verified: vendor.verified,
       status: vendor.status,
       rating: vendor.rating,
-      reviewCount: vendor.review_count,
-      review_count: vendor.review_count, // Backward compatibility
+      // ✅ GUNAKAN: actualReviewCount dari relasi, BUKAN vendor.review_count
+      reviewCount: actualReviewCount,
+      review_count: actualReviewCount,
       serviceAreas: vendor.service_areas,
-      service_areas: vendor.service_areas, // Backward compatibility
+      service_areas: vendor.service_areas,
       specialties: vendor.specialties,
       tags: vendor.tags,
       category: vendor.category,
@@ -87,21 +83,18 @@ export async function GET(
         src: img.image_url,
         alt: img.caption || vendor.name,
       })),
-      // PERBAIKAN: Return semua services dengan format yang konsisten
-      // Pastikan is_active adalah boolean
       services: vendor.services.map(service => ({
         id: service.service_id,
-        service_id: service.service_id, // Backward compatibility
+        service_id: service.service_id,
         name: service.name,
         description: service.description,
         price: service.price,
         priceType: service.price_type,
-        price_type: service.price_type, // Backward compatibility
+        price_type: service.price_type,
         estimatedTime: service.estimated_time,
-        estimated_time: service.estimated_time, // Backward compatibility
-        // CRITICAL: Pastikan is_active adalah boolean true/false
+        estimated_time: service.estimated_time,
         isActive: service.is_active === true,
-        is_active: service.is_active === true, // Backward compatibility
+        is_active: service.is_active === true,
       })),
       reviews: vendor.reviews.map(review => ({
         id: review.review_id,
@@ -113,11 +106,12 @@ export async function GET(
         date: review.created_at.toISOString(),
       })),
       joinDate: vendor.join_date,
-      join_date: vendor.join_date, // Backward compatibility
+      join_date: vendor.join_date,
     };
 
     console.log('[Vendor Detail API] Formatted services:', formattedVendor.services.length);
     console.log('[Vendor Detail API] Active services:', formattedVendor.services.filter(s => s.isActive).length);
+    console.log('[Vendor Detail API] ✅ Review count:', actualReviewCount);
 
     return NextResponse.json(
       {
