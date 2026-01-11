@@ -17,9 +17,9 @@ const CATEGORY_DB_MAPPING: Record<string, string[]> = {
 
 // Keywords untuk matching - LEBIH SPESIFIK dan terstruktur
 const CATEGORY_KEYWORDS: Record<string, {
-  primary: string[];      // Kata kunci utama - paling penting
-  secondary: string[];    // Kata kunci pendukung
-  exclude: string[];      // Kata yang HARUS TIDAK ADA (anti-pattern)
+  primary: string[];
+  secondary: string[];
+  exclude: string[];
 }> = {
   'ac': {
     primary: ['ac', 'air conditioner', 'pendingin udara'],
@@ -71,13 +71,13 @@ const CATEGORY_KEYWORDS: Record<string, {
       'poles lantai'
     ],
     exclude: [
-      'cuci ac',       // Ini kategori AC
-      'cuci sofa',     // Ini lebih ke furniture cleaning
-      'sedot',         // Ini kategori sedot WC
-      'septic',        // Ini kategori sedot WC
-      'taman',         // Ini kategori kebun
-      'listrik',       // Ini kategori listrik
-      'pipa'           // Ini kategori ledeng
+      'cuci ac',
+      'cuci sofa',
+      'sedot',
+      'septic',
+      'taman',
+      'listrik',
+      'pipa'
     ]
   },
 };
@@ -88,7 +88,7 @@ function normalizeString(str: string): string {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/[^\w\s]/g, ''); // Remove special characters
+    .replace(/[^\w\s]/g, '');
 }
 
 // Check if text contains keyword with exact/partial matching
@@ -97,16 +97,135 @@ function containsKeyword(text: string, keyword: string, exact: boolean = false):
   const normalizedKeyword = normalizeString(keyword);
   
   if (exact) {
-    // Exact match: keyword must be standalone word(s)
     const regex = new RegExp(`\\b${normalizedKeyword}\\b`, 'i');
     return regex.test(normalizedText);
   } else {
-    // Partial match
     return normalizedText.includes(normalizedKeyword);
   }
 }
 
-// Calculate match score for a vendor
+// Extract search keywords from query
+function extractSearchKeywords(query: string): string[] {
+  const normalized = normalizeString(query);
+  // Split by space and filter out common words
+  const commonWords = ['di', 'dari', 'ke', 'untuk', 'yang', 'dan', 'atau', 'dengan', 'pada', 'oleh', 'daerah', 'area', 'wilayah', 'kota'];
+  const words = normalized.split(' ').filter(word => 
+    word.length > 2 && !commonWords.includes(word)
+  );
+  
+  // Also keep the full query as a keyword
+  const keywords = [normalized, ...words];
+  
+  return [...new Set(keywords)]; // Remove duplicates
+}
+
+// Calculate search relevance score
+function calculateSearchScore(vendor: any, searchQuery: string): number {
+  let score = 0;
+  const keywords = extractSearchKeywords(searchQuery);
+  
+  console.log(`\n[Search] Scoring "${vendor.name}" for query: "${searchQuery}"`);
+  console.log(`[Search] Keywords extracted:`, keywords);
+
+  for (const keyword of keywords) {
+    // 1. HIGHEST PRIORITY: Exact match in vendor name (100 points)
+    if (vendor.name && containsKeyword(vendor.name, keyword, true)) {
+      score += 100;
+      console.log(`✅ [+100] Exact match in vendor name`);
+    }
+    // Partial match in vendor name (50 points)
+    else if (vendor.name && containsKeyword(vendor.name, keyword, false)) {
+      score += 50;
+      console.log(`✅ [+50] Partial match in vendor name`);
+    }
+
+    // 2. HIGH PRIORITY: Match in tags (80 points each)
+    if (vendor.tags && Array.isArray(vendor.tags)) {
+      for (const tag of vendor.tags) {
+        if (typeof tag === 'string' && tag.trim()) {
+          if (containsKeyword(tag, keyword, true)) {
+            score += 80;
+            console.log(`✅ [+80] Exact match in tag: "${tag}"`);
+          } else if (containsKeyword(tag, keyword, false)) {
+            score += 40;
+            console.log(`✅ [+40] Partial match in tag: "${tag}"`);
+          }
+        }
+      }
+    }
+
+    // 3. HIGH PRIORITY: Match in specialties (70 points each)
+    if (vendor.specialties && Array.isArray(vendor.specialties)) {
+      for (const specialty of vendor.specialties) {
+        if (typeof specialty === 'string' && specialty.trim()) {
+          if (containsKeyword(specialty, keyword, true)) {
+            score += 70;
+            console.log(`✅ [+70] Exact match in specialty: "${specialty}"`);
+          } else if (containsKeyword(specialty, keyword, false)) {
+            score += 35;
+            console.log(`✅ [+35] Partial match in specialty: "${specialty}"`);
+          }
+        }
+      }
+    }
+
+    // 4. MEDIUM-HIGH PRIORITY: Match in service areas / location (60 points each)
+    if (vendor.service_areas && Array.isArray(vendor.service_areas)) {
+      for (const area of vendor.service_areas) {
+        if (typeof area === 'string' && area.trim()) {
+          if (containsKeyword(area, keyword, true)) {
+            score += 60;
+            console.log(`✅ [+60] Exact match in service area: "${area}"`);
+          } else if (containsKeyword(area, keyword, false)) {
+            score += 30;
+            console.log(`✅ [+30] Partial match in service area: "${area}"`);
+          }
+        }
+      }
+    }
+
+    // 5. MEDIUM PRIORITY: Match in service names (50 points each)
+    if (vendor.services && Array.isArray(vendor.services)) {
+      for (const service of vendor.services) {
+        if (service.name) {
+          if (containsKeyword(service.name, keyword, true)) {
+            score += 50;
+            console.log(`✅ [+50] Exact match in service name: "${service.name}"`);
+          } else if (containsKeyword(service.name, keyword, false)) {
+            score += 25;
+            console.log(`✅ [+25] Partial match in service name: "${service.name}"`);
+          }
+        }
+      }
+    }
+
+    // 6. LOWER PRIORITY: Match in description (20 points)
+    if (vendor.description) {
+      if (containsKeyword(vendor.description, keyword, true)) {
+        score += 20;
+        console.log(`✅ [+20] Exact match in description`);
+      } else if (containsKeyword(vendor.description, keyword, false)) {
+        score += 10;
+        console.log(`✅ [+10] Partial match in description`);
+      }
+    }
+
+    // 7. LOWER PRIORITY: Match in service descriptions (15 points each)
+    if (vendor.services && Array.isArray(vendor.services)) {
+      for (const service of vendor.services) {
+        if (service.description && containsKeyword(service.description, keyword, false)) {
+          score += 15;
+          console.log(`✅ [+15] Match in service description`);
+        }
+      }
+    }
+  }
+
+  console.log(`[Search] Final score for "${vendor.name}": ${score}`);
+  return score;
+}
+
+// Calculate match score for category filter
 function calculateMatchScore(vendor: any, categorySlug: string): number {
   let score = 0;
   const keywords = CATEGORY_KEYWORDS[categorySlug];
@@ -129,7 +248,7 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
   for (const excludeKeyword of keywords.exclude) {
     if (containsKeyword(allText, excludeKeyword, true)) {
       console.log(`❌ [Exclude] "${vendor.name}" - contains excluded keyword: "${excludeKeyword}"`);
-      return -1000; // Negative score = exclude completely
+      return -1000;
     }
   }
 
@@ -227,7 +346,7 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
       if (containsKeyword(vendor.description, keyword, false)) {
         score += 10;
         console.log(`✅ [+10] "${vendor.name}" - primary keyword in description`);
-        break; // Only count once for description
+        break;
       }
     }
   }
@@ -238,7 +357,7 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
       if (containsKeyword(vendor.description, keyword, false)) {
         score += 5;
         console.log(`✅ [+5] "${vendor.name}" - secondary keyword in description`);
-        break; // Only count once for description
+        break;
       }
     }
   }
@@ -246,8 +365,9 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
   return score;
 }
 
-// Minimum score threshold to be considered a match
-const MINIMUM_MATCH_SCORE = 25; // Must have at least one strong indicator
+// Minimum score thresholds
+const MINIMUM_CATEGORY_SCORE = 25;
+const MINIMUM_SEARCH_SCORE = 20;
 
 export async function GET(request: NextRequest) {
   try {
@@ -263,8 +383,9 @@ export async function GET(request: NextRequest) {
       status: 'ACTIVE',
     };
 
-    // Filter by city (service areas)
-    if (city) {
+    // Filter by city (service areas) - ONLY if NO search query
+    // Jika ada search query, city filtering dilakukan via search scoring
+    if (city && !search) {
       where.service_areas = {
         has: city,
       };
@@ -282,54 +403,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Search functionality
-    if (search && search.trim()) {
-      const searchTerm = search.trim();
-      
-      where.OR = [
-        {
-          name: {
-            contains: searchTerm,
-            mode: 'insensitive',
-          },
-        },
-        {
-          description: {
-            contains: searchTerm,
-            mode: 'insensitive',
-          },
-        },
-        {
-          service_areas: {
-            hasSome: [searchTerm],
-          },
-        },
-        {
-          services: {
-            some: {
-              name: {
-                contains: searchTerm,
-                mode: 'insensitive',
-              },
-            },
-          },
-        },
-        {
-          services: {
-            some: {
-              description: {
-                contains: searchTerm,
-                mode: 'insensitive',
-              },
-            },
-          },
-        },
-      ];
-    }
-
     console.log('[Vendors API] Fetching vendors from database...');
 
-    // Fetch all vendors matching basic filters
+    // Fetch ALL active vendors (we'll filter by search and category later)
     const vendors = await prisma.vendor.findMany({
       where,
       include: {
@@ -350,36 +426,51 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log('[Vendors API] Total vendors before category filter:', vendors.length);
+    console.log('[Vendors API] Total vendors from database:', vendors.length);
 
-    // Apply category filter with intelligent scoring
     let filteredVendors = vendors;
-    if (category) {
-      console.log(`\n[Vendors API] 🎯 Filtering by category: "${category}"`);
-      console.log('[Vendors API] DB category values:', CATEGORY_DB_MAPPING[category]);
-      console.log('[Vendors API] Primary keywords:', CATEGORY_KEYWORDS[category]?.primary);
-      console.log('[Vendors API] Exclude keywords:', CATEGORY_KEYWORDS[category]?.exclude);
-      console.log('[Vendors API] Starting scoring...\n');
+
+    // STEP 1: Apply SEARCH filter with intelligent scoring
+    if (search && search.trim()) {
+      console.log(`\n[Vendors API] 🔍 Applying search filter for: "${search}"`);
       
-      // Calculate scores for all vendors
-      const vendorsWithScores = vendors.map(vendor => ({
+      const vendorsWithSearchScores = vendors.map(vendor => ({
         vendor,
-        score: calculateMatchScore(vendor, category)
+        searchScore: calculateSearchScore(vendor, search)
       }));
 
-      // Filter vendors with score >= minimum threshold
-      filteredVendors = vendorsWithScores
-        .filter(({ score }) => {
-          const matches = score >= MINIMUM_MATCH_SCORE;
-          return matches;
-        })
-        .sort((a, b) => b.score - a.score) // Sort by score descending
-        .map(({ vendor, score }) => {
-          console.log(`\n✅ [MATCHED] "${vendor.name}" - Final Score: ${score}`);
+      filteredVendors = vendorsWithSearchScores
+        .filter(({ searchScore }) => searchScore >= MINIMUM_SEARCH_SCORE)
+        .sort((a, b) => b.searchScore - a.searchScore)
+        .map(({ vendor, searchScore }) => {
+          console.log(`✅ [SEARCH MATCH] "${vendor.name}" - Search Score: ${searchScore}`);
           return vendor;
         });
       
-      console.log(`\n[Vendors API] ✨ Category filter result: ${filteredVendors.length} of ${vendors.length} vendors matched (min score: ${MINIMUM_MATCH_SCORE})\n`);
+      console.log(`[Vendors API] ✨ Search filter result: ${filteredVendors.length} of ${vendors.length} vendors matched`);
+    }
+
+    // STEP 2: Apply CATEGORY filter with intelligent scoring
+    if (category) {
+      console.log(`\n[Vendors API] 🎯 Applying category filter: "${category}"`);
+      console.log('[Vendors API] DB category values:', CATEGORY_DB_MAPPING[category]);
+      console.log('[Vendors API] Primary keywords:', CATEGORY_KEYWORDS[category]?.primary);
+      console.log('[Vendors API] Exclude keywords:', CATEGORY_KEYWORDS[category]?.exclude);
+      
+      const vendorsWithCategoryScores = filteredVendors.map(vendor => ({
+        vendor,
+        categoryScore: calculateMatchScore(vendor, category)
+      }));
+
+      filteredVendors = vendorsWithCategoryScores
+        .filter(({ categoryScore }) => categoryScore >= MINIMUM_CATEGORY_SCORE)
+        .sort((a, b) => b.categoryScore - a.categoryScore)
+        .map(({ vendor, categoryScore }) => {
+          console.log(`✅ [CATEGORY MATCH] "${vendor.name}" - Category Score: ${categoryScore}`);
+          return vendor;
+        });
+      
+      console.log(`[Vendors API] ✨ Category filter result: ${filteredVendors.length} vendors matched`);
     }
 
     // Format response
