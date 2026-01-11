@@ -1,8 +1,61 @@
-// app/api/vendors/[id]/route.ts (FIXED - Consistent Review Count)
+// app/api/vendors/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
+
+// Parse review metadata helper
+function parseReviewComment(comment: string | null) {
+  if (!comment) return { mainComment: '', photos: [], response: undefined, isAnonymous: false }
+
+  let mainComment = comment
+  let photos: string[] = []
+  let response: { vendorReply: string; replyDate: string } | undefined
+  let isAnonymous = false
+
+  try {
+    if (comment.includes('|PHOTOS|')) {
+      const parts = comment.split('|PHOTOS|')
+      mainComment = parts[0]
+      
+      if (parts[1]) {
+        const photoStr = parts[1].split('|RESPONSE|')[0].split('|LIKES|')[0].split('|ANONYMOUS|')[0]
+        photos = JSON.parse(photoStr)
+      }
+    }
+
+    if (comment.includes('|RESPONSE|')) {
+      const responsePart = comment.split('|RESPONSE|')[1]
+      if (responsePart) {
+        const responseStr = responsePart.split('|LIKES|')[0].split('|ANONYMOUS|')[0]
+        const responseData = JSON.parse(responseStr)
+        
+        response = {
+          vendorReply: responseData.reply,
+          replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })
+        }
+      }
+    }
+
+    if (comment.includes('|ANONYMOUS|')) {
+      isAnonymous = true
+    }
+
+  } catch (error) {
+    console.error('[Vendor Detail] Error parsing review metadata:', error)
+  }
+
+  return {
+    mainComment: mainComment.split('|')[0],
+    photos,
+    response,
+    isAnonymous
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -56,7 +109,6 @@ export async function GET(
     console.log('[Vendor Detail API] Services found:', vendor.services?.length || 0);
     console.log('[Vendor Detail API] Reviews found:', vendor.reviews?.length || 0);
 
-    // ✅ CRITICAL FIX: Gunakan reviews.length dari relasi untuk konsistensi
     const actualReviewCount = vendor.reviews?.length || 0;
 
     const formattedVendor = {
@@ -70,7 +122,6 @@ export async function GET(
       verified: vendor.verified,
       status: vendor.status,
       rating: vendor.rating,
-      // ✅ GUNAKAN: actualReviewCount dari relasi, BUKAN vendor.review_count
       reviewCount: actualReviewCount,
       review_count: actualReviewCount,
       serviceAreas: vendor.service_areas,
@@ -96,22 +147,27 @@ export async function GET(
         isActive: service.is_active === true,
         is_active: service.is_active === true,
       })),
-      reviews: vendor.reviews.map(review => ({
-        id: review.review_id,
-        userName: review.user.name,
-        userEmail: review.user.email,
-        userAvatar: review.user.avatar,
-        rating: review.rating,
-        comment: review.comment,
-        date: review.created_at.toISOString(),
-      })),
+      reviews: vendor.reviews.map(review => {
+        const metadata = parseReviewComment(review.comment)
+        
+        return {
+          id: review.review_id,
+          userName: metadata.isAnonymous ? 'Anonymous' : review.user.name,
+          userEmail: review.user.email,
+          userAvatar: metadata.isAnonymous ? null : review.user.avatar,
+          rating: review.rating,
+          comment: metadata.mainComment,
+          photos: metadata.photos,
+          response: metadata.response,
+          isAnonymous: metadata.isAnonymous,
+          date: review.created_at.toISOString(),
+        }
+      }),
       joinDate: vendor.join_date,
       join_date: vendor.join_date,
     };
 
-    console.log('[Vendor Detail API] Formatted services:', formattedVendor.services.length);
-    console.log('[Vendor Detail API] Active services:', formattedVendor.services.filter(s => s.isActive).length);
-    console.log('[Vendor Detail API] ✅ Review count:', actualReviewCount);
+    console.log('[Vendor Detail API] Success - Review count:', actualReviewCount);
 
     return NextResponse.json(
       {

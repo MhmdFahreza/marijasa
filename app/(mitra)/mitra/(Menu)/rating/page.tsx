@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Star,
@@ -11,14 +11,42 @@ import {
   MessageCircle,
   ThumbsUp,
   Eye,
-  X as CloseIcon,
+  X,
   Send,
 } from 'lucide-react'
-import { RatingStars } from '@/app/components/ui/rating-stars'
-import { useSession } from 'next-auth/react'
 
-// Type untuk Review
 type Review = {
+  review_id: string
+  booking_id: string
+  user_id: string
+  vendor_id: string
+  rating: number
+  comment: string | null
+  created_at: Date
+  updated_at: Date
+  booking: {
+    booking_number: string
+    scheduled_date: Date
+    notes: string | null
+    items: Array<{
+      service: {
+        name: string
+      }
+    }>
+    user: {
+      name: string
+      email: string
+      avatar: string | null
+    }
+  }
+  user: {
+    name: string
+    email: string
+    avatar: string | null
+  }
+}
+
+type FormattedReview = {
   id: string
   booking_id: string
   user_id: string
@@ -39,77 +67,116 @@ type Review = {
   helpfulCount: number
   mitraLikes?: string[]
   isAnonymous?: boolean
-  created_at: Date
-  booking: {
-    booking_number: string
-    scheduled_date: Date
-    notes?: string | null
-    booking_items: {
-      service: {
-        name: string
-      }
-    }[]
-  }
-  user: {
-    name: string
-    email: string
-    avatar?: string | null
-  }
 }
 
-// Type untuk Vendor Response
-type VendorResponse = {
-  vendorReply: string
-  replyDate: string
-}
+const RatingStars = ({ value, size = 'md' }: { value: number; size?: 'sm' | 'md' | 'lg' }) => {
+  const sizeClasses = {
+    sm: 'h-3 w-3',
+    md: 'h-4 w-4',
+    lg: 'h-5 w-5'
+  }
 
-// Type untuk API Response
-type ApiReview = {
-  review_id: string
-  booking_id: string
-  user_id: string
-  vendor_id: string
-  rating: number
-  comment: string | null
-  created_at: Date
-  updated_at: Date
-  booking: {
-    booking_number: string
-    scheduled_date: Date
-    notes: string | null
-    booking_items: Array<{
-      service: {
-        name: string
-      }
-    }>
-    user: {
-      name: string
-      email: string
-      avatar: string | null
-    }
-  }
-  user: {
-    name: string
-    email: string
-    avatar: string | null
-  }
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`${sizeClasses[size]} ${
+            star <= value ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+          }`}
+        />
+      ))}
+    </div>
+  )
 }
 
 export default function UlasanPage() {
   const [filter, setFilter] = useState('semua')
   const [sortBy, setSortBy] = useState('terbaru')
   const [expandedReviews, setExpandedReviews] = useState<string[]>([])
-  const [reviews, setReviews] = useState<Review[]>([])
+  const [reviews, setReviews] = useState<FormattedReview[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [vendorId, setVendorId] = useState<string>('')
   const [vendorName, setVendorName] = useState<string>('')
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState<string>('')
-  const [likedReviews, setLikedReviews] = useState<string[]>([])
-  const { data: session } = useSession()
 
-  // Format tanggal
+  const parseReviewMetadata = (comment: string | null) => {
+    if (!comment) {
+      return {
+        mainComment: '',
+        photos: [],
+        response: undefined,
+        helpfulCount: 0,
+        mitraLikes: [],
+        isAnonymous: false
+      }
+    }
+
+    let mainComment = comment
+    let photos: string[] = []
+    let response: { vendorReply: string; replyDate: string } | undefined
+    let helpfulCount = 0
+    let mitraLikes: string[] = []
+    let isAnonymous = false
+
+    try {
+      if (comment.includes('|PHOTOS|')) {
+        const parts = comment.split('|PHOTOS|')
+        mainComment = parts[0]
+        
+        if (parts[1]) {
+          const photoStr = parts[1].split('|RESPONSE|')[0].split('|LIKES|')[0].split('|ANONYMOUS|')[0]
+          photos = JSON.parse(photoStr)
+        }
+      }
+
+      if (comment.includes('|RESPONSE|')) {
+        const responsePart = comment.split('|RESPONSE|')[1]
+        if (responsePart) {
+          const responseStr = responsePart.split('|LIKES|')[0].split('|ANONYMOUS|')[0]
+          const responseData = JSON.parse(responseStr)
+          
+          response = {
+            vendorReply: responseData.reply,
+            replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })
+          }
+        }
+      }
+
+      if (comment.includes('|LIKES|')) {
+        const likesPart = comment.split('|LIKES|')[1]
+        if (likesPart) {
+          const likesStr = likesPart.split('|ANONYMOUS|')[0]
+          const likesData = JSON.parse(likesStr)
+          helpfulCount = likesData.count || 0
+          mitraLikes = likesData.mitraLikes || []
+        }
+      }
+
+      if (comment.includes('|ANONYMOUS|')) {
+        isAnonymous = true
+      }
+
+    } catch (error) {
+      console.error('[Reviews] Error parsing metadata:', error)
+    }
+
+    return {
+      mainComment,
+      photos,
+      response,
+      helpfulCount,
+      mitraLikes,
+      isAnonymous
+    }
+  }
+
   const formatReviewDate = (date: Date): { dateString: string; timestamp: number } => {
     try {
       const dateObj = new Date(date)
@@ -135,7 +202,7 @@ export default function UlasanPage() {
         timestamp: dateObj.getTime()
       }
     } catch (error) {
-      console.error('Error formatting date:', error)
+      console.error('[Reviews] Error formatting date:', error)
       const now = new Date()
       return {
         dateString: now.toLocaleDateString('id-ID', {
@@ -148,120 +215,102 @@ export default function UlasanPage() {
     }
   }
 
-  // Load vendor info dan reviews dari database
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Ambil data vendor yang sedang login dari session atau localStorage (fallback)
-        const mitraUser = session?.user || JSON.parse(localStorage.getItem('mitraUser') || '{}')
-        
-        if (!mitraUser || !mitraUser.id) {
-          setIsLoading(false)
-          return
-        }
+  const loadReviews = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      
+      console.log('[Reviews] Loading vendor info...')
 
-        setVendorId(mitraUser.id)
-        setVendorName(mitraUser.name || '')
+      const meResponse = await fetch('/api/mitra/me', {
+        credentials: 'include',
+      })
 
-        // Fetch reviews dari API
-        const response = await fetch(`/api/mitra/reviews?vendorId=${mitraUser.id}`)
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch reviews')
-        }
-
-        const data: ApiReview[] = await response.json()
-
-        // Transform data ke format Review
-        const vendorReviews: Review[] = data.map((review) => {
-          const { dateString, timestamp } = formatReviewDate(review.created_at)
-          
-          // Ambil service type dari booking items
-          const serviceType = review.booking.booking_items[0]?.service?.name || 'Layanan'
-          
-          // Parse metadata dari notes atau comment (jika ada foto)
-          const comment = review.comment || ''
-          let photos: string[] = []
-          let response: VendorResponse | undefined
-          let helpfulCount = 0
-          let mitraLikes: string[] = []
-          let isAnonymous = false
-
-          try {
-            // Coba parse metadata dari comment atau notes
-            if (comment.includes('|PHOTOS|')) {
-              const parts = comment.split('|PHOTOS|')
-              const mainComment = parts[0]
-              const photosData = parts[1] ? JSON.parse(parts[1]) : []
-              photos = photosData
-            }
-            
-            if (comment.includes('|RESPONSE|')) {
-              const parts = comment.split('|RESPONSE|')
-              const responseData = parts[1] ? JSON.parse(parts[1]) : null
-              if (responseData) {
-                response = {
-                  vendorReply: responseData.reply,
-                  replyDate: new Date(responseData.date).toLocaleDateString('id-ID', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })
-                }
-              }
-            }
-
-            // Parse likes dari comment metadata
-            if (comment.includes('|LIKES|')) {
-              const parts = comment.split('|LIKES|')
-              const likesData = parts[1] ? JSON.parse(parts[1]) : { count: 0, mitraLikes: [] }
-              helpfulCount = likesData.count || 0
-              mitraLikes = likesData.mitraLikes || []
-            }
-
-            // Check anonymous
-            isAnonymous = comment.includes('|ANONYMOUS|')
-          } catch (error) {
-            console.error('Error parsing review metadata:', error)
-          }
-
-          return {
-            id: review.review_id,
-            booking_id: review.booking_id,
-            user_id: review.user_id,
-            vendor_id: review.vendor_id,
-            userName: review.user.name,
-            userEmail: review.user.email,
-            userAvatar: review.user.avatar || undefined,
-            rating: review.rating,
-            comment: comment.split('|')[0], // Ambil hanya komentar utama
-            serviceType,
-            date: dateString,
-            dateTimestamp: timestamp,
-            photos,
-            response,
-            helpfulCount,
-            mitraLikes,
-            isAnonymous,
-            created_at: review.created_at,
-            booking: review.booking,
-            user: review.user
-          }
-        })
-
-        setReviews(vendorReviews)
-      } catch (error) {
-        console.error('Error loading reviews:', error)
-        setReviews([])
-      } finally {
+      if (!meResponse.ok) {
+        console.error('[Reviews] Failed to get vendor info:', meResponse.status)
         setIsLoading(false)
+        return
       }
+
+      const meData = await meResponse.json()
+      
+      if (!meData.authenticated || !meData.vendor) {
+        console.error('[Reviews] Not authenticated')
+        setIsLoading(false)
+        return
+      }
+
+      const currentVendorId = meData.vendor.id
+      setVendorId(currentVendorId)
+      setVendorName(meData.vendor.name || '')
+
+      console.log('[Reviews] Vendor info loaded:', {
+        id: currentVendorId,
+        name: meData.vendor.name
+      })
+
+      console.log('[Reviews] Fetching reviews...')
+      const reviewsResponse = await fetch('/api/mitra/reviews', {
+        credentials: 'include',
+      })
+      
+      if (!reviewsResponse.ok) {
+        throw new Error('Failed to fetch reviews')
+      }
+
+      const data: Review[] = await reviewsResponse.json()
+      console.log('[Reviews] Fetched', data.length, 'reviews')
+
+      const formattedReviews: FormattedReview[] = data.map((review) => {
+        const { dateString, timestamp } = formatReviewDate(review.created_at)
+        const serviceType = review.booking.items[0]?.service?.name || 'Layanan'
+        const metadata = parseReviewMetadata(review.comment)
+        
+        return {
+          id: review.review_id,
+          booking_id: review.booking_id,
+          user_id: review.user_id,
+          vendor_id: review.vendor_id,
+          userName: metadata.isAnonymous ? 'Anonymous' : review.user.name,
+          userEmail: review.user.email,
+          userAvatar: metadata.isAnonymous ? undefined : (review.user.avatar || undefined),
+          rating: review.rating,
+          comment: metadata.mainComment,
+          serviceType,
+          date: dateString,
+          dateTimestamp: timestamp,
+          photos: metadata.photos,
+          response: metadata.response,
+          helpfulCount: metadata.helpfulCount,
+          mitraLikes: metadata.mitraLikes,
+          isAnonymous: metadata.isAnonymous
+        }
+      })
+
+      setReviews(formattedReviews)
+      console.log('[Reviews] Success - Formatted', formattedReviews.length, 'reviews')
+
+    } catch (error) {
+      console.error('[Reviews] Error loading:', error)
+      setReviews([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadReviews()
+  }, [loadReviews])
+
+  useEffect(() => {
+    const handleReviewsUpdate = () => {
+      console.log('[Reviews] Event received: reviewsUpdated')
+      loadReviews()
     }
 
-    loadData()
-  }, [session])
+    window.addEventListener('reviewsUpdated', handleReviewsUpdate)
+    return () => window.removeEventListener('reviewsUpdated', handleReviewsUpdate)
+  }, [loadReviews])
 
-  // Toggle ekspansi review
   const toggleReviewExpansion = (id: string) => {
     if (expandedReviews.includes(id)) {
       setExpandedReviews(expandedReviews.filter((reviewId) => reviewId !== id))
@@ -270,7 +319,6 @@ export default function UlasanPage() {
     }
   }
 
-  // Handle Like/Unlike
   const handleLikeReview = async (reviewId: string) => {
     try {
       const response = await fetch(`/api/mitra/reviews/${reviewId}/like`, {
@@ -278,6 +326,7 @@ export default function UlasanPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ vendorId }),
       })
 
@@ -287,7 +336,6 @@ export default function UlasanPage() {
 
       const data = await response.json()
       
-      // Update local state
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
@@ -300,12 +348,14 @@ export default function UlasanPage() {
           return review
         })
       )
+
+      window.dispatchEvent(new CustomEvent('reviewsUpdated'))
+
     } catch (error) {
-      console.error('Error liking review:', error)
+      console.error('[Reviews] Error liking:', error)
     }
   }
 
-  // Handle Balas Ulasan
   const handleReplySubmit = async (reviewId: string) => {
     if (!replyText.trim()) return
 
@@ -315,6 +365,7 @@ export default function UlasanPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ 
           vendorId,
           reply: replyText 
@@ -327,15 +378,12 @@ export default function UlasanPage() {
 
       const data = await response.json()
       
-      // Update local state
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
             return {
               ...review,
-              response: data.response,
-              // Update comment untuk menyimpan response di metadata
-              comment: `${review.comment.split('|')[0]}|RESPONSE|${JSON.stringify(data.metadata)}`
+              response: data.response
             }
           }
           return review
@@ -344,12 +392,14 @@ export default function UlasanPage() {
 
       setReplyingTo(null)
       setReplyText('')
+
+      window.dispatchEvent(new CustomEvent('reviewsUpdated'))
+
     } catch (error) {
-      console.error('Error submitting reply:', error)
+      console.error('[Reviews] Error submitting reply:', error)
     }
   }
 
-  // Hitung data statistik
   const totalReviews = reviews.length
   const averageRating =
     totalReviews > 0
@@ -364,7 +414,6 @@ export default function UlasanPage() {
     1: reviews.filter((r) => r.rating === 1).length,
   }
 
-  // Filter reviews
   const filteredReviews = reviews.filter((review) => {
     if (filter === 'semua') return true
     if (filter === 'dengan-foto')
@@ -375,7 +424,6 @@ export default function UlasanPage() {
     return true
   })
 
-  // Sort reviews
   const sortedReviews = [...filteredReviews].sort((a, b) => {
     if (sortBy === 'terbaru')
       return b.dateTimestamp - a.dateTimestamp
@@ -405,19 +453,16 @@ export default function UlasanPage() {
 
   return (
     <div className="animate-fadeIn p-4 md:p-6">
-      {/* Header */}
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl font-bold text-neutral-900 dark:text-white mb-2">
-          Rating & Ulasan
+          Rating dan Ulasan
         </h1>
         <p className="text-neutral-600 dark:text-neutral-400">
           Kelola dan lihat ulasan dari pelanggan Anda
         </p>
       </div>
 
-      {/* Ringkasan Rating */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Card Rating Utama */}
         <div className="bg-gradient-to-br from-[#7CE0A8] to-[#5DD494] rounded-xl p-6 text-white shadow-lg">
           <div className="flex flex-col items-center justify-center h-full">
             <div className="text-5xl md:text-6xl font-bold mb-2">
@@ -431,7 +476,6 @@ export default function UlasanPage() {
           </div>
         </div>
 
-        {/* Breakdown Rating */}
         <div className="lg:col-span-2 bg-white dark:bg-neutral-800 rounded-xl p-6 shadow-lg border border-neutral-200 dark:border-neutral-700">
           <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
             Detail Rating
@@ -503,7 +547,6 @@ export default function UlasanPage() {
         </div>
       </div>
 
-      {/* Filter dan Sort */}
       <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 mb-6 shadow-lg border border-neutral-200 dark:border-neutral-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-wrap">
@@ -517,8 +560,8 @@ export default function UlasanPage() {
                 <option value="semua">Semua Ulasan</option>
                 <option value="dengan-foto">Dengan Foto</option>
                 <option value="dengan-balasan">Dengan Balasan</option>
-                <option value="rating-tinggi">Rating Tinggi (3-5)</option>
-                <option value="rating-rendah">Rating Rendah (1-2)</option>
+                <option value="rating-tinggi">Rating Tinggi</option>
+                <option value="rating-rendah">Rating Rendah</option>
               </select>
             </div>
             
@@ -543,7 +586,6 @@ export default function UlasanPage() {
         </div>
       </div>
 
-      {/* Daftar Ulasan */}
       {sortedReviews.length === 0 ? (
         <div className="bg-white dark:bg-neutral-800 rounded-xl p-12 shadow-lg border border-neutral-200 dark:border-neutral-700 text-center">
           <div className="flex flex-col items-center justify-center">
@@ -557,8 +599,8 @@ export default function UlasanPage() {
             </h3>
             <p className="text-neutral-600 dark:text-neutral-400 max-w-md">
               {filter === 'semua'
-                ? 'Anda belum memiliki ulasan dari pelanggan. Ulasan akan muncul di sini setelah pelanggan memberikan rating untuk layanan Anda.'
-                : 'Tidak ada ulasan yang sesuai dengan filter yang dipilih. Coba ubah filter untuk melihat ulasan lainnya.'}
+                ? 'Anda belum memiliki ulasan dari pelanggan.'
+                : 'Tidak ada ulasan yang sesuai dengan filter yang dipilih.'}
             </p>
           </div>
         </div>
@@ -578,7 +620,6 @@ export default function UlasanPage() {
                   transition={{ duration: 0.3, delay: index * 0.05 }}
                   className="bg-white dark:bg-neutral-800 rounded-xl p-4 md:p-6 shadow-lg border border-neutral-200 dark:border-neutral-700"
                 >
-                  {/* Header Ulasan */}
                   <div className="flex flex-col md:flex-row md:items-start justify-between mb-4 gap-4">
                     <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#7CE0A8]/20 to-[#5DD494]/20 flex items-center justify-center flex-shrink-0">
@@ -617,7 +658,6 @@ export default function UlasanPage() {
                     </div>
                   </div>
 
-                  {/* Komentar */}
                   <div className="mb-4">
                     <p
                       className={`text-neutral-700 dark:text-neutral-300 ${
@@ -641,7 +681,6 @@ export default function UlasanPage() {
                     )}
                   </div>
 
-                  {/* Foto-foto */}
                   {review.photos && review.photos.length > 0 && (
                     <div className="mb-4">
                       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -665,7 +704,6 @@ export default function UlasanPage() {
                     </div>
                   )}
 
-                  {/* Balasan Vendor */}
                   {review.response && (
                     <div className="mb-4 p-4 bg-gradient-to-r from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg border border-[#7CE0A8]/20">
                       <div className="flex items-start gap-3">
@@ -689,7 +727,6 @@ export default function UlasanPage() {
                     </div>
                   )}
 
-                  {/* Footer Ulasan */}
                   <div className="flex items-center justify-between pt-4 border-t border-neutral-200 dark:border-neutral-700">
                     <div className="flex items-center gap-4">
                       <button
@@ -731,7 +768,6 @@ export default function UlasanPage() {
                     )}
                   </div>
 
-                  {/* Form Balas */}
                   {replyingTo === review.id && (
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
@@ -773,7 +809,6 @@ export default function UlasanPage() {
         </div>
       )}
 
-      {/* Modal Photo Viewer */}
       <AnimatePresence>
         {selectedPhoto && (
           <motion.div
@@ -794,7 +829,7 @@ export default function UlasanPage() {
                 onClick={() => setSelectedPhoto(null)}
                 className="absolute -top-10 right-0 text-white hover:text-gray-300 text-xl"
               >
-                <CloseIcon className="w-6 h-6" />
+                <X className="w-6 h-6" />
               </button>
               <img
                 src={selectedPhoto}
@@ -805,54 +840,6 @@ export default function UlasanPage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Statistik Ringkas Mobile */}
-      <div className="lg:hidden mt-6 bg-white dark:bg-neutral-800 rounded-xl p-4 shadow-lg border border-neutral-200 dark:border-neutral-700">
-        <h3 className="font-semibold text-neutral-900 dark:text-white mb-3">
-          Ringkasan Rating
-        </h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="text-center p-3 bg-gradient-to-br from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg">
-            <div className="text-2xl font-bold text-[#7CE0A8]">
-              {totalReviews}
-            </div>
-            <div className="text-sm text-neutral-600 dark:text-neutral-400">
-              Total Ulasan
-            </div>
-          </div>
-          <div className="text-center p-3 bg-gradient-to-br from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg">
-            <div className="text-2xl font-bold text-[#7CE0A8]">
-              {averageRating.toFixed(1)}
-            </div>
-            <div className="text-sm text-neutral-600 dark:text-neutral-400">
-              Rating Rata-rata
-            </div>
-          </div>
-          <div className="text-center p-3 bg-gradient-to-br from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg">
-            <div className="text-2xl font-bold text-[#7CE0A8]">
-              {totalReviews > 0
-                ? (
-                    (reviews.filter((r) => r.rating >= 4).length /
-                      totalReviews) *
-                    100
-                  ).toFixed(0)
-                : 0}
-              %
-            </div>
-            <div className="text-sm text-neutral-600 dark:text-neutral-400">
-              Sangat Puas
-            </div>
-          </div>
-          <div className="text-center p-3 bg-gradient-to-br from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg">
-            <div className="text-2xl font-bold text-[#7CE0A8]">
-              {reviews.filter((r) => r.response).length}
-            </div>
-            <div className="text-sm text-neutral-600 dark:text-neutral-400">
-              Dibalas
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
