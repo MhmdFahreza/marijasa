@@ -25,6 +25,27 @@ const authRoutes = ["/login", "/register", "/register/otp"];
 // Public mitra routes (don't require authentication)
 const publicMitraRoutes = ["/mitra/login", "/mitra/daftar"];
 
+/**
+ * Create a redirect response with loading page
+ */
+function createLoadingRedirect(targetUrl: string, request: NextRequest, message: string = "Redirecting...") {
+  const loadingPageUrl = new URL("/loading", request.url);
+  loadingPageUrl.searchParams.set("redirect", targetUrl);
+  loadingPageUrl.searchParams.set("message", message);
+  
+  const response = NextResponse.redirect(loadingPageUrl);
+  
+  // Set a cookie to track the redirect for security
+  response.cookies.set("redirect_target", targetUrl, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60, // 60 seconds to complete redirect
+  });
+  
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -38,7 +59,7 @@ export async function middleware(request: NextRequest) {
 
       if (adminSessionId && adminAccessToken) {
         console.log('[Middleware] Admin already authenticated, redirecting to dashboard');
-        return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+        return createLoadingRedirect("/admin/dashboard", request, "Loading admin dashboard...");
       }
       
       return NextResponse.next();
@@ -51,8 +72,7 @@ export async function middleware(request: NextRequest) {
 
     if (!adminSessionId || (!adminAccessToken && !adminRefreshToken)) {
       console.log('[Middleware] Admin not authenticated, redirecting to login');
-      const url = new URL("/admin/login", request.url);
-      return NextResponse.redirect(url);
+      return createLoadingRedirect("/admin/login", request, "Please login to continue...");
     }
 
     // If access token is missing but refresh token exists, allow through
@@ -82,16 +102,14 @@ export async function middleware(request: NextRequest) {
         }
 
         console.log('[Middleware] Admin token verification failed');
-        const url = new URL("/admin/login", request.url);
-        return NextResponse.redirect(url);
+        return createLoadingRedirect("/admin/login", request, "Session expired. Please login again...");
       }
 
       console.log('[Middleware] Admin authenticated successfully');
       return NextResponse.next();
     } catch (error) {
       console.error('[Middleware] Error verifying admin token:', error);
-      const url = new URL("/admin/login", request.url);
-      return NextResponse.redirect(url);
+      return createLoadingRedirect("/admin/login", request, "Authentication error. Redirecting...");
     }
   }
 
@@ -108,7 +126,7 @@ export async function middleware(request: NextRequest) {
         // Only redirect if has valid session and either access or refresh token
         if (mitraSessionId && (mitraAccessToken || mitraRefreshToken)) {
           console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
-          return NextResponse.redirect(new URL("/mitra/dashboard", request.url));
+          return createLoadingRedirect("/mitra/dashboard", request, "Loading mitra dashboard...");
         }
       }
       
@@ -125,8 +143,7 @@ export async function middleware(request: NextRequest) {
     // Must have session and at least one token (access or refresh)
     if (!mitraSessionId || (!mitraAccessToken && !mitraRefreshToken)) {
       console.log('[Middleware] Mitra not authenticated, redirecting to login');
-      const url = new URL("/mitra/login", request.url);
-      return NextResponse.redirect(url);
+      return createLoadingRedirect("/mitra/login", request, "Please login to continue...");
     }
 
     // If access token is missing but refresh token exists, allow through
@@ -156,8 +173,7 @@ export async function middleware(request: NextRequest) {
         }
 
         console.log('[Middleware] Mitra token verification failed:', verifyData.error);
-        const url = new URL("/mitra/login", request.url);
-        return NextResponse.redirect(url);
+        return createLoadingRedirect("/mitra/login", request, "Session expired. Please login again...");
       }
 
       console.log('[Middleware] Mitra authenticated successfully');
@@ -171,8 +187,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.next();
       }
       
-      const url = new URL("/mitra/login", request.url);
-      return NextResponse.redirect(url);
+      return createLoadingRedirect("/mitra/login", request, "Authentication error. Redirecting...");
     }
   }
 
@@ -207,9 +222,8 @@ export async function middleware(request: NextRequest) {
   if (protectedRoutes.some((route) => pathname.startsWith(route))) {
     if (!isAuthenticated) {
       console.log("[Middleware] Unauthenticated user trying to access protected route:", pathname);
-      const url = new URL("/login", request.url);
-      url.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(url);
+      const loginUrl = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
+      return createLoadingRedirect(loginUrl, request, "Please login to access this page...");
     }
   }
 
@@ -217,7 +231,7 @@ export async function middleware(request: NextRequest) {
   if (authRoutes.some((route) => pathname === route)) {
     if (isAuthenticated) {
       console.log("[Middleware] Authenticated user trying to access auth route, redirecting to home");
-      return NextResponse.redirect(new URL("/", request.url));
+      return createLoadingRedirect("/", request, "Redirecting to home...");
     }
   }
 
