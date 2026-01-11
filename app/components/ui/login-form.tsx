@@ -78,21 +78,21 @@ export function LoginForm({
   const userConfig = {
     user: {
       title: "Selamat Datang Kembali",
-      description: "Masukkan email atau nomor telepon untuk melanjutkan",
+      description: "Masuk ke akun Marijasa Anda",
       registerLink: "/register",
       registerText: "Daftar",
       icon: "👋",
     },
     mitra: {
-      title: "Portal Mitra Bijak",
-      description: "Akses dashboard penjualan Anda",
+      title: "Portal Mitra Marijasa",
+      description: "Masuk untuk mengelola bisnis jasa Anda",
       registerLink: null,
       registerText: null,
       icon: "🏢",
     },
     admin: {
-      title: "Admin Dashboard",
-      description: "Kelola platform dengan aman",
+      title: "Portal Admin Marijasa",
+      description: "Masuk untuk mengelola sistem platform",
       registerLink: null,
       registerText: null,
       icon: "🔐",

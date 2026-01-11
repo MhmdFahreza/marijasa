@@ -352,62 +352,108 @@ export default function DashboardPage() {
     totalRevenue: 0
   });
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [currentVendor, setCurrentVendor] = useState<any>(null);
 
-  // Load vendor data from API
+  // PERBAIKAN: Load data hanya sekali saat mount
   useEffect(() => {
-    loadVendorData();
-  }, []);
+    let isMounted = true;
 
-  // Auto refresh every 30 seconds
-  useEffect(() => {
-    if (!currentVendor) return;
-    
-    const interval = setInterval(() => {
-      loadDashboardData();
-    }, 30000);
+    const initializeDashboard = async () => {
+      try {
+        console.log('[Dashboard] Starting initialization...');
+        
+        // Step 1: Verify authentication
+        const verifyResponse = await fetch('/api/mitra/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
 
-    return () => clearInterval(interval);
-  }, [currentVendor]);
+        if (!verifyResponse.ok) {
+          console.log('[Dashboard] Verification failed, redirecting to login');
+          router.push('/mitra/login');
+          return;
+        }
 
-  const loadVendorData = async () => {
-    try {
-      const response = await fetch('/api/mitra/verify');
-      if (!response.ok) {
-        router.push('/mitra/login');
-        return;
+        const verifyData = await verifyResponse.json();
+        console.log('[Dashboard] Verification successful:', verifyData.vendor);
+
+        if (!isMounted) return;
+
+        // Step 2: Set vendor data
+        setCurrentVendor(verifyData.vendor);
+
+        // Step 3: Load dashboard data
+        const dashboardResponse = await fetch(`/api/mitra/dashboard?vendorId=${verifyData.vendor.id}`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!dashboardResponse.ok) {
+          throw new Error('Failed to load dashboard data');
+        }
+
+        const dashboardData = await dashboardResponse.json();
+        console.log('[Dashboard] Dashboard data loaded:', dashboardData);
+
+        if (!isMounted) return;
+
+        // Step 4: Update state
+        setStatData({
+          availableBalance: dashboardData.availableBalance || 0,
+          pendingBalance: dashboardData.pendingBalance || 0,
+          monthlyIncome: dashboardData.monthlyIncome || 0,
+          monthlyWithdrawal: dashboardData.monthlyWithdrawal || 0,
+          totalOrders: dashboardData.totalOrders || 0,
+          completedOrders: dashboardData.completedOrders || 0,
+          pendingOrders: dashboardData.pendingOrders || 0,
+          inProgressOrders: dashboardData.inProgressOrders || 0,
+          vendorRating: dashboardData.vendorRating || 0,
+          vendorReviewCount: dashboardData.vendorReviewCount || 0,
+          totalRevenue: dashboardData.totalRevenue || 0
+        });
+
+        setTransactionHistory(dashboardData.transactions || []);
+        setIsLoading(false);
+
+        console.log('[Dashboard] Initialization complete');
+      } catch (error) {
+        console.error('[Dashboard] Initialization error:', error);
+        if (isMounted) {
+          setIsLoading(false);
+          router.push('/mitra/login');
+        }
       }
+    };
 
-      const data = await response.json();
-      setCurrentVendor(data.vendor);
-      console.log('Current Vendor:', data.vendor);
-      
-      // Load dashboard data after getting vendor info
-      await loadDashboardData(data.vendor.vendor_id);
-    } catch (error) {
-      console.error('Error loading vendor data:', error);
-      router.push('/mitra/login');
+    initializeDashboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []); // PENTING: Dependency array kosong agar hanya run sekali
+
+  // PERBAIKAN: Manual refresh function
+  const handleRefresh = async () => {
+    if (!currentVendor?.id) {
+      console.log('[Dashboard] No vendor ID for refresh');
+      return;
     }
-  };
-
-  const loadDashboardData = async (vendorId?: string) => {
-    const id = vendorId || currentVendor?.vendor_id;
-    if (!id) return;
 
     try {
-      // Jangan set loading jika bukan initial load
-      if (!currentVendor) {
-        setIsLoading(true);
-      }
+      console.log('[Dashboard] Manual refresh started');
+      setIsLoading(true);
 
-      const response = await fetch(`/api/mitra/dashboard?vendorId=${id}`);
+      const response = await fetch(`/api/mitra/dashboard?vendorId=${currentVendor.id}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
       if (!response.ok) {
-        throw new Error('Failed to load dashboard data');
+        throw new Error('Failed to refresh dashboard data');
       }
 
       const data = await response.json();
-      console.log('Dashboard data:', data);
+      console.log('[Dashboard] Refresh data loaded:', data);
 
       setStatData({
         availableBalance: data.availableBalance || 0,
@@ -424,17 +470,13 @@ export default function DashboardPage() {
       });
 
       setTransactionHistory(data.transactions || []);
-      
       setIsLoading(false);
+
+      console.log('[Dashboard] Refresh complete');
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('[Dashboard] Refresh error:', error);
       setIsLoading(false);
     }
-  };
-
-  const handleRefresh = () => {
-    setRefreshKey(prev => prev + 1);
-    loadDashboardData();
   };
 
   const filteredTransactions = transactionHistory.filter(transaction => {
@@ -511,7 +553,7 @@ export default function DashboardPage() {
   };
 
   const handleWithdraw = async (amount: number, method: string) => {
-    if (!currentVendor?.vendor_id) {
+    if (!currentVendor?.id) {
       alert('Error: Vendor ID tidak ditemukan');
       return;
     }
@@ -526,8 +568,9 @@ export default function DashboardPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
-          vendorId: currentVendor.vendor_id,
+          vendorId: currentVendor.id,
           amount: amount,
           method: methodData?.name || '',
           accountNumber: methodData?.accountNumber || '',
@@ -545,7 +588,7 @@ export default function DashboardPage() {
       setShowWithdrawDialog(false);
 
       // Reload dashboard data
-      loadDashboardData();
+      handleRefresh();
     } catch (error) {
       console.error('Error processing withdrawal:', error);
       alert('Gagal memproses penarikan. Silakan coba lagi.');
@@ -571,6 +614,7 @@ export default function DashboardPage() {
     );
   };
 
+  // PERBAIKAN: Tampilkan loading state yang lebih baik
   if (isLoading && !currentVendor) {
     return (
       <motion.div
@@ -592,7 +636,6 @@ export default function DashboardPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      key={refreshKey}
     >
       <WithdrawDialog
         open={showWithdrawDialog}

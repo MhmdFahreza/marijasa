@@ -97,6 +97,89 @@ enum AdditionalServiceStatus {
   REJECTED
 }
 
+enum CallStatus {
+  INITIATING
+  RINGING
+  ANSWERED
+  ENDED
+  MISSED
+  REJECTED
+  BUSY
+  FAILED
+}
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+// ==========================================
+// WEBRTC CALL TABLES - Add these models
+// ==========================================
+
+model Call {
+  call_id    String     @id @default(uuid()) @db.Uuid
+  session_id String     @db.Uuid
+  
+  caller_id   String   @db.Uuid
+  caller_type String   @db.VarChar(10) // 'user' or 'mitra'
+  receiver_id String   @db.Uuid
+  receiver_type String @db.VarChar(10) // 'user' or 'mitra'
+  
+  call_type  CallType   @default(VOICE)
+  status     CallStatus @default(INITIATING)
+  
+  // WebRTC signaling data
+  offer      Json?    // SDP offer
+  answer     Json?    // SDP answer
+  ice_candidates_caller   Json?  // ICE candidates from caller
+  ice_candidates_receiver Json?  // ICE candidates from receiver
+  
+  // Call timing
+  started_at  DateTime  @default(now())
+  answered_at DateTime?
+  ended_at    DateTime?
+  duration    Int?      // Duration in seconds
+  
+  end_reason  String?   // 'completed', 'rejected', 'missed', 'failed', 'busy'
+  
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  session ChatSession  @relation(fields: [session_id], references: [session_id], onDelete: Cascade)
+  signals CallSignal[]
+
+  @@index([session_id])
+  @@index([caller_id])
+  @@index([receiver_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("calls")
+}
+
+model CallSignal {
+  signal_id   String @id @default(uuid()) @db.Uuid
+  call_id     String @db.Uuid
+  
+  sender_id   String @db.Uuid
+  sender_type String @db.VarChar(10) // 'user' or 'mitra'
+  
+  signal_type String  // 'offer', 'answer', 'ice-candidate', 'hangup', 'reject', 'busy'
+  signal_data Json    // Signal payload
+  
+  is_processed Boolean @default(false)
+  
+  created_at DateTime @default(now())
+
+  call Call @relation(fields: [call_id], references: [call_id], onDelete: Cascade)
+
+  @@index([call_id])
+  @@index([sender_id])
+  @@index([is_processed])
+  @@index([created_at])
+  @@map("call_signals")
+}
+
 // ==========================================
 // MASTER DATA TABLES
 // ==========================================
@@ -593,6 +676,7 @@ model ChatSession {
   user     User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   vendor   Vendor    @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
   messages Message[]
+  calls    Call[]
 
   @@unique([user_id, vendor_id])
   @@index([user_id])
