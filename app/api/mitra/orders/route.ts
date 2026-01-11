@@ -160,11 +160,13 @@ export async function GET(request: NextRequest) {
         completed_at: true,
         user: {
           select: {
+            user_id: true,
             name: true,
             email: true,
             phone: true,
             address: true,
             gps_link: true,
+            avatar: true,
           },
         },
         items: {
@@ -226,10 +228,6 @@ export async function GET(request: NextRequest) {
       }
 
       // Map status sesuai requirement
-      // PENDING = waiting-payment (belum bayar)
-      // CONFIRMED/IN_PROGRESS = pending (sudah bayar, sedang dikerjakan)
-      // COMPLETED = completed (sudah selesai)
-      // CANCELLED = cancelled
       let frontendStatus = 'waiting-payment';
       if (order.status === 'PENDING') {
         frontendStatus = 'waiting-payment';
@@ -249,6 +247,7 @@ export async function GET(request: NextRequest) {
 
       return {
         id: order.booking_number,
+        userId: order.user_id, // TAMBAHKAN INI - PENTING untuk chat
         serviceCategory,
         serviceDetails: {
           selectedServices,
@@ -266,6 +265,7 @@ export async function GET(request: NextRequest) {
         customerEmail: order.user.email,
         customerPhone: order.user.phone || '-',
         customerAddress: cleanAddress,
+        customerAvatar: order.user.avatar || '/profile.svg', // TAMBAHKAN INI
         gpsLink: extractedGpsLink,
         workDate: order.scheduled_date,
         workTime: order.scheduled_time,
@@ -276,7 +276,7 @@ export async function GET(request: NextRequest) {
         cancellationReason: order.cancellation_reason,
         cancelledBy: order.cancelled_by,
         cancelledAt: order.cancelled_at,
-        vendorEarnings: vendorEarnings, // Yang masuk ke mitra = subtotal saja
+        vendorEarnings: vendorEarnings,
       };
     });
 

@@ -280,13 +280,17 @@ export default function OrdersPage() {
     }
   };
 
-  // Fungsi untuk mendapatkan label payment status
-  const getPaymentLabel = (paymentStatus: string) => {
-    switch (paymentStatus) {
-      case 'paid': return 'Lunas';
-      case 'pending': return 'Belum Lunas';
-      default: return 'Belum Lunas';
+  // Fungsi untuk handle chat button - UPDATED
+  const handleChatWithCustomer = (userId: string, customerName: string) => {
+    if (!userId) {
+      toast.error('Data pelanggan tidak tersedia');
+      return;
     }
+    
+    console.log('[Chat] Opening chat with user:', userId, customerName);
+    
+    // Redirect ke halaman chat dengan userId sebagai query parameter
+    router.push(`/mitra/chat?userId=${userId}`);
   };
 
   // Loading state
@@ -633,7 +637,7 @@ export default function OrdersPage() {
                                 </div>
                               )}
 
-                              {/* Action Buttons */}
+                              {/* Action Buttons - UPDATED */}
                               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
                                 {order.status === 'waiting-payment' && (
                                   <div className="w-full">
@@ -643,8 +647,9 @@ export default function OrdersPage() {
                                       </p>
                                     </div>
                                     <Button
-                                      onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                      onClick={() => handleChatWithCustomer(order.userId, order.customerName)}
                                       className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                      disabled={!order.userId}
                                     >
                                       <MessageSquare className="h-4 w-4 mr-2" />
                                       Chat dengan Pelanggan
@@ -660,8 +665,9 @@ export default function OrdersPage() {
                                       </p>
                                     </div>
                                     <Button
-                                      onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                      onClick={() => handleChatWithCustomer(order.userId, order.customerName)}
                                       className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                      disabled={!order.userId}
                                     >
                                       <MessageSquare className="h-4 w-4 mr-2" />
                                       Chat dengan Pelanggan
@@ -679,7 +685,8 @@ export default function OrdersPage() {
                                     <Button
                                       variant="outline"
                                       className="w-full"
-                                      onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                      onClick={() => handleChatWithCustomer(order.userId, order.customerName)}
+                                      disabled={!order.userId}
                                     >
                                       <MessageSquare className="h-4 w-4 mr-2" />
                                       Lihat Riwayat Chat

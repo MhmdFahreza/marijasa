@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Button } from "@/app/components/ui/button";
@@ -44,7 +44,7 @@ import type { Message, ChatSession } from "@/app/components/lib/services/chatSer
 import { useWebRTC } from "@/app/components/lib/hooks/useWebRTC";
 import { CallType } from "@/app/components/lib/services/callService";
 
-// Safe fetch helper to handle HTML responses
+// Safe fetch helper
 async function safeFetch(url: string, options?: RequestInit) {
   try {
     const response = await fetch(url, options);
@@ -62,15 +62,7 @@ async function safeFetch(url: string, options?: RequestInit) {
 }
 
 // Image Lightbox Component
-const ImageLightbox = ({ 
-  isOpen, 
-  imageUrl, 
-  onClose 
-}: { 
-  isOpen: boolean; 
-  imageUrl: string; 
-  onClose: () => void;
-}) => {
+const ImageLightbox = ({ isOpen, imageUrl, onClose }: { isOpen: boolean; imageUrl: string; onClose: () => void; }) => {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
 
@@ -89,55 +81,22 @@ const ImageLightbox = ({
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
-        onClick={onClose}
-      >
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" onClick={onClose}>
         <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full bg-white/10 hover:bg-white/20 text-white"
-            onClick={(e) => { e.stopPropagation(); setScale(s => Math.min(s + 0.5, 3)); }}
-          >
+          <Button variant="ghost" size="icon" className="rounded-full bg-white/10 hover:bg-white/20 text-white" onClick={(e) => { e.stopPropagation(); setScale(s => Math.min(s + 0.5, 3)); }}>
             <ZoomIn className="h-5 w-5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full bg-white/10 hover:bg-white/20 text-white"
-            onClick={(e) => { e.stopPropagation(); setScale(s => Math.max(s - 0.5, 0.5)); }}
-          >
+          <Button variant="ghost" size="icon" className="rounded-full bg-white/10 hover:bg-white/20 text-white" onClick={(e) => { e.stopPropagation(); setScale(s => Math.max(s - 0.5, 0.5)); }}>
             <ZoomOut className="h-5 w-5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full bg-white/10 hover:bg-white/20 text-white"
-            onClick={(e) => { e.stopPropagation(); setRotation(r => r + 90); }}
-          >
+          <Button variant="ghost" size="icon" className="rounded-full bg-white/10 hover:bg-white/20 text-white" onClick={(e) => { e.stopPropagation(); setRotation(r => r + 90); }}>
             <RotateCw className="h-5 w-5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full bg-white/10 hover:bg-white/20 text-white"
-            onClick={onClose}
-          >
+          <Button variant="ghost" size="icon" className="rounded-full bg-white/10 hover:bg-white/20 text-white" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <motion.img
-          src={imageUrl}
-          alt="Preview"
-          className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg select-none"
-          style={{ transform: `scale(${scale}) rotate(${rotation}deg)`, transition: 'transform 0.2s ease' }}
-          onClick={(e) => e.stopPropagation()}
-          draggable={false}
-        />
+        <motion.img src={imageUrl} alt="Preview" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg select-none" style={{ transform: `scale(${scale}) rotate(${rotation}deg)`, transition: 'transform 0.2s ease' }} onClick={(e) => e.stopPropagation()} draggable={false} />
       </motion.div>
     </AnimatePresence>
   );
@@ -225,7 +184,7 @@ const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: nu
   );
 };
 
-// Voice Message Player - FIXED VERSION with AbortError handling
+// Voice Message Player
 const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -235,7 +194,7 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const waveformHeights = useRef<number[]>(Array.from({ length: 30 }, () => Math.random() * 20 + 10));
-  const isTogglingRef = useRef(false); // Prevent rapid toggling
+  const isTogglingRef = useRef(false);
 
   useEffect(() => {
     if (!msg.fileUrl) {
@@ -319,25 +278,19 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   const togglePlayPause = async () => {
     if (!audioRef.current || hasError || isLoading || isTogglingRef.current) return;
 
-    // Prevent rapid toggling
     isTogglingRef.current = true;
 
     try {
       if (isPlaying) {
-        // Stop playing
         audioRef.current.pause();
-        // Note: state will be updated via event listener
       } else {
-        // Start playing
         const playPromise = audioRef.current.play();
         
         if (playPromise !== undefined) {
           await playPromise;
-          // Note: state will be updated via event listener
         }
       }
     } catch (err: any) {
-      // Handle AbortError and other play errors gracefully
       if (err.name === 'AbortError') {
         console.log('Play interrupted - this is normal');
       } else if (err.name === 'NotAllowedError') {
@@ -348,7 +301,6 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
         setHasError(true);
       }
     } finally {
-      // Allow toggling again after a short delay
       setTimeout(() => {
         isTogglingRef.current = false;
       }, 200);
@@ -369,13 +321,7 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   return (
     <div className={`rounded-2xl shadow-lg max-w-[280px] ${isMitra ? "bg-gradient-to-r from-[#7CE0A8] to-[#6BD099]" : "bg-white border border-gray-200"}`}>
       <div className="p-3 flex items-center gap-3">
-        <button
-          onClick={togglePlayPause}
-          disabled={isLoading || isTogglingRef.current}
-          className={`h-10 w-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
-            isMitra ? "bg-white/20 hover:bg-white/30 text-white" : "bg-[#7CE0A8] hover:bg-[#6BD099] text-white"
-          } ${isLoading || isTogglingRef.current ? "opacity-50 cursor-not-allowed" : ""}`}
-        >
+        <button onClick={togglePlayPause} disabled={isLoading || isTogglingRef.current} className={`h-10 w-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isMitra ? "bg-white/20 hover:bg-white/30 text-white" : "bg-[#7CE0A8] hover:bg-[#6BD099] text-white"} ${isLoading || isTogglingRef.current ? "opacity-50 cursor-not-allowed" : ""}`}>
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
           ) : isPlaying ? (
@@ -389,13 +335,7 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
             {waveformHeights.current.map((height, i) => {
               const isActive = (i / waveformHeights.current.length) * 100 <= progress;
               return (
-                <div
-                  key={i}
-                  className={`w-[3px] rounded-full transition-all duration-75 ${
-                    isMitra ? (isActive ? "bg-white" : "bg-white/40") : (isActive ? "bg-[#7CE0A8]" : "bg-gray-300")
-                  }`}
-                  style={{ height: `${height}px` }}
-                />
+                <div key={i} className={`w-[3px] rounded-full transition-all duration-75 ${isMitra ? (isActive ? "bg-white" : "bg-white/40") : (isActive ? "bg-[#7CE0A8]" : "bg-gray-300")}`} style={{ height: `${height}px` }} />
               );
             })}
           </div>
@@ -426,18 +366,8 @@ const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: b
   );
 };
 
-// Media Message Component with Lightbox
-const MediaMessage = ({ 
-  msg, 
-  isMitra, 
-  timestamp,
-  onImageClick 
-}: { 
-  msg: Message; 
-  isMitra: boolean; 
-  timestamp: string;
-  onImageClick: (url: string) => void;
-}) => {
+// Media Message Component
+const MediaMessage = ({ msg, isMitra, timestamp, onImageClick }: { msg: Message; isMitra: boolean; timestamp: string; onImageClick: (url: string) => void; }) => {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -471,34 +401,18 @@ const MediaMessage = ({
       <div className="relative">
         {isImage && (
           <>
-            <img
-              src={safeFileUrl}
-              alt={msg.fileName || "Gambar"}
-              className="w-full h-auto max-h-[200px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => onImageClick(safeFileUrl)}
-            />
+            <img src={safeFileUrl} alt={msg.fileName || "Gambar"} className="w-full h-auto max-h-[200px] object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => onImageClick(safeFileUrl)} />
             <div className={`absolute bottom-2 right-2 px-2 py-1 rounded text-xs font-medium ${isMitra ? "bg-black/60 text-white" : "bg-white/90 text-gray-800"}`}>
               {timestamp}
             </div>
-            <button
-              onClick={() => onImageClick(safeFileUrl)}
-              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
-            >
+            <button onClick={() => onImageClick(safeFileUrl)} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors">
               <ZoomIn className="w-4 h-4" />
             </button>
           </>
         )}
         {isVideo && (
           <div className="relative">
-            <video
-              ref={videoRef}
-              src={safeFileUrl}
-              className="w-full h-auto max-h-[200px] object-cover"
-              controls={isVideoPlaying}
-              onEnded={() => setIsVideoPlaying(false)}
-              onPlay={() => setIsVideoPlaying(true)}
-              onPause={() => setIsVideoPlaying(false)}
-            />
+            <video ref={videoRef} src={safeFileUrl} className="w-full h-auto max-h-[200px] object-cover" controls={isVideoPlaying} onEnded={() => setIsVideoPlaying(false)} onPlay={() => setIsVideoPlaying(true)} onPause={() => setIsVideoPlaying(false)} />
             {!isVideoPlaying && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                 <button onClick={() => videoRef.current?.play()} className="bg-white/90 hover:bg-white p-4 rounded-full">
@@ -530,6 +444,7 @@ const MediaMessage = ({
 // Main Mitra Chat Page Component
 export default function MitraChatPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   const [currentMitra, setCurrentMitra] = useState<{ id: string; name: string; avatar: string } | null>(null);
@@ -631,6 +546,21 @@ export default function MitraChatPage() {
     loadChatList();
   }, [currentMitra?.id, authLoading]);
 
+  // AUTO-OPEN CHAT from URL query parameter - NEW FEATURE
+  useEffect(() => {
+    const userIdFromUrl = searchParams.get('userId');
+    
+    if (userIdFromUrl && currentMitra?.id && !authLoading) {
+      console.log('[Chat] Auto-opening chat for user:', userIdFromUrl);
+      
+      // Set selected user immediately
+      setSelectedUserId(userIdFromUrl);
+      
+      // Open sidebar on mobile to show the chat started
+      setIsSidebarOpen(false);
+    }
+  }, [searchParams, currentMitra?.id, authLoading]);
+
   // Load messages when user is selected
   useEffect(() => {
     if (!currentMitra?.id || !selectedUserId) {
@@ -638,18 +568,27 @@ export default function MitraChatPage() {
       setMessages([]);
       return;
     }
+    
     const loadMessages = async () => {
       try {
+        console.log('[Chat] Loading/creating session for user:', selectedUserId);
         const session = await chatService.getOrCreateSession(selectedUserId, currentMitra.id);
+        
         if (session) {
+          console.log('[Chat] Session loaded:', session);
           setCurrentSession(session);
           setMessages(session.messages || []);
           await chatService.markAsRead(selectedUserId, currentMitra.id, "mitra");
+          
+          // Reload chat list to update the sidebar
+          const sessions = await chatService.getMitraSessions(currentMitra.id);
+          setChatList(sessions || []);
         }
       } catch (err) {
         console.error("Error loading messages:", err);
       }
     };
+    
     loadMessages();
   }, [currentMitra?.id, selectedUserId]);
 
