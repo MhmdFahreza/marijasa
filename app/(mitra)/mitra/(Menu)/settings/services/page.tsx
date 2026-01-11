@@ -1,3 +1,4 @@
+// app/mitra/dashboard/services/page.tsx - COMPLETE & FIXED VERSION
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -135,12 +136,13 @@ export default function ServicesPage() {
 
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [vendorData, setVendorData] = useState<any>(null);
-
   const [priceInput, setPriceInput] = useState<string>("");
 
+  // ✅ FIXED: Fetch data dengan gallery terpisah
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
+      console.log('[Services Page] Fetching data...');
       
       // Fetch vendor profile
       const profileResponse = await fetch('/api/mitra/profile', {
@@ -154,9 +156,10 @@ export default function ServicesPage() {
         if (profileData.vendor.category) {
           setSelectedCategory(profileData.vendor.category);
         }
+        console.log('[Services Page] Profile loaded');
       }
 
-      // Fetch services and gallery
+      // Fetch services
       const servicesResponse = await fetch('/api/mitra/services', {
         method: 'GET',
         credentials: 'include',
@@ -165,10 +168,24 @@ export default function ServicesPage() {
       if (servicesResponse.ok) {
         const servicesData = await servicesResponse.json();
         setServices(servicesData.services || []);
-        setWorkImages(servicesData.gallery || []);
+        console.log('[Services Page] Services loaded:', servicesData.services?.length || 0);
+      }
+
+      // ✅ FIXED: Fetch gallery separately from dedicated endpoint
+      const galleryResponse = await fetch('/api/mitra/gallery', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (galleryResponse.ok) {
+        const galleryData = await galleryResponse.json();
+        console.log('[Services Page] Gallery loaded:', galleryData.gallery?.length || 0);
+        setWorkImages(galleryData.gallery || []);
+      } else {
+        console.error('[Services Page] Failed to fetch gallery:', galleryResponse.status);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('[Services Page] Error fetching data:', error);
       toast.error('Gagal memuat data');
     } finally {
       setIsLoading(false);
@@ -247,7 +264,6 @@ export default function ServicesPage() {
       let response;
       
       if (isEditingService && currentService) {
-        // Update existing service
         response = await fetch('/api/mitra/services', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -259,7 +275,6 @@ export default function ServicesPage() {
           }),
         });
       } else {
-        // Create new service
         response = await fetch('/api/mitra/services', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -291,7 +306,6 @@ export default function ServicesPage() {
       setIsServiceDialogOpen(false);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
-      fetchData(); // Refresh data
     } catch (error: any) {
       console.error('Error saving service:', error);
       toast.error(error.message || 'Terjadi kesalahan');
@@ -327,6 +341,7 @@ export default function ServicesPage() {
     }
   };
 
+  // ✅ FIXED: Improved image upload handler
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     
@@ -338,12 +353,18 @@ export default function ServicesPage() {
     setIsUploadingImage(true);
 
     try {
+      let successCount = 0;
+      
       for (const file of files) {
+        console.log('[Upload] Processing file:', file.name, 'size:', file.size);
+        
+        // Validate file size (5MB max)
         if (file.size > 5 * 1024 * 1024) {
           toast.error(`File ${file.name} melebihi 5MB`);
           continue;
         }
 
+        // Validate file type
         if (!file.type.startsWith('image/')) {
           toast.error(`File ${file.name} bukan gambar`);
           continue;
@@ -353,53 +374,75 @@ export default function ServicesPage() {
         formData.append('image', file);
         formData.append('caption', 'Hasil pekerjaan');
 
+        console.log('[Upload] Uploading to /api/mitra/gallery...');
+
         const response = await fetch('/api/mitra/gallery', {
           method: 'POST',
           credentials: 'include',
           body: formData,
         });
 
+        console.log('[Upload] Response status:', response.status);
+
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error || 'Gagal mengupload gambar');
+          console.error('[Upload] Error response:', errorData);
+          toast.error(errorData.error || 'Gagal mengupload gambar');
+          continue;
         }
+
+        const result = await response.json();
+        console.log('[Upload] Success:', result);
+        successCount++;
       }
 
-      // Refresh gallery data
-      await fetchData();
-      setSuccessMessage(`${files.length} foto berhasil diupload`);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
+      if (successCount > 0) {
+        // Refresh gallery data
+        console.log('[Upload] Refreshing gallery...');
+        await fetchData();
+        setSuccessMessage(`${successCount} foto berhasil diupload`);
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`${successCount} foto berhasil diupload`);
+      }
     } catch (error: any) {
-      console.error('Error uploading images:', error);
+      console.error('[Upload] Error uploading images:', error);
       toast.error(error.message || 'Gagal mengupload gambar');
     } finally {
       setIsUploadingImage(false);
-      e.target.value = '';
+      e.target.value = ''; // Reset input
     }
   };
 
+  // ✅ FIXED: Improved image delete handler
   const handleDeleteImage = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus foto ini?")) return;
 
     setIsDeletingImage(true);
 
     try {
+      console.log('[Delete] Deleting image:', id);
+
       const response = await fetch(`/api/mitra/gallery?id=${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Gagal menghapus foto');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Gagal menghapus foto');
       }
 
+      console.log('[Delete] Success');
+      
+      // Update local state immediately
       setWorkImages(workImages.filter(img => img.gallery_id !== id));
       setSuccessMessage("Foto berhasil dihapus");
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
+      toast.success("Foto berhasil dihapus");
     } catch (error: any) {
-      console.error('Error deleting image:', error);
+      console.error('[Delete] Error deleting image:', error);
       toast.error(error.message || 'Gagal menghapus foto');
     } finally {
       setIsDeletingImage(false);
@@ -432,7 +475,6 @@ export default function ServicesPage() {
   };
 
   const handlePriceChange = (value: string) => {
-    // Hanya angka dan satu titik desimal
     const cleanValue = value.replace(/[^\d.]/g, '');
     const parts = cleanValue.split('.');
     if (parts.length > 2) {
@@ -447,21 +489,17 @@ export default function ServicesPage() {
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-neutral-900 dark:to-neutral-950">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col gap-6">
-            {/* Header Skeleton */}
             <div className="flex items-center justify-between">
               <div>
                 <Skeleton className="h-8 w-48 mb-2" />
                 <Skeleton className="h-4 w-64" />
               </div>
             </div>
-
-            {/* Content Skeleton */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="space-y-6">
                 <Skeleton className="h-64 rounded-xl" />
                 <Skeleton className="h-48 rounded-xl" />
               </div>
-              
               <div className="lg:col-span-2 space-y-6">
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-96 rounded-xl" />
@@ -504,7 +542,7 @@ export default function ServicesPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column */}
+          {/* Left Column - Stats */}
           <div className="lg:col-span-1">
             <Card className="border-[#7CE0A8]/20 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-[#7CE0A8]/10 to-[#7CE0A8]/5 py-6">
@@ -557,7 +595,7 @@ export default function ServicesPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-neutral-600 dark:text-neutral-400">Foto Portofolio</span>
                     <span className="font-semibold text-neutral-900 dark:text-white">
-                      {workImages.length}
+                      {workImages.length}/{MAX_WORK_IMAGES}
                     </span>
                   </div>
                 </div>
@@ -565,7 +603,7 @@ export default function ServicesPage() {
             </Card>
           </div>
 
-          {/* Right Column */}
+          {/* Right Column - Tabs */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="services" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6">
@@ -726,15 +764,22 @@ export default function ServicesPage() {
                         <label htmlFor="portfolio-upload">
                           <Button
                             variant="outline"
-                            className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10 cursor-pointer"
+                            className={`border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/10 ${
+                              isUploadingImage || workImages.length >= MAX_WORK_IMAGES
+                                ? 'opacity-50 cursor-not-allowed'
+                                : 'cursor-pointer'
+                            }`}
                             disabled={isUploadingImage || workImages.length >= MAX_WORK_IMAGES}
+                            asChild
                           >
-                            {isUploadingImage ? (
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                              <ImagePlus className="h-4 w-4 mr-2" />
-                            )}
-                            Upload Foto
+                            <span>
+                              {isUploadingImage ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <ImagePlus className="h-4 w-4 mr-2" />
+                              )}
+                              {isUploadingImage ? 'Mengupload...' : 'Upload Foto'}
+                            </span>
                           </Button>
                         </label>
                       </div>
@@ -743,7 +788,7 @@ export default function ServicesPage() {
                   <CardContent className="p-6">
                     {workImages.length === 0 ? (
                       <div className="text-center py-12 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg">
-                        <ImageIcon className="h-12 w-12 text-gray-400 dark:text-neutral-600 mx-auto mb-4" />
+                        <Camera className="h-12 w-12 text-gray-400 dark:text-neutral-600 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
                           Belum Ada Foto Portofolio
                         </h3>
@@ -763,13 +808,16 @@ export default function ServicesPage() {
                           <Button 
                             className="bg-gradient-to-r from-[#7CE0A8] to-[#5AB894] hover:from-[#6BC999] hover:to-[#4BA683] text-white cursor-pointer"
                             disabled={isUploadingImage}
+                            asChild
                           >
-                            {isUploadingImage ? (
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                              <Upload className="h-4 w-4 mr-2" />
-                            )}
-                            Upload Foto Pertama
+                            <span>
+                              {isUploadingImage ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Upload className="h-4 w-4 mr-2" />
+                              )}
+                              {isUploadingImage ? 'Mengupload...' : 'Upload Foto Pertama'}
+                            </span>
                           </Button>
                         </label>
                       </div>
@@ -814,7 +862,7 @@ export default function ServicesPage() {
                                 }}
                                 className="h-8 w-8 bg-white/90 hover:bg-white"
                               >
-                                <Edit2 className="h-4 w-4" />
+                                <Eye className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -964,7 +1012,7 @@ export default function ServicesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Image Dialog */}
+      {/* Image Preview Dialog */}
       <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
