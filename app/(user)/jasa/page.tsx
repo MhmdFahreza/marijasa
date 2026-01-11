@@ -29,30 +29,29 @@ const FilterBar = dynamic(() => import("@/app/components/ui/FilterBar"), { ssr: 
 
 const ITEMS_PER_PAGE = 10;
 
+interface Category {
+  category_id: string;
+  slug: string;
+  name: string;
+}
+
 const EmptyState = ({
   onResetFilters,
   selectedCategory,
   selectedCity,
   selectedRating,
-  searchQuery
+  searchQuery,
+  categoryMap
 }: {
   onResetFilters: () => void;
   selectedCategory: string;
   selectedCity: string;
   selectedRating: string;
   searchQuery: string;
+  categoryMap: Record<string, string>;
 }) => {
   const getCategoryDisplayName = (category: string) => {
-    const names: Record<string, string> = {
-      "ac": "Tukang AC",
-      "listrik": "Tukang Listrik",
-      "pembersihanrumah": "Tukang Pembersihan Rumah",
-      "ledeng": "Tukang Ledeng",
-      "sedotwc": "Tukang Sedot WC",
-      "kebun": "Tukang Kebun",
-      "furnitur": "Tukang Mebel"
-    };
-    return names[category] || category;
+    return categoryMap[category] || category;
   };
 
   return (
@@ -114,7 +113,7 @@ const EmptyState = ({
             {searchQuery && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#7CE0A8]/10 text-[#7CE0A8] text-sm font-medium">
                 <Search className="w-3.5 h-3.5" />
-                "{searchQuery}"
+                &quot;{searchQuery}&quot;
               </span>
             )}
           </div>
@@ -153,82 +152,132 @@ export default function JasaPage() {
   const [selectedRating, setSelectedRating] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState<string>("10");
+  
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  
+  // Key untuk force re-render saat reset
+  const [renderKey, setRenderKey] = useState(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const loadVendorsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load vendors dari API dengan debounce
-  const loadVendors = useCallback(async (
-    category: string,
-    city: string,
-    rating: string,
-    search: string
-  ) => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    abortControllerRef.current = new AbortController();
-
-    try {
-      setIsFilterLoading(true);
-
-      const params = new URLSearchParams();
-      if (category) params.set('kategori', category);
-      if (city) params.set('kota', city);
-      if (rating && rating !== 'semuarating') {
-        params.set('rating', rating);
-      }
-      if (search) params.set('search', search);
-
-      const queryString = params.toString();
-      const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
-
-      const response = await fetch(url, {
-        credentials: 'include',
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (response.ok) {
+  // Fetch categories untuk mapping nama
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch('/api/master/categories');
         const data = await response.json();
-        setVendors(data.vendors || []);
-      } else {
-        console.error('Error loading vendors:', await response.text());
-        setVendors([]);
+        if (data.success && data.data) {
+          const map: Record<string, string> = {};
+          data.data.forEach((cat: Category) => {
+            map[cat.slug] = cat.name;
+          });
+          setCategoryMap(map);
+          console.log('[JasaPage] Category map loaded:', map);
+        }
+      } catch (error) {
+        console.error('[JasaPage] Error fetching categories:', error);
       }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        console.error('Error loading vendors:', error);
-        setVendors([]);
-      }
-    } finally {
-      setIsFilterLoading(false);
-      setIsLoading(false);
-    }
+    };
+    fetchCategories();
   }, []);
 
-  // Debounced load vendors - lebih cepat untuk real-time feel
+  // Set filters from URL params on mount - HANYA SEKALI
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadVendors(selectedCategory, selectedCity, selectedRating, searchQuery);
-    }, 150); // Reduced from 300ms to 150ms
+    if (initialLoadDone) return;
 
-    return () => clearTimeout(timeoutId);
-  }, [selectedCategory, selectedCity, selectedRating, searchQuery, loadVendors]);
-
-  // Set filters from URL params on mount
-  useEffect(() => {
     const kategori = searchParams?.get('kategori');
     const kota = searchParams?.get('kota');
     const rating = searchParams?.get('rating');
     const search = searchParams?.get('search');
     const limit = searchParams?.get('limit');
     
+    console.log('[JasaPage] Initial URL params:', { kategori, kota, rating, search, limit });
+    
     if (kategori) setSelectedCategory(kategori);
     if (kota) setSelectedCity(kota);
     if (rating) setSelectedRating(rating);
     if (search) setSearchQuery(search);
     if (limit) setDisplayLimit(limit);
-  }, []);
+
+    setInitialLoadDone(true);
+  }, [searchParams, initialLoadDone]);
+
+  // Load vendors dari API dengan debounce - TRIGGER OTOMATIS
+  useEffect(() => {
+    if (!initialLoadDone) return;
+
+    const loadVendors = async () => {
+      // Cancel previous requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (loadVendorsTimeoutRef.current) {
+        clearTimeout(loadVendorsTimeoutRef.current);
+      }
+
+      abortControllerRef.current = new AbortController();
+
+      try {
+        setIsFilterLoading(true);
+
+        const params = new URLSearchParams();
+        if (selectedCategory) params.set('kategori', selectedCategory);
+        if (selectedCity) params.set('kota', selectedCity);
+        if (selectedRating && selectedRating !== 'semuarating') {
+          params.set('rating', selectedRating);
+        }
+        if (searchQuery) params.set('search', searchQuery);
+
+        const queryString = params.toString();
+        const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
+
+        console.log('[JasaPage] Loading vendors with URL:', url);
+
+        const response = await fetch(url, {
+          credentials: 'include',
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[JasaPage] Vendors loaded:', data.vendors?.length || 0);
+          
+          // Set vendors dengan timeout kecil untuk memastikan state update
+          await new Promise(resolve => setTimeout(resolve, 50));
+          setVendors(data.vendors || []);
+          
+          // Force re-render dengan key baru
+          setRenderKey(prev => prev + 1);
+        } else {
+          console.error('Error loading vendors:', await response.text());
+          setVendors([]);
+        }
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Error loading vendors:', error);
+          setVendors([]);
+        }
+      } finally {
+        setIsFilterLoading(false);
+        setIsLoading(false);
+      }
+    };
+
+    loadVendorsTimeoutRef.current = setTimeout(() => {
+      loadVendors();
+    }, 150);
+
+    return () => {
+      if (loadVendorsTimeoutRef.current) {
+        clearTimeout(loadVendorsTimeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery, initialLoadDone]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -264,15 +313,22 @@ export default function JasaPage() {
 
   const totalPages = Math.max(1, Math.ceil(displayedVendors.length / ITEMS_PER_PAGE));
 
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [totalPages, currentPage]);
+  // Calculate current page vendors
+  const { startIndex, endIndex, currentVendors } = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const current = displayedVendors.slice(start, end);
+    
+    return { startIndex: start, endIndex: end, currentVendors: current };
+  }, [currentPage, displayedVendors]);
 
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentVendors = displayedVendors.slice(startIndex, endIndex);
+  // Auto-fix pagination if current page is out of bounds
+  useEffect(() => {
+    if (displayedVendors.length > 0 && currentVendors.length === 0 && currentPage > 1) {
+      console.log('[JasaPage] Current page out of bounds, resetting to page 1');
+      setCurrentPage(1);
+    }
+  }, [displayedVendors.length, currentVendors.length, currentPage]);
 
   const handleHomeClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -286,13 +342,35 @@ export default function JasaPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleResetFilters = useCallback(() => {
+  const handleResetFilters = useCallback(async () => {
+    console.log('[JasaPage] Resetting all filters...');
+    
+    // Cancel ongoing requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    if (loadVendorsTimeoutRef.current) {
+      clearTimeout(loadVendorsTimeoutRef.current);
+    }
+    
+    // Show loading state
+    setIsFilterLoading(true);
+    
+    // Reset all filters
     setSelectedCategory("");
     setSelectedCity("");
     setSelectedRating("");
     setSearchQuery("");
     setDisplayLimit("10");
     setCurrentPage(1);
+    
+    // Update URL
+    window.history.replaceState({}, '', '/jasa');
+    
+    // Small delay untuk memastikan state terupdate
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    console.log('[JasaPage] Filters reset complete');
   }, []);
 
   const handleLoginSuccess = async (email: string) => {
@@ -383,6 +461,11 @@ export default function JasaPage() {
     return items;
   };
 
+  // Generate stable key untuk vendor list
+  const vendorListKey = useMemo(() => {
+    return `vendors-${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}-${renderKey}`;
+  }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit, currentPage, renderKey]);
+
   return (
     <>
       <motion.main
@@ -435,8 +518,8 @@ export default function JasaPage() {
               />
             </motion.div>
 
-            {/* Konten dengan smooth opacity transition */}
             <motion.div
+              key={vendorListKey}
               animate={{ opacity: isFilterLoading ? 0.5 : 1 }}
               transition={{ duration: 0.15 }}
             >
@@ -447,11 +530,12 @@ export default function JasaPage() {
                   selectedCity={selectedCity}
                   selectedRating={selectedRating}
                   searchQuery={searchQuery}
+                  categoryMap={categoryMap}
                 />
               ) : (
                 <>
                   <motion.section
-                    key={`${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}`}
+                    key={vendorListKey}
                     className="mt-6 space-y-4"
                     initial="hidden"
                     animate="show"
@@ -463,9 +547,9 @@ export default function JasaPage() {
                       },
                     }}
                   >
-                    {currentVendors.map((v) => (
+                    {currentVendors.map((v, index) => (
                       <motion.div
-                        key={v.id}
+                        key={`${v.vendor_id || v.id}-${index}-${renderKey}`}
                         variants={{
                           hidden: { opacity: 0, y: 8 },
                           show: { opacity: 1, y: 0 },

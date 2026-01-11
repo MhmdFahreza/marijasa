@@ -124,7 +124,10 @@ export default function FilterBar({
         .then(([citiesData, categoriesData]) => {
             if (!abortController.signal.aborted) {
                 if (citiesData.success) setCities(citiesData.data);
-                if (categoriesData.success) setCategories(categoriesData.data);
+                if (categoriesData.success) {
+                    setCategories(categoriesData.data);
+                    console.log('[FilterBar] Categories loaded:', categoriesData.data.map((c: Category) => ({ slug: c.slug, name: c.name })));
+                }
                 setDataReady(true);
             }
         })
@@ -156,7 +159,7 @@ export default function FilterBar({
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
-    // Category map
+    // Category map - slug to name
     const categoryMap = useMemo(() => {
         return categories.reduce((acc, cat) => {
             acc[cat.slug] = cat.name;
@@ -186,6 +189,7 @@ export default function FilterBar({
 
     // Direct handlers
     const handleCategoryChange = useCallback((value: string) => {
+        console.log('[FilterBar] Category changed to:', value);
         onCategoryChange(value);
         updateURL(value, selectedCity, selectedRating, searchQuery, displayLimit);
     }, [onCategoryChange, selectedCity, selectedRating, searchQuery, displayLimit, updateURL]);
@@ -555,7 +559,7 @@ export default function FilterBar({
                         <div className={`pr-2 ${isSmallMobile ? 'mt-3 space-y-4 flex-1 overflow-y-auto' : 'mt-2 space-y-3'}`}>
                             {/* Kategori */}
                             <div className="space-y-1.5">
-                                <div className="text-sm font-medium text-gray-700">Kategori</div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Kategori</div>
                                 <Select value={selectedCategory} onValueChange={handleCategoryChange}>
                                     <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]">
                                         <SelectValue placeholder="Pilih kategori" />
@@ -572,7 +576,7 @@ export default function FilterBar({
 
                             {/* Lokasi */}
                             <div className="space-y-1.5">
-                                <div className="text-sm font-medium text-gray-700">Lokasi</div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Lokasi</div>
                                 <CitySelect
                                     value={selectedCity}
                                     onValueChange={handleCityChange}
@@ -586,7 +590,7 @@ export default function FilterBar({
 
                             {/* Rating */}
                             <div className="space-y-1.5">
-                                <div className="text-sm font-medium text-gray-700">Rating</div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Rating</div>
                                 <Select value={selectedRating} onValueChange={handleRatingChange}>
                                     <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]">
                                         <SelectValue placeholder="Pilih rating" />
@@ -604,7 +608,7 @@ export default function FilterBar({
 
                             {/* Tampilkan */}
                             <div className="space-y-1.5">
-                                <div className="text-sm font-medium text-gray-700">Tampilkan</div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Tampilkan</div>
                                 <Select value={displayLimit} onValueChange={handleDisplayLimitChange}>
                                     <SelectTrigger className="h-12 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8]">
                                         <SelectValue placeholder="Tampilkan" />
@@ -620,7 +624,7 @@ export default function FilterBar({
                             </div>
                         </div>
 
-                        <SheetFooter className={`pt-3 border-t border-gray-200 flex-shrink-0 ${isSmallMobile ? 'mt-3' : 'mt-3'}`}>
+                        <SheetFooter className={`pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 ${isSmallMobile ? 'mt-3' : 'mt-3'}`}>
                             <div className="flex gap-2 w-full">
                                 <Button
                                     type="button"

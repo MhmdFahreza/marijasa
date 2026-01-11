@@ -1,8 +1,10 @@
 // app/api/master/cities/route.ts
-import { NextResponse } from 'next/server';
-import { prisma } from '@/app/components/lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/components/lib/prisma";
 
-export async function GET() {
+export const runtime = "nodejs";
+
+export async function GET(request: NextRequest) {
   try {
     const cities = await prisma.city.findMany({
       where: {
@@ -19,14 +21,17 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: cities,
-    });
-  } catch (error) {
-    console.error('Error fetching cities:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch cities' },
+      {
+        success: true,
+        data: cities,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("[Cities API] Error:", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }
