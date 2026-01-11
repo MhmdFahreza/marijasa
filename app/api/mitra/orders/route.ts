@@ -210,6 +210,21 @@ export async function GET(request: NextRequest) {
         serviceCategory = 'sedot-wc';
       }
 
+      // Parse address to separate GPS link if it's combined in one string
+      let cleanAddress = order.user.address || order.location;
+      let extractedGpsLink = order.user.gps_link || null;
+      
+      // Check if address contains GPS link pattern
+      const gpsPattern = /(GPS:\s*)(https?:\/\/[^\s]+)/i;
+      const match = cleanAddress.match(gpsPattern);
+      
+      if (match && !extractedGpsLink) {
+        // Extract GPS link from address
+        extractedGpsLink = match[2];
+        // Remove GPS part from address
+        cleanAddress = cleanAddress.replace(gpsPattern, '').trim();
+      }
+
       return {
         id: order.booking_number,
         serviceCategory,
@@ -228,8 +243,8 @@ export async function GET(request: NextRequest) {
         customerName: order.user.name,
         customerEmail: order.user.email,
         customerPhone: order.user.phone || '-',
-        customerAddress: order.user.address || order.location,
-        gpsLink: order.user.gps_link || null,
+        customerAddress: cleanAddress,
+        gpsLink: extractedGpsLink,
         workDate: order.scheduled_date,
         workTime: order.scheduled_time,
         additionalNotes: order.notes,

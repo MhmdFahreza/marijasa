@@ -27,7 +27,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Navigation,
-  X
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Separator } from "@/app/components/ui/separator";
@@ -513,31 +514,37 @@ export default function OrdersPage() {
                                   </div>
 
                                   <div className="space-y-3">
-                                    <div className="flex items-start gap-2 p-2 bg-neutral-50 dark:bg-neutral-700/30 rounded h-full">
+                                    {/* Alamat Lengkap */}
+                                    <div className="flex items-start gap-2 p-3 bg-neutral-50 dark:bg-neutral-700/30 rounded">
                                       <MapPin className="h-4 w-4 text-neutral-500 mt-0.5 flex-shrink-0" />
-                                      <div className="min-w-0">
-                                        <span className="text-xs text-neutral-500 dark:text-neutral-400 block">Alamat Lengkap</span>
-                                        <span className="text-sm">{order.customerAddress}</span>
-
-                                        {/* Tombol Google Maps */}
-                                        {order.gpsLink && (
-                                          <div className="mt-3">
-                                            <a
-                                              href={order.gpsLink}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors duration-200"
-                                            >
-                                              <Navigation className="h-3.5 w-3.5" />
-                                              Buka di Google Maps
-                                            </a>
-                                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                                              Klik untuk melihat lokasi dan mendapatkan rute
-                                            </p>
-                                          </div>
-                                        )}
+                                      <div className="min-w-0 flex-1">
+                                        <span className="text-xs text-neutral-500 dark:text-neutral-400 block mb-1">Alamat Lengkap</span>
+                                        <span className="text-sm leading-relaxed block">{order.customerAddress}</span>
                                       </div>
                                     </div>
+
+                                    {/* Link Google Maps / GPS - Section Terpisah */}
+                                    {order.gpsLink && (
+                                      <div className="flex items-start gap-2 p-3 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded border border-blue-100 dark:border-blue-800">
+                                        <Navigation className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                        <div className="min-w-0 flex-1">
+                                          <span className="text-xs text-blue-600 dark:text-blue-400 font-medium block mb-2">Link Google Maps / GPS</span>
+                                          <a
+                                            href={order.gpsLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors duration-200 font-medium shadow-sm hover:shadow-md"
+                                          >
+                                            <Navigation className="h-3.5 w-3.5" />
+                                            Buka Lokasi di Google Maps
+                                            <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                          <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-2">
+                                            Klik untuk melihat lokasi dan mendapatkan rute navigasi
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -633,15 +640,13 @@ export default function OrdersPage() {
                                         <span className="font-medium">Status:</span> Menunggu pembayaran dari pelanggan.
                                       </p>
                                     </div>
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                      <Button
-                                        onClick={() => router.push(`/mitra/chat/${order.id}`)}
-                                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                                      >
-                                        <MessageSquare className="h-4 w-4 mr-2" />
-                                        Chat dengan Pelanggan
-                                      </Button>
-                                    </div>
+                                    <Button
+                                      onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                      <MessageSquare className="h-4 w-4 mr-2" />
+                                      Chat dengan Pelanggan
+                                    </Button>
                                   </div>
                                 )}
 
@@ -652,25 +657,13 @@ export default function OrdersPage() {
                                         <span className="font-medium">Status:</span> Sedang mengerjakan pesanan. Tunggu konfirmasi selesai dari pelanggan.
                                       </p>
                                     </div>
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                      <Button
-                                        onClick={() => router.push(`/mitra/chat/${order.id}`)}
-                                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                                      >
-                                        <MessageSquare className="h-4 w-4 mr-2" />
-                                        Chat dengan Pelanggan
-                                      </Button>
-                                      {order.gpsLink && (
-                                        <Button
-                                          variant="outline"
-                                          className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                          onClick={() => window.open(order.gpsLink, '_blank')}
-                                        >
-                                          <Navigation className="h-4 w-4 mr-2" />
-                                          Buka Peta
-                                        </Button>
-                                      )}
-                                    </div>
+                                    <Button
+                                      onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                      <MessageSquare className="h-4 w-4 mr-2" />
+                                      Chat dengan Pelanggan
+                                    </Button>
                                   </div>
                                 )}
 
@@ -681,26 +674,14 @@ export default function OrdersPage() {
                                         <span className="font-medium">Status:</span> Pesanan ini sudah selesai.
                                       </p>
                                     </div>
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                      <Button
-                                        variant="outline"
-                                        className="flex-1"
-                                        onClick={() => router.push(`/mitra/chat/${order.id}`)}
-                                      >
-                                        <MessageSquare className="h-4 w-4 mr-2" />
-                                        Lihat Riwayat Chat
-                                      </Button>
-                                      {order.gpsLink && (
-                                        <Button
-                                          variant="outline"
-                                          className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                          onClick={() => window.open(order.gpsLink, '_blank')}
-                                        >
-                                          <Navigation className="h-4 w-4 mr-2" />
-                                          Lihat Lokasi
-                                        </Button>
-                                      )}
-                                    </div>
+                                    <Button
+                                      variant="outline"
+                                      className="w-full"
+                                      onClick={() => router.push(`/mitra/chat/${order.id}`)}
+                                    >
+                                      <MessageSquare className="h-4 w-4 mr-2" />
+                                      Lihat Riwayat Chat
+                                    </Button>
                                   </div>
                                 )}
 
