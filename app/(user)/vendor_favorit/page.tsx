@@ -17,7 +17,7 @@ import { Card } from "@/app/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Button } from "@/app/components/ui/button";
 import { Heart, Star, ArrowRight, Sparkles, Package } from "lucide-react";
-import SiteFooter from "@/app/footer";
+import SiteFooter from "@/app/(footer)/footer";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { useAuth } from "@/app/components/contexts/AuthContext";
 

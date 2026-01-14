@@ -60,7 +60,7 @@ import {
     FileUser,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
-import SiteFooter from "@/app/footer";
+import SiteFooter from "@/app/(footer)/footer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/app/components/ui/dialog";
 import { Slider } from "@/app/components/ui/slider";
 

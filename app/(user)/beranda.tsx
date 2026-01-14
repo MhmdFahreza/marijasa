@@ -7,7 +7,7 @@ import { InfiniteMovingCardsData } from "@/app/components/ui/infinite-moving-car
 import { cardData, type ContentSection } from "@/app/data/dataContent";
 import { dataReason } from "@/app/data/dataReason";
 import { HoverEffect } from "@/app/components/ui/card-hover-effect";
-import SiteFooter from "@/app/footer";
+import SiteFooter from "@/app/(footer)/footer";
 import { useRouter } from "next/navigation";
 import {
   LayoutGrid,

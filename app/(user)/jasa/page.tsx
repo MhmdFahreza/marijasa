@@ -8,7 +8,7 @@ import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/app/components/ui/breadcrumb";
 import VendorCard from "@/app/components/ui/vendor-card";
-import SiteFooter from "@/app/footer";
+import SiteFooter from "@/app/(footer)/footer";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
