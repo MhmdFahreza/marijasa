@@ -7,12 +7,10 @@ export async function PUT(
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    // Await params to get the actual values
     const { orderId } = await params;
     
     console.log('[Payment API] PUT request received for orderId:', orderId);
     
-    // Get user ID from session
     let userId: string | null = null;
     
     const sessionId = request.cookies.get('session_id')?.value;
@@ -59,7 +57,6 @@ export async function PUT(
 
     console.log('[Payment API] Authenticated user ID:', userId);
 
-    // Parse request body
     const body = await request.json();
     const {
       paymentMethod,
@@ -75,7 +72,7 @@ export async function PUT(
       totalAmount
     });
 
-    // Validate required fields
+    // Validate payment method
     if (!paymentMethod || !paymentStatus) {
       return NextResponse.json(
         { error: 'Validation Error', message: 'Data pembayaran tidak lengkap' },
@@ -101,30 +98,95 @@ export async function PUT(
 
     console.log('[Payment API] Found booking:', booking.booking_id);
 
-    // Update booking with payment information
+    // Calculate new total with transaction fee
+    const finalTransactionFee = transactionFee || 0;
+    const newTotal = totalAmount || (booking.subtotal + booking.service_fee + finalTransactionFee);
+
+    console.log('[Payment API] Updating booking with:', {
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
+      transaction_fee: finalTransactionFee,
+      total: newTotal
+    });
+
+    // ✅ PENTING: Update booking dengan payment_method yang benar
     const updatedBooking = await prisma.booking.update({
       where: {
         booking_id: booking.booking_id
       },
       data: {
+        payment_method: paymentMethod, // ✅ Simpan payment method dengan benar
         payment_status: paymentStatus.toUpperCase() as any,
-        total: totalAmount,
-        // Store payment method in notes field
-        notes: booking.notes 
-          ? `${booking.notes}\n\nMetode Pembayaran: ${paymentMethod}\nBiaya Transaksi: Rp${transactionFee.toLocaleString('id-ID')}`
-          : `Metode Pembayaran: ${paymentMethod}\nBiaya Transaksi: Rp${transactionFee.toLocaleString('id-ID')}`,
-        // Update status if payment is successful
+        transaction_fee: finalTransactionFee, // ✅ Simpan transaction fee
+        total: newTotal, // ✅ Update total dengan transaction fee
+        // Update status jika payment berhasil
         status: paymentStatus.toUpperCase() === 'PAID' ? 'CONFIRMED' : booking.status
       }
     });
 
     console.log('[Payment API] Booking updated successfully');
+    console.log('[Payment API] Payment method saved:', updatedBooking.payment_method);
+    console.log('[Payment API] Transaction fee saved:', updatedBooking.transaction_fee);
+
+    // Add to booking history
+    await prisma.bookingHistory.create({
+      data: {
+        booking_id: booking.booking_id,
+        status: paymentStatus.toUpperCase() === 'PAID' 
+          ? `Pembayaran Berhasil - ${paymentMethod}` 
+          : 'Metode Pembayaran Diperbarui',
+        reason: paymentMethod.toLowerCase() === 'tunai' 
+          ? 'Pembayaran tunai akan dilakukan saat layanan diberikan'
+          : null
+      }
+    });
+
+    // Create notification for user
+    try {
+      const isCashPayment = paymentMethod.toLowerCase() === 'tunai' || paymentMethod.toLowerCase() === 'cash';
+      
+      if (paymentStatus.toUpperCase() === 'PAID') {
+        await prisma.userNotification.create({
+          data: {
+            user_id: userId,
+            title: isCashPayment ? '💵 Pembayaran Tunai Dikonfirmasi' : '✅ Pembayaran Berhasil',
+            message: isCashPayment 
+              ? `Pesanan #${orderId} dikonfirmasi dengan pembayaran tunai. Pembayaran akan dilakukan langsung kepada vendor saat layanan diberikan. Total: Rp ${newTotal.toLocaleString('id-ID')}`
+              : `Pembayaran untuk pesanan #${orderId} telah berhasil diproses melalui ${paymentMethod}. Total: Rp ${newTotal.toLocaleString('id-ID')}. Pesanan Anda sedang diproses.`,
+            type: 'payment',
+            order_id: booking.booking_id
+          }
+        });
+      } else {
+        await prisma.userNotification.create({
+          data: {
+            user_id: userId,
+            title: '🔄 Metode Pembayaran Diperbarui',
+            message: `Metode pembayaran untuk pesanan #${orderId} telah diperbarui menjadi ${paymentMethod}.${isCashPayment ? ' Pembayaran akan dilakukan secara tunai saat layanan diberikan.' : ' Silakan lanjutkan ke pembayaran.'}`,
+            type: 'payment',
+            order_id: booking.booking_id
+          }
+        });
+      }
+
+      console.log('[Payment API] Notification created successfully');
+    } catch (notifError) {
+      console.error('[Payment API] Error creating notification:', notifError);
+    }
 
     return NextResponse.json(
       {
         success: true,
         message: 'Status pembayaran berhasil diperbarui',
-        booking: updatedBooking
+        booking: {
+          id: updatedBooking.booking_id,
+          orderId: updatedBooking.booking_number,
+          paymentMethod: updatedBooking.payment_method,
+          paymentStatus: updatedBooking.payment_status,
+          transactionFee: updatedBooking.transaction_fee,
+          total: updatedBooking.total,
+          status: updatedBooking.status
+        }
       },
       { status: 200 }
     );

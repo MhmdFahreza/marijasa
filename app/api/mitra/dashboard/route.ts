@@ -105,9 +105,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Initialize statistics
-    let totalCompletedEarnings = 0;  // Total dari COMPLETED bookings
-    let pendingBalance = 0;          // Dari CONFIRMED/IN_PROGRESS yang sudah PAID
-    let monthlyIncome = 0;           // HANYA dari COMPLETED bookings bulan ini
+    let totalCompletedEarnings = 0;  // Total dari COMPLETED bookings NON-TUNAI SAJA
+    let pendingBalance = 0;          // Dari CONFIRMED/IN_PROGRESS NON-TUNAI SAJA
+    let monthlyIncome = 0;           // Total pemasukan bulan ini (SEMUA termasuk tunai untuk tracking)
     let totalOrders = allBookings.length;
     let completedOrders = 0;         // Status COMPLETED
     let pendingOrders = 0;           // Status PENDING (belum bayar)
@@ -115,55 +115,122 @@ export async function GET(request: NextRequest) {
 
     const transactions: any[] = [];
 
-    // Process bookings dengan logika yang sudah diperbaiki
+    // Process bookings dengan logika pembayaran tunai yang benar
     allBookings.forEach((booking) => {
       const bookingDate = new Date(booking.created_at);
       
       // Yang masuk ke vendor = subtotal saja (tidak termasuk transaction_fee)
       const vendorEarnings = booking.subtotal;
+      
+      // Cek apakah pembayaran tunai dengan pengecekan ketat
+      // HANYA jika payment_method explicitly = "tunai" atau "cash"
+      const paymentMethodLower = (booking.payment_method || "").toLowerCase().trim();
+      const isCashPayment = paymentMethodLower === "tunai" || 
+                           paymentMethodLower === "cash";
+      
+      // Log untuk debugging jika payment_method NULL atau kosong
+      if (!booking.payment_method || booking.payment_method === "") {
+        console.log(`[WARN] Booking ${booking.booking_number} memiliki payment_method NULL/kosong - dianggap NON-tunai`);
+      }
 
       if (booking.status === "COMPLETED" && booking.payment_status === "PAID") {
-        // ✅ Order selesai = masuk total completed earnings
         completedOrders++;
-        totalCompletedEarnings += vendorEarnings;
+        
+        // ✅ LOGIC PENTING: Pembayaran TUNAI
+        if (isCashPayment) {
+          // 1. TIDAK masuk ke availableBalance (saldo tersedia)
+          // 2. TIDAK masuk ke pendingBalance
+          // 3. HANYA masuk ke monthlyIncome untuk tracking saja (jika bulan ini)
+          
+          if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
+            monthlyIncome += vendorEarnings;
+          }
+          
+          // Transaksi untuk tracking saja
+          transactions.push({
+            id: `INC-${booking.booking_id}`,
+            type: "income",
+            amount: vendorEarnings,
+            date: booking.created_at.toISOString(),
+            description: `Pembayaran Tunai dari ${booking.user.name}`,
+            customerName: booking.user.name,
+            orderId: booking.booking_id,
+            bookingNumber: booking.booking_number,
+            status: "COMPLETED",
+            paymentMethod: "tunai",
+            isCashPayment: true,
+            note: "Pembayaran tunai - tidak masuk saldo digital"
+          });
+        } else {
+          // ✅ Pembayaran NON-TUNAI (Digital): Masuk available balance
+          totalCompletedEarnings += vendorEarnings;
 
-        transactions.push({
-          id: `INC-${booking.booking_id}`,
-          type: "income",
-          amount: vendorEarnings,
-          date: booking.created_at.toISOString(),
-          description: `Pembayaran dari ${booking.user.name}`,
-          customerName: booking.user.name,
-          orderId: booking.booking_id,
-          bookingNumber: booking.booking_number,
-          status: "COMPLETED",
-          paymentMethod: "transfer_bank",
-        });
+          transactions.push({
+            id: `INC-${booking.booking_id}`,
+            type: "income",
+            amount: vendorEarnings,
+            date: booking.created_at.toISOString(),
+            description: `Pembayaran dari ${booking.user.name}`,
+            customerName: booking.user.name,
+            orderId: booking.booking_id,
+            bookingNumber: booking.booking_number,
+            status: "COMPLETED",
+            paymentMethod: booking.payment_method || "transfer_bank",
+            isCashPayment: false,
+          });
 
-        // ✅ Hanya COMPLETED yang masuk monthly income
-        if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
-          monthlyIncome += vendorEarnings;
+          // Tambahkan ke monthly income jika bulan ini
+          if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
+            monthlyIncome += vendorEarnings;
+          }
         }
       } else if ((booking.status === "CONFIRMED" || booking.status === "IN_PROGRESS") && booking.payment_status === "PAID") {
-        // ✅ Order sudah dibayar tapi belum selesai = masuk pending balance
         inProgressOrders++;
-        pendingBalance += vendorEarnings;
+        
+        // ✅ Pembayaran TUNAI dalam progress: Tidak masuk pending balance
+        if (isCashPayment) {
+          transactions.push({
+            id: `INC-${booking.booking_id}`,
+            type: "income",
+            amount: vendorEarnings,
+            date: booking.created_at.toISOString(),
+            description: `Pembayaran Tunai dari ${booking.user.name} (Sedang Diproses)`,
+            customerName: booking.user.name,
+            orderId: booking.booking_id,
+            bookingNumber: booking.booking_number,
+            status: "IN_PROGRESS",
+            paymentMethod: "tunai",
+            isCashPayment: true,
+            note: "Pembayaran tunai - tidak masuk saldo digital"
+          });
 
-        transactions.push({
-          id: `INC-${booking.booking_id}`,
-          type: "income",
-          amount: vendorEarnings,
-          date: booking.created_at.toISOString(),
-          description: `Pembayaran dari ${booking.user.name} (Sedang Diproses)`,
-          customerName: booking.user.name,
-          orderId: booking.booking_id,
-          bookingNumber: booking.booking_number,
-          status: "IN_PROGRESS",
-          paymentMethod: "transfer_bank",
-        });
+          // Tambahkan ke monthly income jika bulan ini (untuk tracking)
+          if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
+            monthlyIncome += vendorEarnings;
+          }
+        } else {
+          // ✅ Pembayaran NON-TUNAI dalam progress: Masuk pending balance
+          pendingBalance += vendorEarnings;
 
-        // ❌ TIDAK menambahkan ke monthly income karena belum COMPLETED
-        // Monthly income hanya dari pesanan yang sudah selesai
+          transactions.push({
+            id: `INC-${booking.booking_id}`,
+            type: "income",
+            amount: vendorEarnings,
+            date: booking.created_at.toISOString(),
+            description: `Pembayaran dari ${booking.user.name} (Sedang Diproses)`,
+            customerName: booking.user.name,
+            orderId: booking.booking_id,
+            bookingNumber: booking.booking_number,
+            status: "IN_PROGRESS",
+            paymentMethod: booking.payment_method || "transfer_bank",
+            isCashPayment: false,
+          });
+
+          // Tambahkan ke monthly income jika bulan ini
+          if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
+            monthlyIncome += vendorEarnings;
+          }
+        }
       } else if (booking.status === "PENDING") {
         // ✅ Order belum dibayar = waiting payment
         pendingOrders++;
@@ -178,12 +245,14 @@ export async function GET(request: NextRequest) {
           orderId: booking.booking_id,
           bookingNumber: booking.booking_number,
           status: "PENDING",
-          paymentMethod: "belum_dibayar",
+          paymentMethod: isCashPayment ? "tunai" : "belum_dibayar",
+          isCashPayment: isCashPayment,
         });
       }
     });
 
-    // Calculate available balance (completed earnings - total withdrawn)
+    // ✅ Calculate available balance (HANYA dari pembayaran NON-TUNAI yang COMPLETED)
+    // Formula: Total completed earnings (non-tunai) - total withdrawn
     const availableBalance = Math.max(0, totalCompletedEarnings - totalWithdrawn);
 
     // Process withdrawal transactions
@@ -206,27 +275,40 @@ export async function GET(request: NextRequest) {
     // Merge all transactions
     const allTransactions = [...transactions, ...withdrawalTransactions];
 
+    // Calculate cash payments summary for logging
+    const cashPaymentsCompleted = transactions.filter(t => t.isCashPayment && t.status === 'COMPLETED');
+    const cashPaymentsInProgress = transactions.filter(t => t.isCashPayment && t.status === 'IN_PROGRESS');
+    const cashPaymentsTotal = cashPaymentsCompleted.reduce((sum, t) => sum + t.amount, 0);
+    const cashPaymentsInProgressTotal = cashPaymentsInProgress.reduce((sum, t) => sum + t.amount, 0);
+
     // Debug logging
     console.log('[Dashboard Stats]', {
       totalOrders,
       completedOrders,
       pendingOrders,
       inProgressOrders,
-      totalCompletedEarnings,
+      totalCompletedEarnings: totalCompletedEarnings,  // Hanya non-tunai
       totalWithdrawn,
-      availableBalance,
-      pendingBalance,
-      monthlyIncome,  // Sekarang hanya dari COMPLETED
-      monthlyWithdrawal
+      availableBalance,  // Hanya dari non-tunai
+      pendingBalance,    // Hanya dari non-tunai
+      monthlyIncome,     // Semua pembayaran (tunai + non-tunai) bulan ini
+      monthlyWithdrawal,
+      cashPayments: {
+        completed: cashPaymentsCompleted.length,
+        inProgress: cashPaymentsInProgress.length,
+        totalCompleted: cashPaymentsTotal,
+        totalInProgress: cashPaymentsInProgressTotal,
+        totalAll: cashPaymentsTotal + cashPaymentsInProgressTotal
+      }
     });
 
     // Return dashboard data
     return NextResponse.json({
       vendorId: vendor.vendor_id,
       vendorName: vendor.name,
-      availableBalance,      // Saldo yang bisa ditarik (total completed - total withdrawn)
-      pendingBalance,        // Saldo pending (dari CONFIRMED/IN_PROGRESS yang paid)
-      monthlyIncome,         // ✅ HANYA dari COMPLETED bookings bulan ini
+      availableBalance,      // Saldo yang bisa ditarik (HANYA dari non-tunai)
+      pendingBalance,        // Saldo pending (HANYA dari non-tunai)
+      monthlyIncome,         // Total pemasukan bulan ini (tunai + non-tunai untuk tracking)
       monthlyWithdrawal,     // Penarikan bulan ini
       totalOrders,           // Total semua pesanan
       completedOrders,       // Pesanan COMPLETED
@@ -234,10 +316,17 @@ export async function GET(request: NextRequest) {
       inProgressOrders,      // Pesanan CONFIRMED/IN_PROGRESS (sedang dikerjakan)
       vendorRating: vendor.rating,
       vendorReviewCount: vendor.review_count,
-      totalRevenue: availableBalance + pendingBalance,
+      totalRevenue: availableBalance + pendingBalance,  // Total revenue dari non-tunai saja
       transactions: allTransactions.sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       ),
+      // Additional info for debugging (optional)
+      cashPaymentsSummary: {
+        completedCount: cashPaymentsCompleted.length,
+        inProgressCount: cashPaymentsInProgress.length,
+        completedTotal: cashPaymentsTotal,
+        inProgressTotal: cashPaymentsInProgressTotal
+      }
     });
   } catch (error) {
     console.error("Error fetching dashboard data:", error);

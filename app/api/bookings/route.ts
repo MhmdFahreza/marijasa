@@ -6,14 +6,11 @@ export async function POST(request: NextRequest) {
   try {
     console.log('[Bookings API] POST request received');
     
-    // Get all cookies for debugging
     const allCookies = request.cookies.getAll();
     console.log('[Bookings API] All cookies:', allCookies.map(c => `${c.name}=${c.value ? 'present' : 'missing'}`));
 
-    // Try to get user ID from various cookie sources
     let userId: string | null = null;
     
-    // Method 1: Check session_id cookie (custom auth)
     const sessionId = request.cookies.get('session_id')?.value;
     const accessToken = request.cookies.get('access_token')?.value;
     
@@ -24,7 +21,6 @@ export async function POST(request: NextRequest) {
 
     if (sessionId && accessToken) {
       try {
-        // Call /api/auth/me to verify and get user
         const origin = request.nextUrl.origin;
         const meResponse = await fetch(`${origin}/api/auth/me`, {
           method: 'GET',
@@ -39,9 +35,7 @@ export async function POST(request: NextRequest) {
           const meData = await meResponse.json();
           console.log('[Bookings API] Full response from /api/auth/me:', JSON.stringify(meData));
           
-          // Check different possible locations for user_id
           if (meData.authenticated && meData.user) {
-            // Try different field names
             userId = meData.user.user_id || meData.user.id;
             console.log('[Bookings API] User ID found:', userId);
           } else {
@@ -78,7 +72,6 @@ export async function POST(request: NextRequest) {
 
     console.log('[Bookings API] Authenticated user ID:', userId);
 
-    // Parse request body
     const body = await request.json();
     const {
       orderId,
@@ -98,7 +91,10 @@ export async function POST(request: NextRequest) {
       paymentStatus,
       subtotal,
       serviceFee,
-      totalAmount
+      totalAmount,
+      // ✅ TAMBAHAN: Ambil payment method jika sudah dipilih saat create booking
+      paymentMethod,
+      transactionFee
     } = body;
 
     console.log('[Bookings API] Booking data:', {
@@ -106,10 +102,11 @@ export async function POST(request: NextRequest) {
       vendorId,
       userId,
       selectedServices: serviceDetails?.selectedServices,
-      quantities: serviceDetails?.quantities
+      quantities: serviceDetails?.quantities,
+      paymentMethod, // Log payment method
+      transactionFee // Log transaction fee
     });
 
-    // Validate required fields
     if (!orderId || !vendorId || !workDate || !workTime) {
       return NextResponse.json(
         { error: 'Validation Error', message: 'Data pemesanan tidak lengkap' },
@@ -117,7 +114,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate selected services
     if (!serviceDetails?.selectedServices || serviceDetails.selectedServices.length === 0) {
       return NextResponse.json(
         { error: 'Validation Error', message: 'Minimal pilih satu layanan' },
@@ -125,7 +121,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if vendor exists
     const vendor = await prisma.vendor.findUnique({
       where: { vendor_id: vendorId }
     });
@@ -137,7 +132,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate service IDs exist and are active
     if (serviceDetails?.selectedServices?.length > 0) {
       const services = await prisma.service.findMany({
         where: {
@@ -168,7 +162,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check if services are active
       const inactiveServices = services.filter(s => s.is_active !== true);
       if (inactiveServices.length > 0) {
         return NextResponse.json(
@@ -181,10 +174,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Combine date and time for scheduled_date
     const scheduledDateTime = new Date(`${workDate}T${workTime}:00`);
     
-    // Ensure date is valid
     if (isNaN(scheduledDateTime.getTime())) {
       return NextResponse.json(
         { error: 'Validation Error', message: 'Tanggal dan waktu tidak valid' },
@@ -192,7 +183,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get service prices and calculate
     const selectedServices = serviceDetails?.selectedServices || [];
     const serviceItems = [];
     let calculatedSubtotal = 0;
@@ -223,15 +213,17 @@ export async function POST(request: NextRequest) {
     console.log('[Bookings API] Calculated subtotal:', calculatedSubtotal);
     console.log('[Bookings API] Provided subtotal:', subtotal);
 
-    // Use provided subtotal or calculated
     const finalSubtotal = subtotal || calculatedSubtotal;
-    const finalTotal = totalAmount || (finalSubtotal + serviceFee);
+    const finalTransactionFee = transactionFee || 0;
+    const finalTotal = totalAmount || (finalSubtotal + serviceFee + finalTransactionFee);
 
     console.log('[Bookings API] Final subtotal:', finalSubtotal);
+    console.log('[Bookings API] Final transaction fee:', finalTransactionFee);
     console.log('[Bookings API] Final total:', finalTotal);
+    console.log('[Bookings API] Payment method:', paymentMethod || 'Not selected yet');
     console.log('[Bookings API] Creating booking...');
 
-    // Create booking
+    // ✅ PENTING: Simpan payment_method ke database
     const booking = await prisma.booking.create({
       data: {
         booking_number: orderId,
@@ -243,8 +235,10 @@ export async function POST(request: NextRequest) {
         notes: additionalNotes || null,
         status: status.toUpperCase(),
         payment_status: paymentStatus.toUpperCase(),
+        payment_method: paymentMethod || null, // ✅ Simpan payment method
         subtotal: finalSubtotal,
         service_fee: serviceFee,
+        transaction_fee: finalTransactionFee, // ✅ Simpan transaction fee
         total: finalTotal,
         items: {
           create: serviceItems
@@ -266,19 +260,27 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('[Bookings API] Booking created:', booking.booking_id);
+    console.log('[Bookings API] Payment method saved:', booking.payment_method);
+    console.log('[Bookings API] Transaction fee saved:', booking.transaction_fee);
     console.log('[Bookings API] Booking items:', booking.items.length);
 
-    // CREATE NOTIFICATION FOR USER - Pesanan Berhasil Dibuat
+    // CREATE NOTIFICATION FOR USER
     try {
       const serviceNamesString = serviceNames.length > 0 
         ? serviceNames.join(', ') 
         : 'layanan yang dipilih';
 
+      const paymentNote = paymentMethod 
+        ? (paymentMethod.toLowerCase() === 'tunai' 
+            ? ' Pembayaran dilakukan secara tunai saat layanan diberikan.'
+            : ` Metode pembayaran: ${paymentMethod}.`)
+        : ' Silakan pilih metode pembayaran terlebih dahulu.';
+
       await prisma.userNotification.create({
         data: {
           user_id: userId,
           title: '🎉 Pesanan Berhasil Dibuat',
-          message: `Pesanan Anda untuk layanan ${serviceNamesString} dari ${vendor.name} telah berhasil dibuat dengan ID #${orderId}. Total tagihan: Rp ${finalTotal.toLocaleString('id-ID')}. Silakan lakukan pembayaran untuk melanjutkan pesanan Anda.`,
+          message: `Pesanan Anda untuk layanan ${serviceNamesString} dari ${vendor.name} telah berhasil dibuat dengan ID #${orderId}. Total tagihan: Rp ${finalTotal.toLocaleString('id-ID')}.${paymentNote}`,
           type: 'order',
           order_id: booking.booking_id,
           is_read: false
@@ -288,7 +290,6 @@ export async function POST(request: NextRequest) {
       console.log('[Bookings API] Notification created successfully');
     } catch (notifError) {
       console.error('[Bookings API] Error creating notification:', notifError);
-      // Don't fail the booking creation if notification fails
     }
 
     return NextResponse.json(
@@ -302,8 +303,10 @@ export async function POST(request: NextRequest) {
           orderId: booking.booking_number,
           status: booking.status,
           paymentStatus: booking.payment_status,
+          paymentMethod: booking.payment_method, // ✅ Return payment method
           subtotal: booking.subtotal,
           serviceFee: booking.service_fee,
+          transactionFee: booking.transaction_fee, // ✅ Return transaction fee
           total: booking.total,
           scheduledDate: booking.scheduled_date,
           items: booking.items.map(item => ({
@@ -321,7 +324,6 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('[Bookings API] Error creating booking:', error);
     
-    // Handle specific Prisma errors
     if (error.code === 'P2002') {
       return NextResponse.json(
         { error: 'Duplicate Entry', message: 'Order ID sudah digunakan' },
@@ -350,10 +352,8 @@ export async function GET(request: NextRequest) {
   try {
     console.log('[Bookings API] GET request received');
     
-    // Try to get user ID from various cookie sources
     let userId: string | null = null;
     
-    // Check session_id cookie (custom auth)
     const sessionId = request.cookies.get('session_id')?.value;
     const accessToken = request.cookies.get('access_token')?.value;
     
@@ -385,13 +385,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query parameters
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status');
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build where clause
     const whereClause: any = {
       user_id: userId
     };
@@ -400,7 +398,6 @@ export async function GET(request: NextRequest) {
       whereClause.status = status.toUpperCase();
     }
 
-    // Fetch bookings
     const bookings = await prisma.booking.findMany({
       where: whereClause,
       include: {
@@ -434,7 +431,6 @@ export async function GET(request: NextRequest) {
       skip: offset
     });
 
-    // Get total count
     const totalCount = await prisma.booking.count({
       where: whereClause
     });

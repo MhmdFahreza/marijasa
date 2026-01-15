@@ -173,7 +173,6 @@ export async function GET(request: NextRequest) {
         approvedAt: req.approved_at?.toISOString(),
         rejectedAt: req.rejected_at?.toISOString(),
         rejectionReason: req.rejection_reason,
-        // Payment info - ADDED
         isPaid: req.payment_status === 'PAID',
         paymentMethod: req.payment_method,
         paymentStatus: req.payment_status,
@@ -292,21 +291,36 @@ export async function PUT(request: NextRequest) {
       case 'updatePayment': {
         const { paymentMethod, transactionFee } = data;
 
+        console.log('[Update Payment] Updating booking:', {
+          bookingId: booking.booking_id,
+          paymentMethod,
+          transactionFee
+        });
+
+        // Calculate new total
+        const newTotal = booking.subtotal + booking.service_fee + (transactionFee || 0);
+
+        // ✅ Update booking dengan payment_method yang benar
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
           data: {
-            payment_method: paymentMethod,
-            transaction_fee: transactionFee,
-            total: booking.subtotal + booking.service_fee + transactionFee
+            payment_method: paymentMethod, // ✅ Simpan payment method
+            transaction_fee: transactionFee || 0, // ✅ Simpan transaction fee
+            total: newTotal // ✅ Update total
           }
         });
 
         await prisma.bookingHistory.create({
           data: {
             booking_id: booking.booking_id,
-            status: 'Metode Pembayaran Diperbarui'
+            status: 'Metode Pembayaran Diperbarui',
+            reason: paymentMethod.toLowerCase() === 'tunai' 
+              ? 'Pembayaran tunai akan dilakukan saat layanan diberikan'
+              : null
           }
         });
+
+        console.log('[Update Payment] Payment method updated successfully');
 
         return NextResponse.json({
           success: true,
@@ -315,6 +329,17 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'pay': {
+        console.log('[Pay] Processing payment for booking:', booking.booking_id);
+        console.log('[Pay] Payment method:', booking.payment_method);
+
+        // Check if payment method exists
+        if (!booking.payment_method || booking.payment_method === 'Belum Dibayar') {
+          return NextResponse.json(
+            { error: 'Bad Request', message: 'Silakan pilih metode pembayaran terlebih dahulu' },
+            { status: 400 }
+          );
+        }
+
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
           data: {
@@ -328,15 +353,23 @@ export async function PUT(request: NextRequest) {
           }
         });
 
+        // Notification message berbeda untuk tunai vs non-tunai
+        const isCashPayment = booking.payment_method.toLowerCase() === 'tunai' || 
+                             booking.payment_method.toLowerCase() === 'cash';
+
         await prisma.userNotification.create({
           data: {
             user_id: userId,
-            title: 'Pembayaran Berhasil',
-            message: `Pembayaran untuk pesanan #${orderId} telah berhasil diproses. Pesanan Anda sedang dikerjakan oleh vendor.`,
+            title: isCashPayment ? '💵 Pembayaran Tunai Dikonfirmasi' : '✅ Pembayaran Berhasil',
+            message: isCashPayment
+              ? `Pesanan #${orderId} dikonfirmasi dengan pembayaran tunai. Pembayaran akan dilakukan langsung kepada vendor saat layanan diberikan.`
+              : `Pembayaran untuk pesanan #${orderId} telah berhasil diproses. Pesanan Anda sedang dikerjakan oleh vendor.`,
             type: 'payment',
             order_id: booking.booking_id
           }
         });
+
+        console.log('[Pay] Payment processed successfully');
 
         return NextResponse.json({
           success: true,
@@ -398,7 +431,6 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Check unpaid additional services
         const unpaidAdditionalServices = await prisma.additionalServiceRequest.findMany({
           where: {
             booking_id: booking.booking_id,
