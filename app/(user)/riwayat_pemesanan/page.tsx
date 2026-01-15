@@ -11,7 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/app/components/ui/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Badge } from "@/app/components/ui/badge";
@@ -27,7 +27,6 @@ import {
   Phone,
   Mail,
   ChevronRight,
-  ChevronDown,
   Package,
   FileText,
   CreditCard,
@@ -55,7 +54,8 @@ import {
   ChevronUp,
   Star,
   CheckCircle,
-  Upload
+  Upload,
+  ChevronDown
 } from "lucide-react";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
@@ -63,10 +63,8 @@ import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Separator } from "@/app/components/ui/separator";
 
-// Biaya layanan tetap
 const SERVICE_FEE = 10000;
 
-// Biaya transaksi untuk setiap metode pembayaran
 const PAYMENT_FEES: Record<string, number> = {
   "dana": 1440,
   "ovo": 1440,
@@ -96,10 +94,9 @@ export default function OrderHistoryPage() {
     previews: [] as string[]
   });
   const [vendorServices, setVendorServices] = useState<any[]>([]);
-  const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
 
-  // State untuk modal metode pembayaran
+  // Payment modal states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<string>("");
   const [cardData, setCardData] = useState({
@@ -117,12 +114,12 @@ export default function OrderHistoryPage() {
   });
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // State untuk modal konfirmasi pembatalan
+  // Cancel modal
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // State untuk modal konfirmasi pekerjaan selesai dan rating
+  // Completion modal
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [ratingData, setRatingData] = useState({
     rating: 0,
@@ -133,14 +130,16 @@ export default function OrderHistoryPage() {
   });
   const [showThankYouModal, setShowThankYouModal] = useState(false);
 
-  // Format nomor kartu dengan spasi setiap 4 digit
+  // Additional service payment modal
+  const [showAdditionalPaymentModal, setShowAdditionalPaymentModal] = useState(false);
+  const [selectedAdditionalService, setSelectedAdditionalService] = useState<any>(null);
+
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
     const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
     return formatted.substring(0, 19);
   };
 
-  // Format tanggal kadaluarsa (MM/YY)
   const formatExpiryDate = (value: string) => {
     const cleaned = value.replace(/\D/g, '');
     if (cleaned.length >= 2) {
@@ -188,7 +187,6 @@ export default function OrderHistoryPage() {
     }));
   };
 
-  // Load orders from API
   const loadOrders = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -223,7 +221,6 @@ export default function OrderHistoryPage() {
     loadOrders();
   }, [loadOrders]);
 
-  // Helper function untuk menentukan warna status
   const getStatusColor = (status: string) => {
     switch (status) {
       case "dibatalkan":
@@ -262,7 +259,6 @@ export default function OrderHistoryPage() {
       images: [],
       previews: []
     });
-    // Load vendor services from order data
     if (selectedOrder.vendorServices) {
       setVendorServices(selectedOrder.vendorServices);
     }
@@ -332,7 +328,7 @@ export default function OrderHistoryPage() {
     } else {
       const newQuantities = { ...newServiceData.quantities };
       delete newQuantities[serviceId];
-      
+
       setNewServiceData(prev => ({
         ...prev,
         selectedServices: prev.selectedServices.filter(id => id !== serviceId),
@@ -377,7 +373,7 @@ export default function OrderHistoryPage() {
           selectedServices: newServiceData.selectedServices,
           quantities: newServiceData.quantities,
           reason: newServiceData.reason,
-          images: newServiceData.previews // Send as base64 strings
+          images: newServiceData.previews
         })
       });
 
@@ -388,7 +384,6 @@ export default function OrderHistoryPage() {
 
       const data = await response.json();
 
-      // Update local state with new additional service
       setOrders(prevOrders => prevOrders.map(order => {
         if (order.id === selectedOrder.id) {
           const additionalServices = order.additionalServices || [];
@@ -479,7 +474,6 @@ export default function OrderHistoryPage() {
         throw new Error('Failed to update payment method');
       }
 
-      // Update local state
       const subtotal = selectedOrder.paymentDetails.subtotal || (selectedOrder.totalPrice - SERVICE_FEE - transactionFee);
       const total = subtotal + SERVICE_FEE + transactionFee;
 
@@ -537,7 +531,6 @@ export default function OrderHistoryPage() {
         throw new Error('Payment failed');
       }
 
-      // Update local state
       setOrders(prevOrders => prevOrders.map(o => {
         if (o.id === order.id) {
           return {
@@ -572,6 +565,59 @@ export default function OrderHistoryPage() {
       console.error("Error processing payment:", error);
       setShowSuccessModal(false);
       toast.error("Gagal memproses pembayaran");
+    }
+  };
+
+  // Handle pay for additional service
+  const handlePayAdditionalService = async (additionalService: any) => {
+    setSelectedAdditionalService(additionalService);
+    setSelectedPayment("");
+    setShowAdditionalPaymentModal(true);
+  };
+
+  const handleConfirmAdditionalPayment = async () => {
+    if (!selectedPayment) {
+      toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
+      return;
+    }
+
+    if (selectedPayment === "debit-credit") {
+      if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
+        toast.error("Silakan lengkapi data kartu debit/kredit.");
+        return;
+      }
+    }
+
+    try {
+      const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
+
+      const response = await fetch('/api/user/orders/additional-service/payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          additionalServiceId: selectedAdditionalService.id,
+          paymentMethod: selectedPayment,
+          transactionFee: transactionFee
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Payment failed');
+      }
+
+      toast.success("Pembayaran layanan tambahan berhasil!");
+      setShowAdditionalPaymentModal(false);
+      setSelectedAdditionalService(null);
+      loadOrders(); // Reload orders
+
+    } catch (error: any) {
+      console.error("Error processing additional payment:", error);
+      toast.error(error.message || "Gagal memproses pembayaran");
     }
   };
 
@@ -611,7 +657,6 @@ export default function OrderHistoryPage() {
         throw new Error('Failed to cancel order');
       }
 
-      // Update local state
       setOrders(prevOrders => prevOrders.map(order => {
         if (order.id === selectedOrder.id) {
           return {
@@ -656,6 +701,17 @@ export default function OrderHistoryPage() {
       toast.error("Hanya pesanan yang sedang diproses yang dapat dikonfirmasi selesai.");
       return;
     }
+
+    // Check if there's unpaid additional service
+    const hasUnpaidAdditionalService = order.additionalServices?.some(
+      (addService: any) => addService.status === "disetujui" && !addService.isPaid
+    );
+
+    if (hasUnpaidAdditionalService) {
+      toast.error("Harap bayar layanan tambahan terlebih dahulu sebelum mengkonfirmasi selesai.");
+      return;
+    }
+
     setSelectedOrder(order);
     setRatingData({
       rating: order.rating || 0,
@@ -693,7 +749,6 @@ export default function OrderHistoryPage() {
         throw new Error('Failed to complete order');
       }
 
-      // Update local state
       setOrders(prevOrders => prevOrders.map(order => {
         if (order.id === selectedOrder.id) {
           const updatedOrder = {
@@ -1071,23 +1126,6 @@ export default function OrderHistoryPage() {
                                 </div>
                               </div>
 
-                              {/* Vendor Notes */}
-                              {order.vendorNotes && (
-                                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                                  <div className="flex items-start gap-2">
-                                    <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="font-medium text-blue-800 dark:text-blue-300 mb-1">
-                                        Catatan dari Vendor
-                                      </p>
-                                      <p className="text-blue-700 dark:text-blue-400 text-sm">
-                                        {order.vendorNotes}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
                               {/* Rating dan Ulasan */}
                               {order.rating && (
                                 <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
@@ -1139,6 +1177,40 @@ export default function OrderHistoryPage() {
                                     <span className="text-gray-600 dark:text-gray-400">Biaya Transaksi</span>
                                     <span className="font-medium">Rp {formatPrice(order.paymentDetails.transactionFee)}</span>
                                   </div>
+
+                                  {/* Show additional services payment details */}
+                                  {order.additionalServices && order.additionalServices.some((s: any) => s.status === "disetujui") && (
+                                    <>
+                                      <Separator className="my-2" />
+                                      <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                                        <p className="font-medium text-blue-800 dark:text-blue-300 mb-2">
+                                          Layanan Tambahan
+                                        </p>
+                                        {order.additionalServices.filter((s: any) => s.status === "disetujui").map((addService: any, idx: number) => (
+                                          <div key={idx} className="flex justify-between items-center py-1">
+                                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                                              {addService.description}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium text-sm">
+                                                Rp {formatPrice(addService.totalPrice + addService.serviceFee + (addService.transactionFee || 0))}
+                                              </span>
+                                              {addService.isPaid ? (
+                                                <Badge className="bg-green-100 text-green-800 text-xs">
+                                                  Lunas
+                                                </Badge>
+                                              ) : (
+                                                <Badge className="bg-red-100 text-red-800 text-xs">
+                                                  Belum Bayar
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+
                                   <div className="flex justify-between items-center py-3 border-t border-gray-200 dark:border-gray-700">
                                     <span className="text-lg font-semibold">Total</span>
                                     <span className="text-xl font-bold text-[#7CE0A8]">
@@ -1327,7 +1399,7 @@ export default function OrderHistoryPage() {
                                     </div>
                                   </div>
 
-                                  {/* Layanan Tambahan (jika ada) */}
+                                  {/* Layanan Tambahan */}
                                   {order.additionalServices && order.additionalServices.length > 0 && (
                                     <div className="mt-6 pt-4 border-t">
                                       <h4 className="font-medium mb-3 text-[#7CE0A8]">Layanan Tambahan</h4>
@@ -1341,11 +1413,12 @@ export default function OrderHistoryPage() {
                                                   <p className="text-sm text-gray-500">Status: {addService.status}</p>
                                                 </div>
                                                 <Badge className={
-                                                  addService.status === "diterima" ? "bg-green-100 text-green-800" :
+                                                  addService.status === "disetujui" ? "bg-green-100 text-green-800" :
                                                     addService.status === "ditolak" ? "bg-red-100 text-red-800" :
                                                       "bg-yellow-100 text-yellow-800"
                                                 }>
-                                                  {addService.status}
+                                                  {addService.status === "disetujui" ? "Disetujui" :
+                                                    addService.status === "ditolak" ? "Ditolak" : "Menunggu"}
                                                 </Badge>
                                               </div>
                                               <div className="space-y-2">
@@ -1359,7 +1432,6 @@ export default function OrderHistoryPage() {
                                               {addService.reason && (
                                                 <p className="text-sm text-gray-600 mt-2">Alasan: {addService.reason}</p>
                                               )}
-                                              {/* Bukti Foto */}
                                               {addService.images && addService.images.length > 0 && (
                                                 <div className="mt-3">
                                                   <p className="text-sm font-medium mb-2">Bukti Foto:</p>
@@ -1376,7 +1448,42 @@ export default function OrderHistoryPage() {
                                                   </div>
                                                 </div>
                                               )}
-                                              <p className="text-sm font-medium mt-2">Total: Rp {formatPrice(addService.totalPrice)}</p>
+                                              <p className="text-sm font-medium mt-2">
+                                                Total: Rp {formatPrice(addService.totalPrice)}
+                                              </p>
+
+                                              {/* Payment button for approved additional service */}
+                                              {addService.status === "disetujui" && !addService.isPaid && (
+                                                <div className="mt-3 pt-3 border-t">
+                                                  <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg mb-3">
+                                                    <p className="text-sm text-yellow-800 dark:text-yellow-300 flex items-center gap-2">
+                                                      <AlertCircle className="h-4 w-4" />
+                                                      Layanan tambahan ini perlu dibayar terlebih dahulu
+                                                    </p>
+                                                  </div>
+                                                  <Button
+                                                    className="w-full bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handlePayAdditionalService(addService);
+                                                    }}
+                                                  >
+                                                    <CreditCard className="h-4 w-4 mr-2" />
+                                                    Bayar Layanan Tambahan
+                                                  </Button>
+                                                </div>
+                                              )}
+
+                                              {addService.status === "disetujui" && addService.isPaid && (
+                                                <div className="mt-3 pt-3 border-t">
+                                                  <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
+                                                    <p className="text-sm text-green-800 dark:text-green-300 flex items-center gap-2">
+                                                      <CheckCircle className="h-4 w-4" />
+                                                      Pembayaran layanan tambahan sudah lunas
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              )}
                                             </CardContent>
                                           </Card>
                                         ))}
@@ -1553,14 +1660,14 @@ export default function OrderHistoryPage() {
                                 <Checkbox
                                   id={`service-${service.id}`}
                                   checked={newServiceData.selectedServices.includes(service.id)}
-                                  onCheckedChange={(checked) => 
+                                  onCheckedChange={(checked) =>
                                     handleServiceSelection(service.id, checked as boolean)
                                   }
                                   className="mt-1"
                                 />
                                 <div className="flex-1">
-                                  <Label 
-                                    htmlFor={`service-${service.id}`} 
+                                  <Label
+                                    htmlFor={`service-${service.id}`}
                                     className="font-medium cursor-pointer"
                                   >
                                     {service.name}
@@ -1575,14 +1682,14 @@ export default function OrderHistoryPage() {
                                   )}
                                 </div>
                               </div>
-                              
+
                               <div className="text-right">
                                 <div className="font-semibold text-[#7CE0A8]">
                                   Rp {service.price.toLocaleString('id-ID')}
                                   {service.priceType === 'HOURLY' && '/jam'}
                                   {service.priceType === 'UNIT' && '/unit'}
                                 </div>
-                                
+
                                 {newServiceData.selectedServices.includes(service.id) && (
                                   <div className="mt-2">
                                     <Label htmlFor={`qty-${service.id}`} className="text-xs">Jumlah:</Label>
@@ -1715,7 +1822,7 @@ export default function OrderHistoryPage() {
                         required
                       />
                     </label>
-                    
+
                     {/* Informasi jumlah foto */}
                     <div className="mt-2 flex items-center justify-between">
                       <span className="text-xs text-gray-500">
@@ -1764,8 +1871,8 @@ export default function OrderHistoryPage() {
                     className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
                     onClick={handleSubmitNewService}
                     disabled={
-                      newServiceData.selectedServices.length === 0 || 
-                      !newServiceData.reason.trim() || 
+                      newServiceData.selectedServices.length === 0 ||
+                      !newServiceData.reason.trim() ||
                       newServiceData.images.length === 0
                     }
                   >
@@ -2385,6 +2492,75 @@ export default function OrderHistoryPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Additional Service Payment - NEW */}
+      <AnimatePresence>
+        {showAdditionalPaymentModal && selectedAdditionalService && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setShowAdditionalPaymentModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Bayar Layanan Tambahan</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAdditionalPaymentModal(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-2">Detail Layanan:</p>
+                  <p className="font-medium">{selectedAdditionalService.description}</p>
+                  <p className="text-lg font-bold text-[#7CE0A8] mt-2">
+                    Total: Rp {formatPrice(
+                      selectedAdditionalService.totalPrice +
+                      SERVICE_FEE +
+                      (PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0)
+                    )}
+                  </p>
+                </div>
+
+                <Separator className="my-4" />
+
+                <div>
+                  <Label className="mb-2 block">Pilih Metode Pembayaran</Label>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowPaymentOptions(true)}
+                  >
+                    {selectedPayment ? getPaymentMethodName(selectedPayment) : "Pilih Metode"}
+                  </Button>
+                </div>
+
+                <Button
+                  className="w-full mt-6 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
+                  onClick={handleConfirmAdditionalPayment}
+                  disabled={!selectedPayment}
+                >
+                  Bayar Sekarang
+                </Button>
               </div>
             </motion.div>
           </motion.div>

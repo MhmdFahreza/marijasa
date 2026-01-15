@@ -325,6 +325,7 @@ export default function Beranda() {
       </motion.div>
 
       <motion.div
+        id="section-testimoni"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-10%" }}
@@ -332,7 +333,6 @@ export default function Beranda() {
       >
         <InfiniteMovingCardsData />
       </motion.div>
-
       {/* Section "Alasan Mengapa MARIJASA Jadi Pilihan Tepat" dengan padding yang lebih kecil untuk mobile */}
       <div className="w-full py-8 sm:py-12 md:py-16">
         <h2 className="max-w-7xl px-4 mx-auto text-center text-base sm:text-lg md:text-3xl font-semibold md:font-bold text-[#7CE0A8] dark:text-[#7CE0A8] font-sans mb-4 sm:mb-6 md:mb-8">
@@ -349,6 +349,7 @@ export default function Beranda() {
       </div>
 
       <motion.div
+        id="section-daftar-mitra"  
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-10%" }}

@@ -123,6 +123,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+  
   body {
     @apply bg-background text-foreground font-sans;
   }
@@ -132,6 +133,15 @@
     input, select, textarea {
       font-size: 16px !important;
     }
+  }
+  
+  /* Optimize for page transitions - disable animations during transition */
+  .page-transition {
+    pointer-events: none;
+  }
+  
+  .page-transition * {
+    animation-play-state: paused !important;
   }
 }
 
@@ -151,7 +161,6 @@
    CHARACTER ANIMATIONS
    ================================ */
 
-/* Main floating animation for character */
 @keyframes float-slow {
   0%, 100% {
     transform: translateY(0px);
@@ -163,16 +172,16 @@
 
 .animate-float-slow {
   animation: float-slow 4s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Reduced motion on mobile for better performance */
 @media (max-width: 640px) {
   .animate-float-slow {
     animation: float-slow 5s ease-in-out infinite;
   }
 }
 
-/* Gentle bounce for body */
 @keyframes bounce-gentle {
   0%, 100% {
     transform: translateY(0) scaleY(1);
@@ -184,9 +193,10 @@
 
 .animate-bounce-gentle {
   animation: bounce-gentle 2.5s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Wave animation for arm */
 @keyframes wave {
   0%, 100% {
     transform: rotate(0deg);
@@ -201,9 +211,10 @@
 
 .animate-wave {
   animation: wave 0.5s ease-in-out 2;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Idle arm movement */
 @keyframes arm-idle {
   0%, 100% {
     transform: rotate(0deg);
@@ -215,9 +226,10 @@
 
 .animate-arm-idle {
   animation: arm-idle 3s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Hat bobbing */
 @keyframes hat-bob {
   0%, 100% {
     transform: translateY(0) rotate(0deg);
@@ -232,9 +244,10 @@
 
 .animate-hat-bob {
   animation: hat-bob 3s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Crown floating */
 @keyframes crown-float {
   0%, 100% {
     transform: translateY(0) rotate(0deg);
@@ -249,9 +262,10 @@
 
 .animate-crown-float {
   animation: crown-float 4s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Star spin */
 @keyframes star-spin {
   0% {
     transform: rotate(0deg) scale(1);
@@ -267,9 +281,10 @@
 .animate-star-spin {
   animation: star-spin 6s linear infinite;
   transform-origin: center;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Floating card animation */
 @keyframes float-card {
   0%, 100% {
     transform: translateY(0) rotate(0deg);
@@ -281,6 +296,8 @@
 
 .animate-float-card {
   animation: float-card 2s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 /* ================================
@@ -304,6 +321,8 @@
 
 .animate-float-decoration-1 {
   animation: float-decoration-1 6s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 @keyframes float-decoration-2 {
@@ -320,6 +339,8 @@
 
 .animate-float-decoration-2 {
   animation: float-decoration-2 7s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 @keyframes float-decoration-3 {
@@ -333,6 +354,8 @@
 
 .animate-float-decoration-3 {
   animation: float-decoration-3 5s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 @keyframes float-decoration-4 {
@@ -349,9 +372,10 @@
 
 .animate-float-decoration-4 {
   animation: float-decoration-4 8s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Random floating for background elements */
 @keyframes float-random {
   0%, 100% {
     transform: translate(0, 0) scale(1);
@@ -373,9 +397,10 @@
 
 .animate-float-random {
   animation: float-random 15s ease-in-out infinite;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
-/* Reduced animation on mobile */
 @media (max-width: 640px) {
   .animate-float-random {
     animation: float-random 20s ease-in-out infinite;
@@ -393,7 +418,6 @@
    SCENE ANIMATIONS
    ================================ */
 
-/* Plant sway */
 @keyframes sway {
   0%, 100% {
     transform: rotate(0deg);
@@ -409,9 +433,10 @@
 .animate-sway {
   animation: sway 4s ease-in-out infinite;
   transform-origin: bottom center;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Slow bounce for icons */
 @keyframes bounce-slow {
   0%, 100% {
     transform: translateY(0);
@@ -423,9 +448,10 @@
 
 .animate-bounce-slow {
   animation: bounce-slow 3s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Pulse slow */
 @keyframes pulse-slow {
   0%, 100% {
     opacity: 0.5;
@@ -437,6 +463,7 @@
 
 .animate-pulse-slow {
   animation: pulse-slow 3s ease-in-out infinite;
+  will-change: opacity;
 }
 
 /* ================================
@@ -465,7 +492,6 @@
    RESPONSIVE FIXES
    ================================ */
 
-/* Mobile touch targets and input zoom fix */
 @media (max-width: 768px) {
   [data-radix-select-content],
   [data-radix-popper-content] {
@@ -473,7 +499,6 @@
     max-height: 50vh !important;
   }
   
-  /* Better touch targets for mobile */
   button, 
   a, 
   input[type="submit"],
@@ -482,19 +507,16 @@
     min-width: 44px;
   }
   
-  /* Improve readability on small screens */
   .text-balance {
     text-wrap: balance;
   }
   
-  /* Prevent overflow on small screens */
   .break-words-mobile {
     overflow-wrap: break-word;
     word-break: break-word;
   }
 }
 
-/* Safe area support for devices with notches */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 20px) !important;
 }
@@ -515,7 +537,6 @@
    VOICE MESSAGE STYLES
    ================================ */
 
-/* Waveform animation */
 @keyframes waveformPulse {
   0%, 100% {
     transform: scaleY(0.3);
@@ -525,7 +546,6 @@
   }
 }
 
-/* Voice message specific styles */
 .voice-message-wave {
   position: relative;
   overflow: hidden;
@@ -551,7 +571,6 @@
   }
 }
 
-/* Play button animation */
 .play-button {
   transition: all 0.3s ease;
 }
@@ -560,7 +579,6 @@
   transform: scale(1.1);
 }
 
-/* Progress indicator for voice message */
 .voice-progress-bar {
   position: absolute;
   bottom: 0;
@@ -591,6 +609,8 @@
 
 .animate-float {
   animation: float 6s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 @keyframes slide-in-from-top-2 {
@@ -657,13 +677,11 @@
    SCROLLING UTILITIES
    ================================ */
 
-/* Better mobile scrolling */
 .mobile-scroll {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 
-/* Hide scrollbar but keep functionality */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -682,9 +700,9 @@
   inset: 0;
   z-index: -10;
   overflow: hidden;
+  will-change: auto;
 }
 
-/* Smooth transitions for dark mode */
 @media (prefers-color-scheme: dark) {
   canvas {
     filter: brightness(0.95) contrast(1.05);
@@ -737,10 +755,13 @@
 
 .animate-blob {
   animation: blob-rotate 15s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .animate-glow {
   animation: glow-pulse 4s ease-in-out infinite;
+  will-change: opacity, filter;
 }
 
 /* ================================
@@ -760,7 +781,7 @@
   }
 }
 
-/* Reduce motion preference */
+/* Reduce motion preference - HIGHEST PRIORITY */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -768,6 +789,7 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
   }
 }
 
@@ -827,6 +849,8 @@
 
 .animate-dot-pulse {
   animation: dot-pulse 1.5s ease-in-out infinite;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 @keyframes skeleton-loading {
@@ -842,6 +866,7 @@
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s infinite;
+  will-change: background-position;
 }
 
 .dark .skeleton-loading {
@@ -853,7 +878,6 @@
    ADDITIONAL ANIMATIONS FOR PASSWORD PAGES
    ================================ */
 
-/* Shake animation for error messages */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
@@ -862,9 +886,10 @@
 
 .animate-shake {
   animation: shake 0.5s ease-in-out;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
-/* Blob animation for background */
 @keyframes blob {
   0%, 100% { transform: translate(0, 0) scale(1); }
   25% { transform: translate(20px, -50px) scale(1.1); }
@@ -872,63 +897,28 @@
   75% { transform: translate(50px, 50px) scale(1.05); }
 }
 
-.animate-blob {
-  animation: blob 7s infinite;
-}
-
 .animation-delay-2000 { animation-delay: 2s; }
 .animation-delay-4000 { animation-delay: 4s; }
 
-/* Enhanced float slow animation */
+/* ================================
+   ENHANCED ANIMATIONS
+   ================================ */
+
 @keyframes float-slow-enhanced {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-16px); }
 }
 
-.animate-float-slow {
-  animation: float-slow-enhanced 5s ease-in-out infinite;
-}
-
-/* Gentle bounce for body */
 @keyframes bounce-gentle-enhanced {
   0%, 100% { transform: translateY(0) scaleY(1); }
   50% { transform: translateY(-3px) scaleY(1.01); }
 }
 
-.animate-bounce-gentle {
-  animation: bounce-gentle-enhanced 2.5s ease-in-out infinite;
-}
-
-/* Arm idle animation */
 @keyframes arm-idle-enhanced {
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(3deg); }
 }
 
-.animate-arm-idle {
-  animation: arm-idle-enhanced 3s ease-in-out infinite;
-}
-
-/* Floating decorations */
-@keyframes float-decoration-1 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  50% { transform: translate(5px, -20px) rotate(-5deg); }
-}
-
-.animate-float-decoration-1 {
-  animation: float-decoration-1 6s ease-in-out infinite;
-}
-
-@keyframes float-decoration-2 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  50% { transform: translate(-8px, 15px) rotate(10deg); }
-}
-
-.animate-float-decoration-2 {
-  animation: float-decoration-2 7s ease-in-out infinite;
-}
-
-/* Pulse animation */
 @keyframes pulse-smooth {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 0.9; }
@@ -936,21 +926,36 @@
 
 .animate-pulse {
   animation: pulse-smooth 3s ease-in-out infinite;
+  will-change: opacity;
 }
 
-/* Bounce slow */
-@keyframes bounce-slow {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
+/* ================================
+   PERFORMANCE OPTIMIZATION
+   ================================ */
 
-.animate-bounce-slow {
-  animation: bounce-slow 3s ease-in-out infinite;
-}
-
-/* Responsive adjustments */
+/* Disable animations on mobile for better performance during transitions */
 @media (max-width: 768px) {
-  .animate-float-slow, .animate-blob, .animate-float-decoration-1 {
-    animation-duration: 8s; /* Slow down animations on mobile for performance */
+  .animate-float-slow, 
+  .animate-blob, 
+  .animate-float-decoration-1,
+  .animate-float-decoration-2,
+  .animate-float-decoration-3,
+  .animate-float-decoration-4 {
+    animation-duration: 8s;
+  }
+}
+
+/* Optimize for low-end devices */
+@media (max-width: 480px) {
+  * {
+    animation-timing-function: linear !important;
+  }
+  
+  .animate-float-slow,
+  .animate-blob,
+  .animate-bounce-gentle,
+  .animate-float-decoration-1,
+  .animate-float-decoration-2 {
+    animation-duration: 10s;
   }
 }

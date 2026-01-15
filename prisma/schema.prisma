@@ -597,6 +597,13 @@ model AdditionalServiceRequest {
   images      String[]
   status      AdditionalServiceStatus @default(PENDING)
 
+  // Payment fields - ADDED
+  payment_method   String?   // e.g., 'dana', 'ovo', 'qris', etc.
+  payment_status   String?   @default("PENDING") // 'PENDING', 'PAID'
+  transaction_fee  Float?    @default(0)
+  service_fee      Float?    @default(10000)
+  paid_at          DateTime?
+
   rejection_reason String?   @db.Text
   approved_at      DateTime?
   rejected_at      DateTime?
@@ -611,6 +618,7 @@ model AdditionalServiceRequest {
   @@index([booking_id])
   @@index([vendor_id])
   @@index([status])
+  @@index([payment_status])
   @@index([created_at])
   @@map("additional_service_requests")
 }

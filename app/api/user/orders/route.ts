@@ -1,4 +1,4 @@
-// app/api/user/orders/route.ts
+// app/api/user/orders/route.ts - UPDATED
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 
@@ -130,11 +130,6 @@ export async function GET(request: NextRequest) {
     }
 
     const formattedOrders = bookings.map(booking => {
-      // Status mapping sesuai requirement baru:
-      // PENDING = menunggu pembayaran
-      // CONFIRMED/IN_PROGRESS = diproses (sudah bayar)
-      // COMPLETED = selesai
-      // CANCELLED = dibatalkan
       const statusMap: Record<string, string> = {
         'PENDING': 'menunggu pembayaran',
         'CONFIRMED': 'diproses',
@@ -177,7 +172,14 @@ export async function GET(request: NextRequest) {
         submittedAt: req.created_at.toISOString(),
         approvedAt: req.approved_at?.toISOString(),
         rejectedAt: req.rejected_at?.toISOString(),
-        rejectionReason: req.rejection_reason
+        rejectionReason: req.rejection_reason,
+        // Payment info - ADDED
+        isPaid: req.payment_status === 'PAID',
+        paymentMethod: req.payment_method,
+        paymentStatus: req.payment_status,
+        transactionFee: req.transaction_fee || 0,
+        serviceFee: req.service_fee || 10000,
+        paidAt: req.paid_at?.toISOString()
       }));
 
       const vendorServices = vendorServicesByBooking[booking.booking_id] || [];
@@ -224,7 +226,6 @@ export async function GET(request: NextRequest) {
           }),
           time: booking.scheduled_time
         },
-        vendorNotes: booking.notes,
         orderHistory: orderHistory,
         additionalServices: additionalServices,
         vendorServices: vendorServices.map(service => ({
@@ -300,6 +301,13 @@ export async function PUT(request: NextRequest) {
           }
         });
 
+        await prisma.bookingHistory.create({
+          data: {
+            booking_id: booking.booking_id,
+            status: 'Metode Pembayaran Diperbarui'
+          }
+        });
+
         return NextResponse.json({
           success: true,
           message: 'Metode pembayaran berhasil diperbarui'
@@ -307,13 +315,10 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'pay': {
-        // UPDATED: User bayar -> status CONFIRMED (pending di frontend)
-        // payment_status jadi PAID
-        // Masuk ke pending balance mitra (belum bisa ditarik)
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
           data: {
-            status: 'CONFIRMED',  // Status jadi CONFIRMED (pending di frontend)
+            status: 'CONFIRMED',
             payment_status: 'PAID',
             order_history: {
               create: {
@@ -342,7 +347,6 @@ export async function PUT(request: NextRequest) {
       case 'cancel': {
         const { reason } = data;
 
-        // Hanya bisa cancel jika status PENDING (menunggu pembayaran)
         if (booking.status !== 'PENDING') {
           return NextResponse.json(
             { error: 'Bad Request', message: 'Pesanan tidak dapat dibatalkan' },
@@ -386,13 +390,26 @@ export async function PUT(request: NextRequest) {
         const { rating, comment, photos, isAnonymous } = data;
 
         console.log(`[Complete Order] Starting completion for booking ${booking.booking_id}`);
-        console.log(`[Complete Order] Current status: ${booking.status}`);
-        console.log(`[Complete Order] Rating provided: ${rating}`);
 
-        // UPDATED: Hanya bisa complete jika status CONFIRMED atau IN_PROGRESS
         if (booking.status !== 'CONFIRMED' && booking.status !== 'IN_PROGRESS') {
           return NextResponse.json(
             { error: 'Bad Request', message: 'Hanya pesanan yang sedang diproses yang dapat dikonfirmasi selesai' },
+            { status: 400 }
+          );
+        }
+
+        // Check unpaid additional services
+        const unpaidAdditionalServices = await prisma.additionalServiceRequest.findMany({
+          where: {
+            booking_id: booking.booking_id,
+            status: 'APPROVED',
+            payment_status: { not: 'PAID' }
+          }
+        });
+
+        if (unpaidAdditionalServices.length > 0) {
+          return NextResponse.json(
+            { error: 'Bad Request', message: 'Harap bayar layanan tambahan terlebih dahulu sebelum mengkonfirmasi selesai' },
             { status: 400 }
           );
         }
@@ -402,7 +419,6 @@ export async function PUT(request: NextRequest) {
         });
 
         if (existingReview) {
-          console.log(`[Complete Order] ⚠️ Review already exists, preventing duplicate`);
           return NextResponse.json(
             { error: 'Bad Request', message: 'Rating sudah pernah diberikan untuk pesanan ini' },
             { status: 400 }
@@ -410,8 +426,6 @@ export async function PUT(request: NextRequest) {
         }
 
         const result = await prisma.$transaction(async (tx) => {
-          // Update booking ke COMPLETED
-          // Ini akan pindahkan saldo dari pending ke available di mitra
           const updateData: any = {
             status: 'COMPLETED',
             completed_at: new Date(),
@@ -439,8 +453,6 @@ export async function PUT(request: NextRequest) {
           });
 
           if (rating && rating > 0) {
-            console.log(`[Complete Order] Creating review with rating ${rating}`);
-
             await tx.review.create({
               data: {
                 booking_id: booking.booking_id,
@@ -451,9 +463,6 @@ export async function PUT(request: NextRequest) {
               }
             });
 
-            console.log(`[Complete Order] Review created successfully`);
-
-            // Update vendor average rating
             const allReviews = await tx.review.findMany({
               where: { vendor_id: booking.vendor_id },
               select: { rating: true }
@@ -463,20 +472,12 @@ export async function PUT(request: NextRequest) {
               const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
               const newAverageRating = totalRating / allReviews.length;
 
-              console.log(`[Complete Order] Vendor ${booking.vendor_id} rating update:`);
-              console.log(`  - Total reviews: ${allReviews.length}`);
-              console.log(`  - New average: ${newAverageRating}`);
-
-              // HANYA update rating, tidak update review_count
-              // review_count dihitung otomatis dari relasi
               await tx.vendor.update({
                 where: { vendor_id: booking.vendor_id },
                 data: {
                   rating: newAverageRating,
                 }
               });
-
-              console.log(`[Complete Order] ✅ Vendor rating updated successfully`);
             }
 
             await tx.bookingHistory.create({
@@ -491,21 +492,15 @@ export async function PUT(request: NextRequest) {
           return updatedBooking;
         });
 
-        console.log(`[Complete Order] ✅ Transaction completed successfully`);
-
-        try {
-          await prisma.userNotification.create({
-            data: {
-              user_id: userId,
-              title: 'Pesanan Selesai',
-              message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
-              type: 'completion',
-              order_id: booking.booking_id
-            }
-          });
-        } catch (notifError) {
-          console.error('[Complete Order] Error creating notification:', notifError);
-        }
+        await prisma.userNotification.create({
+          data: {
+            user_id: userId,
+            title: 'Pesanan Selesai',
+            message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
+            type: 'completion',
+            order_id: booking.booking_id
+          }
+        });
 
         return NextResponse.json({
           success: true,
