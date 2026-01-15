@@ -1328,7 +1328,7 @@ export default function OrderHistoryPage() {
                                         </h4>
                                         {hasUnpaid ? (
                                           <Badge className="bg-yellow-100 text-yellow-800">
-                                            Ada yang Belum Bayar
+                                            Transaksi Belum Tuntas
                                           </Badge>
                                         ) : (
                                           <Badge className="bg-green-100 text-green-800">
