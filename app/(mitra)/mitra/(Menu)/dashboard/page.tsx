@@ -362,7 +362,7 @@ export default function DashboardPage() {
     const initializeDashboard = async () => {
       try {
         console.log('[Dashboard] Starting initialization...');
-        
+
         // Step 1: Verify authentication
         const verifyResponse = await fetch('/api/mitra/verify', {
           method: 'GET',
@@ -853,10 +853,22 @@ export default function DashboardPage() {
                     <p className="text-xl md:text-2xl font-bold text-neutral-900 dark:text-white">
                       {statData.totalOrders}
                     </p>
-                    <div className="flex items-center gap-2 text-xs md:text-sm text-neutral-500 mt-1">
-                      <span className="text-green-600">{statData.completedOrders} selesai</span>
-                      <span>•</span>
-                      <span className="text-yellow-600">{statData.pendingOrders} Pending</span>
+                    <div className="flex flex-col gap-1 text-xs md:text-sm text-neutral-500 mt-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-600 font-medium">{statData.completedOrders} selesai</span>
+                        {statData.inProgressOrders > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-blue-600 font-medium">{statData.inProgressOrders} diproses</span>
+                          </>
+                        )}
+                        {statData.pendingOrders > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-yellow-600 font-medium">{statData.pendingOrders} pending</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">

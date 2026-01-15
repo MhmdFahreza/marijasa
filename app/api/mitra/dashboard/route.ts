@@ -99,24 +99,23 @@ export async function GET(request: NextRequest) {
       });
     } catch (error) {
       console.log("Withdrawal table not found or error fetching withdrawals. Using default values.");
-      // If Withdrawal table doesn't exist yet, continue with default values
       withdrawals = [];
       totalWithdrawn = 0;
       monthlyWithdrawal = 0;
     }
 
-    // Calculate statistics dengan logic yang diperbaiki
+    // Initialize statistics
     let totalCompletedEarnings = 0;  // Total dari COMPLETED bookings
     let pendingBalance = 0;          // Dari CONFIRMED/IN_PROGRESS yang sudah PAID
-    let monthlyIncome = 0;
+    let monthlyIncome = 0;           // HANYA dari COMPLETED bookings bulan ini
     let totalOrders = allBookings.length;
-    let completedOrders = 0;
-    let pendingOrders = 0;           // PENDING (waiting payment)
-    let inProgressOrders = 0;        // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
+    let completedOrders = 0;         // Status COMPLETED
+    let pendingOrders = 0;           // Status PENDING (belum bayar)
+    let inProgressOrders = 0;        // Status CONFIRMED/IN_PROGRESS (sedang dikerjakan)
 
     const transactions: any[] = [];
 
-    // Process bookings dengan logika yang diperbaiki
+    // Process bookings dengan logika yang sudah diperbaiki
     allBookings.forEach((booking) => {
       const bookingDate = new Date(booking.created_at);
       
@@ -124,7 +123,7 @@ export async function GET(request: NextRequest) {
       const vendorEarnings = booking.subtotal;
 
       if (booking.status === "COMPLETED" && booking.payment_status === "PAID") {
-        // Order selesai = masuk total completed earnings
+        // ✅ Order selesai = masuk total completed earnings
         completedOrders++;
         totalCompletedEarnings += vendorEarnings;
 
@@ -141,12 +140,12 @@ export async function GET(request: NextRequest) {
           paymentMethod: "transfer_bank",
         });
 
-        // Check if in current month for monthly income
+        // ✅ Hanya COMPLETED yang masuk monthly income
         if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
           monthlyIncome += vendorEarnings;
         }
       } else if ((booking.status === "CONFIRMED" || booking.status === "IN_PROGRESS") && booking.payment_status === "PAID") {
-        // Order sudah dibayar tapi belum selesai = masuk pending balance (belum bisa ditarik)
+        // ✅ Order sudah dibayar tapi belum selesai = masuk pending balance
         inProgressOrders++;
         pendingBalance += vendorEarnings;
 
@@ -163,12 +162,10 @@ export async function GET(request: NextRequest) {
           paymentMethod: "transfer_bank",
         });
 
-        // Check if in current month for monthly income (sudah dibayar = income)
-        if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
-          monthlyIncome += vendorEarnings;
-        }
+        // ❌ TIDAK menambahkan ke monthly income karena belum COMPLETED
+        // Monthly income hanya dari pesanan yang sudah selesai
       } else if (booking.status === "PENDING") {
-        // Order belum dibayar = waiting payment
+        // ✅ Order belum dibayar = waiting payment
         pendingOrders++;
 
         transactions.push({
@@ -187,7 +184,6 @@ export async function GET(request: NextRequest) {
     });
 
     // Calculate available balance (completed earnings - total withdrawn)
-    // Ini yang bisa ditarik sekarang
     const availableBalance = Math.max(0, totalCompletedEarnings - totalWithdrawn);
 
     // Process withdrawal transactions
@@ -220,7 +216,7 @@ export async function GET(request: NextRequest) {
       totalWithdrawn,
       availableBalance,
       pendingBalance,
-      monthlyIncome,
+      monthlyIncome,  // Sekarang hanya dari COMPLETED
       monthlyWithdrawal
     });
 
@@ -229,13 +225,13 @@ export async function GET(request: NextRequest) {
       vendorId: vendor.vendor_id,
       vendorName: vendor.name,
       availableBalance,      // Saldo yang bisa ditarik (total completed - total withdrawn)
-      pendingBalance,        // Saldo pending (dari CONFIRMED/IN_PROGRESS yang paid, belum bisa ditarik)
-      monthlyIncome,         // Pemasukan bulan ini (dari PAID bookings)
-      monthlyWithdrawal,     // Penarikan bulan ini (dari COMPLETED withdrawals)
-      totalOrders,
-      completedOrders,
-      pendingOrders,         // PENDING (waiting payment)
-      inProgressOrders,      // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
+      pendingBalance,        // Saldo pending (dari CONFIRMED/IN_PROGRESS yang paid)
+      monthlyIncome,         // ✅ HANYA dari COMPLETED bookings bulan ini
+      monthlyWithdrawal,     // Penarikan bulan ini
+      totalOrders,           // Total semua pesanan
+      completedOrders,       // Pesanan COMPLETED
+      pendingOrders,         // Pesanan PENDING (belum bayar)
+      inProgressOrders,      // Pesanan CONFIRMED/IN_PROGRESS (sedang dikerjakan)
       vendorRating: vendor.rating,
       vendorReviewCount: vendor.review_count,
       totalRevenue: availableBalance + pendingBalance,
