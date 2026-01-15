@@ -2,16 +2,35 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, User, Bot, Clock, Sparkles } from "lucide-react";
+import { 
+  MessageCircle, X, Send, User, Bot, Clock, Sparkles, 
+  Star, MapPin, Phone, ChevronRight 
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export type ChatMessage = {
   id: number;
   text: string;
   sender: "user" | "bot";
   timestamp: string;
+  data?: any;
+};
+
+type VendorCard = {
+  vendor_id: string;
+  name: string;
+  category: string;
+  rating: number;
+  review_count: number;
+  service_areas: string[];
+  specialties: string[];
+  phone: string;
+  avatar: string;
+  description?: string;
 };
 
 const Chatbot = () => {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -31,7 +50,6 @@ const Chatbot = () => {
     "Tanyakan Kendalamu Disini"
   ];
 
-  // Auto-scroll ke pesan terbaru
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -40,7 +58,6 @@ const Chatbot = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Animasi tooltip teks berganti-ganti
   useEffect(() => {
     if (!isOpen) {
       const interval = setInterval(() => {
@@ -50,10 +67,24 @@ const Chatbot = () => {
     }
   }, [isOpen]);
 
+  const handleVendorClick = (vendorId: string) => {
+    router.push(`/jasa?vendor=${vendorId}`);
+    setIsOpen(false);
+  };
+
+  const cleanText = (text: string): string => {
+    return text
+      .replace(/\*\*/g, '')
+      .replace(/^- /gm, '')
+      .replace(/^## /gm, '')
+      .replace(/^### /gm, '')
+      .replace(/^#### /gm, '')
+      .trim();
+  };
+
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
 
-    // Tambah pesan user
     const newUserMessage: ChatMessage = {
       id: messages.length + 1,
       text: inputText,
@@ -67,7 +98,6 @@ const Chatbot = () => {
     setIsTyping(true);
 
     try {
-      // Kirim request ke API route
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -83,23 +113,31 @@ const Chatbot = () => {
       }
 
       const data = await response.json();
+      let messageText = data.message;
+      let messageData = null;
 
-      // Tambah response bot
+      if (data.data && data.data.type === "vendor_recommendation") {
+        messageText = cleanText(data.data.message);
+        messageData = data.data;
+      } else {
+        messageText = cleanText(messageText);
+      }
+
       const newBotMessage: ChatMessage = {
         id: updatedMessages.length + 1,
-        text: data.message,
+        text: messageText,
         sender: "bot",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        data: messageData,
       };
 
       setMessages(prev => [...prev, newBotMessage]);
     } catch (error) {
       console.error('Error:', error);
       
-      // Fallback response jika API gagal
       const errorMessage: ChatMessage = {
         id: updatedMessages.length + 1,
-        text: "Maaf, saya mengalami kesulitan saat ini. Silakan coba lagi atau hubungi support@marijasa.com untuk bantuan lebih lanjut. 🙏",
+        text: "Maaf, saya mengalami kesulitan saat ini. Silakan coba lagi atau hubungi support@marijasa.com untuk bantuan lebih lanjut.",
         sender: "bot",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
@@ -122,11 +160,79 @@ const Chatbot = () => {
     return `${hours}:${minutes}`;
   };
 
+  const VendorCardComponent = ({ vendor }: { vendor: VendorCard }) => (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white dark:bg-neutral-800 rounded-xl border border-emerald-100 dark:border-emerald-900/50 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+    >
+      <div className="p-3 sm:p-4">
+        <div className="flex gap-3">
+          <img
+            src={vendor.avatar || "/profile.svg"}
+            alt={vendor.name}
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover ring-2 ring-emerald-100 dark:ring-emerald-900/50"
+          />
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-neutral-900 dark:text-white text-sm sm:text-base truncate">
+              {vendor.name}
+            </h4>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+              {vendor.category}
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-1">
+                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                  {vendor.rating}
+                </span>
+              </div>
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                ({vendor.review_count} ulasan)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2">
+              {vendor.service_areas.slice(0, 3).join(", ")}
+              {vendor.service_areas.length > 3 && ` +${vendor.service_areas.length - 3} lainnya`}
+            </p>
+          </div>
+
+          {vendor.specialties && vendor.specialties.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {vendor.specialties.slice(0, 3).map((spec, idx) => (
+                <span
+                  key={idx}
+                  className="text-xs px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full"
+                >
+                  {spec}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <motion.button
+          onClick={() => handleVendorClick(vendor.vendor_id)}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-sm"
+        >
+          Lihat Detail
+          <ChevronRight className="w-4 h-4" />
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+
   return (
     <>
-      {/* Container utama untuk tombol dan tooltip */}
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end">
-        {/* Tooltip dengan teks berganti-ganti */}
         <AnimatePresence>
           {!isOpen && (
             <motion.div
@@ -150,13 +256,11 @@ const Chatbot = () => {
                   {tooltipTexts[currentTooltipText]}
                 </motion.span>
               </div>
-              {/* Segitiga panah */}
               <div className="absolute -bottom-1 right-6 w-2 h-2 bg-emerald-500/90 transform rotate-45" />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Chatbot Toggle Button dengan efek yang lebih menarik */}
         <motion.button
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -165,7 +269,6 @@ const Chatbot = () => {
           onClick={() => setIsOpen(!isOpen)}
           className="relative w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full shadow-2xl group"
         >
-          {/* Efek pulsating ring - mengganti notifikasi angka 1 */}
           <motion.div
             className="absolute inset-0 rounded-full bg-gradient-to-br from-[#7CE0A8] to-emerald-500"
             animate={{
@@ -179,7 +282,6 @@ const Chatbot = () => {
             }}
           />
           
-          {/* Efek ring kedua dengan delay */}
           <motion.div
             className="absolute inset-0 rounded-full bg-gradient-to-br from-emerald-400 to-[#7CE0A8]"
             animate={{
@@ -194,7 +296,6 @@ const Chatbot = () => {
             }}
           />
 
-          {/* Tombol utama */}
           <div className="absolute inset-2 rounded-full bg-gradient-to-br from-[#7CE0A8] to-emerald-500 shadow-inner flex items-center justify-center group-hover:from-emerald-500 group-hover:to-[#7CE0A8] transition-all duration-300">
             {isOpen ? (
               <X className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white transform group-hover:rotate-90 transition-transform duration-300" />
@@ -203,14 +304,12 @@ const Chatbot = () => {
             )}
           </div>
 
-          {/* Efek hover shine */}
           <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shine" />
           </div>
         </motion.button>
       </div>
 
-      {/* Chat Window */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -220,9 +319,7 @@ const Chatbot = () => {
             transition={{ duration: 0.2, type: "spring", stiffness: 300, damping: 25 }}
             className="fixed bottom-24 right-4 sm:bottom-28 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-sm sm:max-w-md md:max-w-lg bg-white dark:bg-neutral-900 rounded-xl sm:rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden backdrop-blur-sm"
           >
-            {/* Header dengan gradient yang lebih menarik */}
             <div className="relative bg-gradient-to-r from-[#7CE0A8] via-emerald-500 to-emerald-600 p-3 sm:p-4 flex items-center justify-between overflow-hidden">
-              {/* Efek background header */}
               <div className="absolute inset-0 opacity-20">
                 <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/30 blur-xl" />
                 <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-emerald-300/30 blur-xl" />
@@ -231,7 +328,6 @@ const Chatbot = () => {
               <div className="relative z-10 flex items-center gap-2 sm:gap-3">
                 <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center ring-2 ring-white/30">
                   <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                  {/* Efek ping kecil di icon */}
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-300 rounded-full animate-ping opacity-75" />
                 </div>
                 <div>
@@ -258,7 +354,6 @@ const Chatbot = () => {
               </button>
             </div>
 
-            {/* Chat Messages dengan background yang lebih soft */}
             <div className="h-[300px] sm:h-[350px] md:h-[400px] overflow-y-auto p-3 sm:p-4 bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900">
               {messages.map((message) => (
                 <motion.div
@@ -272,7 +367,6 @@ const Chatbot = () => {
                       <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-r from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-emerald-800/40 flex items-center justify-center ring-2 ring-emerald-200/50 dark:ring-emerald-800/50">
                         <Bot className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
-                      {/* Efek kecil di icon bot */}
                       <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
                     </div>
                   )}
@@ -287,7 +381,6 @@ const Chatbot = () => {
                           : "bg-white dark:bg-neutral-800 border border-emerald-100 dark:border-emerald-900/50 rounded-bl-none shadow-sm"
                       }`}
                     >
-                      {/* Efek shimmer untuk pesan user */}
                       {message.sender === "user" && (
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shine" />
                       )}
@@ -296,15 +389,21 @@ const Chatbot = () => {
                         {message.text}
                       </p>
                       
-                      {/* Corner accent */}
                       <div className={`absolute bottom-0 right-0 w-3 h-3 ${
                         message.sender === "user" 
                           ? "bg-emerald-600/50" 
                           : "bg-emerald-100 dark:bg-emerald-900/50"
                       } rounded-tl-lg`} />
                     </motion.div>
+
+                    {message.data?.type === "vendor_recommendation" && message.data.vendors && (
+                      <div className="mt-2 space-y-2">
+                        {message.data.vendors.map((vendor: VendorCard, idx: number) => (
+                          <VendorCardComponent key={idx} vendor={vendor} />
+                        ))}
+                      </div>
+                    )}
                     
-                    {/* Timestamp dengan animasi */}
                     <motion.div 
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -357,7 +456,6 @@ const Chatbot = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area dengan design yang lebih modern */}
             <div className="p-3 sm:p-4 border-t border-neutral-200 dark:border-neutral-800 bg-gradient-to-t from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-950">
               <div className="flex gap-2 sm:gap-3">
                 <div className="flex-1 relative">
@@ -384,12 +482,10 @@ const Chatbot = () => {
                   whileTap={{ scale: 0.95 }}
                   className="relative px-3 py-2 sm:px-4 sm:py-3 bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white rounded-lg sm:rounded-xl hover:from-emerald-500 hover:to-[#7CE0A8] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 group overflow-hidden"
                 >
-                  {/* Efek background button */}
                   <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-[#7CE0A8] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   
                   <Send className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                   
-                  {/* Efek ping saat bisa dikirim */}
                   {inputText.trim() && !isTyping && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-300 rounded-full animate-ping opacity-75" />
                   )}
@@ -404,7 +500,6 @@ const Chatbot = () => {
         )}
       </AnimatePresence>
 
-      {/* Backdrop dengan efek blur */}
       {isOpen && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -415,7 +510,6 @@ const Chatbot = () => {
         />
       )}
 
-      {/* Tambahkan style untuk animasi shine */}
       <style jsx global>{`
         @keyframes shine {
           0% {
