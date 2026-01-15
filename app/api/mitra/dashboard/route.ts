@@ -73,14 +73,46 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Calculate statistics dengan logic baru
-    let availableBalance = 0;  // Hanya dari COMPLETED
-    let pendingBalance = 0;    // Dari CONFIRMED/IN_PROGRESS yang sudah PAID
+    // Fetch withdrawals from database
+    let withdrawals: any[] = [];
+    let totalWithdrawn = 0;
+    let monthlyWithdrawal = 0;
+
+    try {
+      withdrawals = await prisma.withdrawal.findMany({
+        where: { vendor_id: vendorId },
+        orderBy: { created_at: "desc" },
+      });
+
+      // Calculate total withdrawn (only COMPLETED withdrawals)
+      withdrawals.forEach((withdrawal) => {
+        const withdrawalDate = new Date(withdrawal.created_at);
+
+        if (withdrawal.status === "COMPLETED") {
+          totalWithdrawn += withdrawal.amount;
+
+          // Check if in current month
+          if (withdrawalDate >= startOfMonth && withdrawalDate <= endOfMonth) {
+            monthlyWithdrawal += withdrawal.amount;
+          }
+        }
+      });
+    } catch (error) {
+      console.log("Withdrawal table not found or error fetching withdrawals. Using default values.");
+      // If Withdrawal table doesn't exist yet, continue with default values
+      withdrawals = [];
+      totalWithdrawn = 0;
+      monthlyWithdrawal = 0;
+    }
+
+    // Calculate statistics dengan logic yang diperbaiki
+    let totalCompletedEarnings = 0;  // Total dari COMPLETED bookings
+    let pendingBalance = 0;          // Dari CONFIRMED/IN_PROGRESS yang sudah PAID
     let monthlyIncome = 0;
     let totalOrders = allBookings.length;
     let completedOrders = 0;
-    let pendingOrders = 0;      // PENDING (waiting payment) + CONFIRMED/IN_PROGRESS (sedang dikerjakan)
-    let inProgressOrders = 0;   // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
+    let pendingOrders = 0;           // PENDING (waiting payment)
+    let inProgressOrders = 0;        // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
 
     const transactions: any[] = [];
 
@@ -92,9 +124,9 @@ export async function GET(request: NextRequest) {
       const vendorEarnings = booking.subtotal;
 
       if (booking.status === "COMPLETED" && booking.payment_status === "PAID") {
-        // Order selesai = masuk available balance (bisa ditarik)
+        // Order selesai = masuk total completed earnings
         completedOrders++;
-        availableBalance += vendorEarnings;
+        totalCompletedEarnings += vendorEarnings;
 
         transactions.push({
           id: `INC-${booking.booking_id}`,
@@ -109,16 +141,13 @@ export async function GET(request: NextRequest) {
           paymentMethod: "transfer_bank",
         });
 
-        // Check if in current month
+        // Check if in current month for monthly income
         if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
           monthlyIncome += vendorEarnings;
         }
       } else if ((booking.status === "CONFIRMED" || booking.status === "IN_PROGRESS") && booking.payment_status === "PAID") {
         // Order sudah dibayar tapi belum selesai = masuk pending balance (belum bisa ditarik)
         inProgressOrders++;
-        // Status yang sedang diproses juga masuk ke pending (menunggu selesai)
-        // Ini yang memberikan kontribusi ke totalPending di card
-        pendingOrders++;
         pendingBalance += vendorEarnings;
 
         transactions.push({
@@ -134,7 +163,7 @@ export async function GET(request: NextRequest) {
           paymentMethod: "transfer_bank",
         });
 
-        // Check if in current month
+        // Check if in current month for monthly income (sudah dibayar = income)
         if (bookingDate >= startOfMonth && bookingDate <= endOfMonth) {
           monthlyIncome += vendorEarnings;
         }
@@ -157,52 +186,26 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Fetch withdrawals from database
-    let monthlyWithdrawal = 0;
-    let totalWithdrawn = 0;
-    let withdrawalTransactions: any[] = [];
+    // Calculate available balance (completed earnings - total withdrawn)
+    // Ini yang bisa ditarik sekarang
+    const availableBalance = Math.max(0, totalCompletedEarnings - totalWithdrawn);
 
-    try {
-      // Fetch all withdrawals for the vendor
-      const withdrawals = await prisma.withdrawal.findMany({
-        where: { vendor_id: vendorId },
-        orderBy: { created_at: "desc" },
+    // Process withdrawal transactions
+    const withdrawalTransactions: any[] = [];
+
+    withdrawals.forEach((withdrawal) => {
+      withdrawalTransactions.push({
+        id: withdrawal.withdrawal_id,
+        type: "withdrawal",
+        amount: withdrawal.amount,
+        date: withdrawal.created_at.toISOString(),
+        description: `Penarikan ke ${withdrawal.method}`,
+        bankName: withdrawal.method,
+        accountNumber: withdrawal.account_number,
+        status: withdrawal.status,
+        reference: withdrawal.reference,
       });
-
-      // Process withdrawals
-      withdrawals.forEach((withdrawal) => {
-        const withdrawalDate = new Date(withdrawal.created_at);
-
-        // Add to transactions
-        withdrawalTransactions.push({
-          id: withdrawal.withdrawal_id,
-          type: "withdrawal",
-          amount: withdrawal.amount,
-          date: withdrawal.created_at.toISOString(),
-          description: `Penarikan ke ${withdrawal.method}`,
-          bankName: withdrawal.method,
-          accountNumber: withdrawal.account_number,
-          status: withdrawal.status,
-          reference: withdrawal.reference,
-        });
-
-        // Calculate total withdrawn (only completed withdrawals)
-        if (withdrawal.status === "COMPLETED") {
-          totalWithdrawn += withdrawal.amount;
-
-          // Check if in current month
-          if (withdrawalDate >= startOfMonth && withdrawalDate <= endOfMonth) {
-            monthlyWithdrawal += withdrawal.amount;
-          }
-        }
-      });
-    } catch (error) {
-      console.log("Withdrawal table not found. Using default values.");
-      // If Withdrawal table doesn't exist yet, continue with default values
-    }
-
-    // Adjust available balance (kurangi yang sudah ditarik)
-    availableBalance = Math.max(0, availableBalance - totalWithdrawn);
+    });
 
     // Merge all transactions
     const allTransactions = [...transactions, ...withdrawalTransactions];
@@ -213,6 +216,8 @@ export async function GET(request: NextRequest) {
       completedOrders,
       pendingOrders,
       inProgressOrders,
+      totalCompletedEarnings,
+      totalWithdrawn,
       availableBalance,
       pendingBalance,
       monthlyIncome,
@@ -223,13 +228,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       vendorId: vendor.vendor_id,
       vendorName: vendor.name,
-      availableBalance,      // Saldo yang bisa ditarik (dari COMPLETED - withdrawn)
+      availableBalance,      // Saldo yang bisa ditarik (total completed - total withdrawn)
       pendingBalance,        // Saldo pending (dari CONFIRMED/IN_PROGRESS yang paid, belum bisa ditarik)
-      monthlyIncome,
-      monthlyWithdrawal,
+      monthlyIncome,         // Pemasukan bulan ini (dari PAID bookings)
+      monthlyWithdrawal,     // Penarikan bulan ini (dari COMPLETED withdrawals)
       totalOrders,
       completedOrders,
-      pendingOrders,         // PENDING (waiting payment) + CONFIRMED/IN_PROGRESS (sedang dikerjakan)
+      pendingOrders,         // PENDING (waiting payment)
       inProgressOrders,      // CONFIRMED/IN_PROGRESS (sedang dikerjakan)
       vendorRating: vendor.rating,
       vendorReviewCount: vendor.review_count,
