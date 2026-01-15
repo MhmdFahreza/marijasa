@@ -94,7 +94,7 @@ async function searchVendors(query: string) {
         { rating: "desc" },
         { review_count: "desc" },
       ],
-      take: 5,
+      take: 10,
       select: {
         vendor_id: true,
         name: true,
@@ -263,6 +263,7 @@ UNTUK PERTANYAAN TEKNIS / TROUBLESHOOTING:
 - Jelaskan risiko jika dikerjakan sendiri vs menggunakan jasa profesional
 
 UNTUK REKOMENDASI MITRA (HANYA jika user EKSPLISIT meminta):
+
 User harus menggunakan kata-kata seperti:
 - "Rekomendasikan mitra/vendor/tukang..."
 - "Carikan saya tukang/teknisi..."
@@ -270,42 +271,60 @@ User harus menggunakan kata-kata seperti:
 - "Tolong kasih rekomendasi..."
 - "Minta rekomendasi vendor..."
 
+PENTING - JUMLAH REKOMENDASI:
+- Jika user minta "TERBAIK", "PALING BAGUS", "NOMOR 1", atau "SATU" → Berikan HANYA 1 mitra terbaik
+- Jika user minta "BEBERAPA", "PILIHAN", "2-3", atau tidak spesifik jumlah → Berikan 3-5 mitra
+- Sesuaikan jumlah dengan permintaan user
+
 Jika user bertanya umum seperti "AC saya rusak", "Listrik mati", "Pipa bocor":
 - JANGAN langsung kasih rekomendasi
 - Jelaskan dulu kemungkinan penyebab dan solusi umum
 - Setelah menjelaskan, baru tawarkan: "Jika Anda memerlukan bantuan profesional, saya bisa merekomendasikan mitra terbaik kami."
 
-Jika user memang minta rekomendasi mitra:
-- Berikan response dalam format JSON:
-{
-  "type": "vendor_recommendation",
-  "message": "Pesan singkat yang ramah (max 2-3 kalimat, TANPA simbol markdown)",
-  "vendors": [array of vendors]
-}
-
-ATURAN PENTING:
-- JANGAN jawab pertanyaan di luar konteks MARIJASA
-- JANGAN berikan informasi palsu atau mengada-ada
-- JANGAN gunakan emoji berlebihan (max 2-3 per response)
-- JANGAN gunakan simbol markdown seperti **, -, ##, ###, atau sejenisnya
-- SELALU ramah, profesional, dan membantu
-- JIKA tidak tahu jawaban pasti, arahkan ke customer support
-- Berikan jawaban yang PANJANG dan LENGKAP untuk pertanyaan general
-- HANYA berikan rekomendasi vendor jika user EKSPLISIT meminta
-- Gunakan bahasa Indonesia yang natural dan mudah dipahami
+ATURAN PENTING FORMAT RESPONSE:
+- Untuk pertanyaan umum: Jawab dengan teks biasa yang informatif
+- Untuk rekomendasi vendor: WAJIB gunakan format JSON yang valid
+- JANGAN campur teks biasa dengan JSON
+- JANGAN tambahkan penjelasan di luar JSON untuk rekomendasi vendor
 
 Ingat: Kamu adalah AI Assistant yang cerdas, informatif, dan fokus membantu user mendapatkan solusi terbaik untuk masalah rumah tangga mereka!`;
+}
+
+function detectRecommendationCount(query: string): number {
+  const lowerQuery = query.toLowerCase();
+  
+  const singleKeywords = [
+    'terbaik',
+    'paling bagus',
+    'paling baik',
+    'nomor 1',
+    'nomor satu',
+    'yang terbaik',
+    'satu',
+    'satunya',
+    '1'
+  ];
+  
+  if (singleKeywords.some(kw => lowerQuery.includes(kw))) {
+    return 1;
+  }
+  
+  if (lowerQuery.includes('2') || lowerQuery.includes('dua')) return 2;
+  if (lowerQuery.includes('3') || lowerQuery.includes('tiga')) return 3;
+  if (lowerQuery.includes('4') || lowerQuery.includes('empat')) return 4;
+  if (lowerQuery.includes('5') || lowerQuery.includes('lima')) return 5;
+  
+  return 3;
 }
 
 function analyzeQuery(query: string): {
   isRecommendationRequest: boolean;
   category?: string;
   isVendorSearch: boolean;
+  recommendationCount: number;
 } {
   const lowerQuery = query.toLowerCase();
 
-  // Keywords yang SANGAT SPESIFIK untuk rekomendasi vendor
-  // Hanya trigger jika user EKSPLISIT minta rekomendasi
   const recommendKeywords = [
     "rekomendasikan mitra",
     "rekomendasikan vendor",
@@ -336,12 +355,10 @@ function analyzeQuery(query: string): {
     "bantu rekomendasikan",
   ];
 
-  // Cek apakah query mengandung keyword rekomendasi yang EKSPLISIT
   const isRecommendationRequest = recommendKeywords.some((keyword) =>
     lowerQuery.includes(keyword)
   );
 
-  // Keywords untuk kategori (untuk search)
   const categoryKeywords: { [key: string]: string[] } = {
     listrik: ["listrik", "elektrik", "kabel", "lampu", "saklar", "mcb"],
     ac: ["ac", "air conditioner", "pendingin", "freon"],
@@ -354,7 +371,6 @@ function analyzeQuery(query: string): {
 
   let detectedCategory: string | undefined;
   
-  // Hanya detect category jika memang request rekomendasi
   if (isRecommendationRequest) {
     for (const [category, keywords] of Object.entries(categoryKeywords)) {
       if (keywords.some((kw) => lowerQuery.includes(kw))) {
@@ -364,13 +380,14 @@ function analyzeQuery(query: string): {
     }
   }
 
-  // Vendor search hanya true jika EKSPLISIT minta rekomendasi
   const isVendorSearch = isRecommendationRequest;
+  const recommendationCount = detectRecommendationCount(query);
 
   return {
     isRecommendationRequest,
     category: detectedCategory,
     isVendorSearch,
+    recommendationCount,
   };
 }
 
@@ -425,6 +442,31 @@ async function tryModels(
   );
 }
 
+// ✅ Helper function untuk extract JSON dari response
+function extractJSON(text: string): any | null {
+  try {
+    // Try parsing directly first
+    return JSON.parse(text);
+  } catch (e) {
+    // If direct parse fails, try to extract JSON from markdown code blocks
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || 
+                     text.match(/```\s*([\s\S]*?)\s*```/) ||
+                     text.match(/\{[\s\S]*\}/);
+    
+    if (jsonMatch) {
+      try {
+        const jsonStr = jsonMatch[1] || jsonMatch[0];
+        return JSON.parse(jsonStr);
+      } catch (e2) {
+        console.error("Failed to parse extracted JSON:", e2);
+        return null;
+      }
+    }
+    
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { messages } = await request.json();
@@ -447,7 +489,7 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // HANYA jika user EKSPLISIT minta rekomendasi vendor
+    // ✅ PERBAIKAN: Jika request adalah rekomendasi vendor
     if (queryAnalysis.isVendorSearch && queryAnalysis.isRecommendationRequest) {
       let vendors: any[] = [];
 
@@ -455,8 +497,10 @@ export async function POST(request: NextRequest) {
         vendors = await searchVendors(queryAnalysis.category);
       } else {
         const topVendors = await getTopVendors();
-        vendors = topVendors.slice(0, 3);
+        vendors = topVendors;
       }
+
+      vendors = vendors.slice(0, queryAnalysis.recommendationCount);
 
       if (vendors.length > 0) {
         const enhancedMessages = [...groqMessages];
@@ -464,11 +508,22 @@ export async function POST(request: NextRequest) {
           role: "user",
           content: `${lastUserMessage}
 
-INSTRUKSI KHUSUS: User meminta rekomendasi mitra. Saya telah menemukan ${vendors.length} mitra terbaik yang sesuai. Berikan response dalam format JSON berikut (HARUS valid JSON):
+INSTRUKSI KHUSUS: User meminta rekomendasi mitra. Saya telah menemukan ${vendors.length} mitra terbaik yang sesuai. 
+
+${queryAnalysis.recommendationCount === 1 
+  ? 'User meminta SATU mitra TERBAIK, jadi berikan HANYA 1 vendor.' 
+  : `User meminta ${queryAnalysis.recommendationCount} mitra, jadi berikan ${vendors.length} vendors.`
+}
+
+PENTING: Response HANYA berupa JSON berikut, JANGAN tambahkan teks lain di luar JSON:
 
 {
   "type": "vendor_recommendation",
-  "message": "Pesan singkat yang ramah (max 2-3 kalimat, TANPA simbol markdown seperti **, -, ##)",
+  "message": "Pesan singkat yang ramah (max 2-3 kalimat, natural, TANPA simbol markdown seperti **, -, ##). ${
+    queryAnalysis.recommendationCount === 1 
+      ? 'Sebutkan ini adalah mitra TERBAIK.' 
+      : 'Sebutkan ini adalah pilihan mitra terbaik.'
+  }",
   "vendors": ${JSON.stringify(
     vendors.map((v) => ({
       vendor_id: v.vendor_id,
@@ -485,29 +540,69 @@ INSTRUKSI KHUSUS: User meminta rekomendasi mitra. Saya telah menemukan ${vendors
   )}
 }
 
-PENTING: 
-- Response HARUS valid JSON
-- JANGAN tambahkan teks apapun di luar JSON
-- Pesan di field "message" harus natural dan TANPA simbol markdown
-- Jangan gunakan **, -, ##, atau simbol formatting lainnya`,
+RULES:
+- HANYA output JSON di atas
+- JANGAN tambahkan penjelasan atau teks apapun di luar JSON
+- Message harus natural tanpa markdown
+- Jumlah vendor HARUS ${vendors.length}`,
         };
 
         const responseText = await tryModels(enhancedMessages, systemPrompt);
+        console.log("AI Response:", responseText);
 
-        try {
-          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const jsonData = JSON.parse(jsonMatch[0]);
-            return NextResponse.json({
-              success: true,
-              message: responseText,
-              data: jsonData,
-            });
-          }
-        } catch (e) {
-          console.error("JSON parse error:", e);
+        // ✅ Extract dan parse JSON dari response
+        const jsonData = extractJSON(responseText);
+
+        if (jsonData && jsonData.type === "vendor_recommendation") {
+          // ✅ Response valid JSON vendor recommendation
+          return NextResponse.json({
+            success: true,
+            message: jsonData.message,
+            data: jsonData,
+          });
+        } else {
+          // ✅ Fallback: Jika AI tidak return JSON yang valid, kita buat sendiri
+          console.warn("AI did not return valid JSON, creating manual response");
+          return NextResponse.json({
+            success: true,
+            message: queryAnalysis.recommendationCount === 1 
+              ? `Berikut rekomendasi mitra terbaik untuk Anda:`
+              : `Berikut ${vendors.length} rekomendasi mitra terbaik untuk Anda:`,
+            data: {
+              type: "vendor_recommendation",
+              message: queryAnalysis.recommendationCount === 1 
+                ? `Berikut rekomendasi mitra terbaik untuk Anda:`
+                : `Berikut ${vendors.length} rekomendasi mitra terbaik untuk Anda:`,
+              vendors: vendors.map((v) => ({
+                vendor_id: v.vendor_id,
+                name: v.name,
+                category: v.category || "Umum",
+                rating: v.rating,
+                review_count: v.review_count,
+                service_areas: v.service_areas,
+                specialties: v.specialties,
+                phone: v.phone,
+                avatar: v.avatar,
+                description: v.description,
+              })),
+            },
+          });
         }
+      } else {
+        // No vendors found
+        const noVendorMessages = [...groqMessages];
+        noVendorMessages[noVendorMessages.length - 1] = {
+          role: "user",
+          content: `${lastUserMessage}
 
+INSTRUKSI: User meminta rekomendasi, tapi tidak ada vendor yang tersedia untuk kategori tersebut. 
+Berikan response yang informatif dan helpful, sarankan untuk:
+1. Coba kategori lain
+2. Hubungi customer support
+3. Cek halaman /jasa untuk melihat semua mitra tersedia`,
+        };
+
+        const responseText = await tryModels(noVendorMessages, systemPrompt);
         return NextResponse.json({
           success: true,
           message: responseText,
@@ -515,7 +610,7 @@ PENTING:
       }
     }
 
-    // Untuk pertanyaan general, langsung jawab tanpa rekomendasi vendor
+    // ✅ Untuk pertanyaan umum (bukan rekomendasi vendor)
     const responseText = await tryModels(groqMessages, systemPrompt);
 
     return NextResponse.json({

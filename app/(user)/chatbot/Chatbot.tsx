@@ -68,7 +68,7 @@ const Chatbot = () => {
   }, [isOpen]);
 
   const handleVendorClick = (vendorId: string) => {
-    router.push(`/jasa?vendor=${vendorId}`);
+    router.push(`/jasa/detailjasa/${vendorId}`);
     setIsOpen(false);
   };
 
