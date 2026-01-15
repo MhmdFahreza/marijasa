@@ -18,8 +18,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const AI_MODELS = [
+  "meta-llama/llama-guard-4-12b",
   "moonshotai/kimi-k2-instruct",
-  "llama-3.3-70b-versatile",
   "llama-3.1-70b-versatile",
   "mixtral-8x7b-32768",
 ];
