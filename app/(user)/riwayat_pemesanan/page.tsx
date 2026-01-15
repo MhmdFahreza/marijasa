@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { useRouter } from "next/navigation"; // TAMBAHKAN IMPORT INI
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -80,6 +81,7 @@ const PAYMENT_FEES: Record<string, number> = {
 };
 
 export default function OrderHistoryPage() {
+  const router = useRouter(); // TAMBAHKAN INI
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -134,6 +136,15 @@ export default function OrderHistoryPage() {
   const [showAdditionalPaymentModal, setShowAdditionalPaymentModal] = useState(false);
   const [selectedAdditionalService, setSelectedAdditionalService] = useState<any>(null);
   const [paymentForAdditional, setPaymentForAdditional] = useState<"main" | "additional">("main");
+
+  // TAMBAHKAN FUNGSI INI UNTUK HANDLE CHAT VENDOR
+  const handleChatVendor = (vendorId: string) => {
+    if (!vendorId) {
+      toast.error("Vendor ID tidak ditemukan");
+      return;
+    }
+    router.push(`/chat/${vendorId}`);
+  };
 
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
@@ -1024,7 +1035,7 @@ export default function OrderHistoryPage() {
             Riwayat Pesanan
           </h1>
           <p className="text-gray-600 dark:text-gray-400 text-sm md:text-base">
-            Lacak dan kelala semua pesanan jasa Anda di satu tempat
+            Lacak dan kelola semua pesanan jasa Anda di satu tempat
           </p>
         </div>
 
@@ -1732,7 +1743,19 @@ export default function OrderHistoryPage() {
                         {/* Action Buttons - DIPERBARUI KONDISI DISABLE */}
                         <div className="border-t p-4 md:p-6 bg-gray-50 dark:bg-gray-800/50">
                           <div className="flex flex-wrap gap-3">
-                            <Button variant="outline" className="flex-1 min-w-[140px]">
+                            {/* TOMBOL CHAT VENDOR - DIPERBARUI */}
+                            <Button 
+                              variant="outline" 
+                              className="flex-1 min-w-[140px]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (selectedOrder?.vendorId) {
+                                  handleChatVendor(selectedOrder.vendorId);
+                                } else {
+                                  toast.error("Vendor ID tidak ditemukan");
+                                }
+                              }}
+                            >
                               <MessageSquare className="h-4 w-4 mr-2" />
                               Chat Vendor
                             </Button>
