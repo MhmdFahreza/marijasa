@@ -213,7 +213,7 @@ export default function ReportSystem() {
               </div>
 
               <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl md:rounded-2xl shadow-lg p-5 md:p-6 text-white">
-                <h3 className="font-bold mb-2 text-sm md:text-base">Layanan MARIJASA</h3>
+                <h3 className="font-bold mb-2 text-sm md:text-base">Hubungi Kami</h3>
                 <p className="text-xs md:text-sm text-emerald-50 leading-relaxed">
                   Sistem report dan feedback kami dirancang untuk memastikan setiap masukan Anda didengar dan ditindaklanjuti dengan serius. Kami berkomitmen untuk terus meningkatkan layanan demi kepuasan Anda.
                 </p>
