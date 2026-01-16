@@ -1,292 +1,430 @@
 "use client";
 
-import { useState } from "react";
-import { Mail, Phone, MapPin, Send, MessageSquare, Clock, CheckCircle } from "lucide-react";
-import PageTransition from "@/app/components/transition/PageTransition";
+import React, { useState } from 'react';
+import { Send, CheckCircle, AlertCircle, Mail, Phone, User, MessageSquare, Clock, Upload, X, ImagePlus } from 'lucide-react';
 
-const contactMethods = [
-  {
-    icon: Mail,
-    title: "Email",
-    description: "Kirim email ke kami",
-    value: "marijasa.helper@gmail.com",
-    link: "mailto:marijasa.helper@gmail.com",
-    color: "from-blue-500 to-cyan-500"
-  },
-  {
-    icon: Phone,
-    title: "Telepon",
-    description: "Hubungi tim kami",
-    value: "083847882287",
-    link: "tel:+6283847882287",
-    color: "from-green-500 to-emerald-500"
-  },
-  {
-    icon: MessageSquare,
-    title: "Live Chat",
-    description: "Chat langsung dengan kami",
-    value: "Online 24/7",
-    link: "#",
-    color: "from-purple-500 to-pink-500"
-  },
-  {
-    icon: MapPin,
-    title: "Lokasi",
-    description: "Kunjungi kantor kami",
-    value: "Jakarta, Indonesia",
-    link: "#",
-    color: "from-orange-500 to-red-500"
-  }
-];
-
-export default function HubungiKamiPage() {
+export default function ReportSystem() {
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    subject: "",
-    message: ""
+    name: '',
+    email: '',
+    phone: '',
+    subject: '',
+    message: ''
   });
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [status, setStatus] = useState('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploadError, setUploadError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Simulate form submission
-    setIsSubmitted(true);
-    setTimeout(() => {
-      setIsSubmitted(false);
-      setFormData({ name: "", email: "", phone: "", subject: "", message: "" });
-    }, 3000);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setUploadError('');
+
+    if (file) {
+      // Validasi tipe file
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        setUploadError('Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP');
+        return;
+      }
+
+      // Validasi ukuran file (max 50KB)
+      const maxSize = 50 * 1024; // 50 KB dalam bytes
+      if (file.size > maxSize) {
+        const fileSizeKB = (file.size / 1024).toFixed(2);
+        setUploadError(`Ukuran file terlalu besar (${fileSizeKB} KB). Maksimal 50 KB untuk EmailJS`);
+        // Reset input file
+        const fileInput = document.getElementById('image-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+        return;
+      }
+
+      setImageFile(file);
+      
+      // Buat preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setUploadError('');
+    const fileInput = document.getElementById('image-upload') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.email || !formData.subject || !formData.message) {
+      setStatus('error');
+      setErrorMessage('Mohon lengkapi semua field yang wajib diisi (*)');
+      return;
+    }
+
+    // Validasi email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setStatus('error');
+      setErrorMessage('Format email tidak valid');
+      return;
+    }
+
+    // Double check ukuran gambar sebelum kirim
+    if (imageFile && imageFile.size > 50 * 1024) {
+      setStatus('error');
+      setErrorMessage('Ukuran gambar melebihi 50 KB. Mohon gunakan gambar yang lebih kecil');
+      return;
+    }
+
+    setStatus('sending');
+    setErrorMessage('');
+
+    try {
+      const serviceID = 'service_vaxl8bm';
+      const templateID = 'template_1kevmbd';
+      const publicKey = 'BEra75kWOlsquQaW7';
+
+      // Format pesan - konversi line breaks ke HTML
+      let messageHtml = formData.message.replace(/\n/g, '<br/>');
+
+      // Jika ada gambar, embed sebagai base64 dalam HTML
+      if (imageFile && imagePreview) {
+        const imageHtml = `
+          <div style="margin-top: 30px; padding: 20px; background-color: #f9fafb; border-radius: 12px; border: 2px solid #e5e7eb;">
+            <p style="margin: 0 0 15px 0; font-weight: bold; color: #111827; font-size: 16px;">📎 Lampiran Gambar:</p>
+            <p style="margin: 0 0 15px 0; color: #6b7280; font-size: 14px;">
+              <strong>Nama file:</strong> ${imageFile.name}<br/>
+              <strong>Ukuran:</strong> ${(imageFile.size / 1024).toFixed(2)} KB
+            </p>
+            <div style="text-align: center; background-color: white; padding: 15px; border-radius: 8px;">
+              <img src="${imagePreview}" alt="${imageFile.name}" style="max-width: 100%; max-height: 500px; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
+            </div>
+          </div>
+        `;
+        
+        messageHtml = `${messageHtml}${imageHtml}`;
+      }
+
+      const templateParams = {
+        name: formData.name,
+        title: formData.subject,
+        email: formData.email,
+        message: messageHtml,
+        phone: formData.phone || '-',
+        from_name: formData.name,
+        reply_to: formData.email
+      };
+
+      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          service_id: serviceID,
+          template_id: templateID,
+          user_id: publicKey,
+          template_params: templateParams
+        })
+      });
+
+      if (response.ok) {
+        setStatus('success');
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          subject: '',
+          message: ''
+        });
+        removeImage();
+        setTimeout(() => setStatus('idle'), 5000);
+      } else {
+        const errorData = await response.text();
+        console.error('EmailJS Error:', errorData);
+        throw new Error('Gagal mengirim email');
+      }
+    } catch (error) {
+      setStatus('error');
+      setErrorMessage('Gagal mengirim laporan. Silakan coba lagi.');
+      console.error('Error:', error);
+    }
   };
 
   return (
-    <PageTransition>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-800 dark:to-emerald-900/10">
-        {/* Floating Elements Background */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-[#7CE0A8]/10 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-emerald-400/10 rounded-full blur-3xl animate-pulse delay-1000" />
-        </div>
-
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 relative overflow-hidden">
+      {/* Decorative Background */}
+      <div className="absolute top-0 left-0 w-64 h-64 md:w-96 md:h-96 bg-gradient-to-br from-emerald-200/20 to-teal-200/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+      <div className="absolute bottom-0 right-0 w-64 h-64 md:w-96 md:h-96 bg-gradient-to-tl from-cyan-200/20 to-emerald-200/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+      
+      <div className="relative z-10 px-4 py-8 md:px-6 md:py-12 lg:py-16">
+        <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[#7CE0A8] to-emerald-500 rounded-2xl mb-6 shadow-lg">
-              <MessageSquare className="w-8 h-8 text-white" />
+          <div className="text-center mb-8 md:mb-12 lg:mb-16">
+            <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl md:rounded-3xl shadow-lg mb-4 md:mb-6 transform hover:scale-105 transition-transform">
+              <Mail className="w-8 h-8 md:w-10 md:h-10 text-white" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-              Mari Terhubung Dengan Kami
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3 md:mb-4">
+              Hubungi Kami
             </h1>
-            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Kami siap membantu Anda. Pilih cara terbaik untuk menghubungi tim kami atau kirim pesan langsung melalui formulir di bawah.
+            <p className="text-gray-600 text-sm md:text-base lg:text-lg max-w-2xl mx-auto px-4">
+              Kami siap membantu Anda! Kirimkan pesan dan kami akan merespons secepat mungkin.
             </p>
           </div>
 
-          {/* Contact Methods Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-            {contactMethods.map((method, index) => (
-              <a
-                key={index}
-                href={method.link}
-                className="group relative bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 dark:border-gray-700 overflow-hidden"
-              >
-                {/* Gradient Background on Hover */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${method.color} opacity-0 group-hover:opacity-5 transition-opacity`} />
-                
-                <div className="relative">
-                  <div className={`inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br ${method.color} rounded-xl mb-4 group-hover:scale-110 transition-transform`}>
-                    <method.icon className="w-7 h-7 text-white" />
+          <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Info Cards */}
+            <div className="lg:col-span-1 space-y-4">
+              <div className="bg-white/90 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-lg p-5 md:p-6 border border-emerald-100 hover:shadow-xl transition-all duration-300">
+                <div className="flex items-start gap-3 md:gap-4">
+                  <div className="w-11 h-11 md:w-12 md:h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Mail className="w-5 h-5 md:w-6 md:h-6 text-white" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                    {method.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    {method.description}
-                  </p>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">
-                    {method.value}
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-gray-800 mb-1 text-sm md:text-base">Email</h3>
+                    <p className="text-xs md:text-sm text-gray-600 break-all">marijasa.helper@gmail.com</p>
+                  </div>
                 </div>
-              </a>
-            ))}
-          </div>
+              </div>
 
-          {/* Main Content Grid */}
-          <div className="grid lg:grid-cols-2 gap-8">
-            {/* Contact Form */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-                Kirim Pesan
-              </h2>
-              
-              {isSubmitted ? (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
-                    <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
+              <div className="bg-white/90 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-lg p-5 md:p-6 border border-emerald-100 hover:shadow-xl transition-all duration-300">
+                <div className="flex items-start gap-3 md:gap-4">
+                  <div className="w-11 h-11 md:w-12 md:h-12 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-5 h-5 md:w-6 md:h-6 text-white" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                    Pesan Terkirim!
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Tim kami akan menghubungi Anda segera.
-                  </p>
+                  <div>
+                    <h3 className="font-bold text-gray-800 mb-1 text-sm md:text-base">Respon Cepat</h3>
+                    <p className="text-xs md:text-sm text-gray-600">Kami akan membalas dalam 1x24 jam</p>
+                  </div>
                 </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
+              </div>
+
+              <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl md:rounded-2xl shadow-lg p-5 md:p-6 text-white">
+                <h3 className="font-bold mb-2 text-sm md:text-base">Layanan MARIJASA</h3>
+                <p className="text-xs md:text-sm text-emerald-50 leading-relaxed">
+                  Sistem report dan feedback kami dirancang untuk memastikan setiap masukan Anda didengar dan ditindaklanjuti dengan serius. Kami berkomitmen untuk terus meningkatkan layanan demi kepuasan Anda.
+                </p>
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="lg:col-span-2">
+              <div className="bg-white/95 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-xl p-5 md:p-8 border border-emerald-100">
+                <div className="space-y-4 md:space-y-6">
+                  {/* Nama */}
+                  <div>
+                    <label htmlFor="name" className="text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <User className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-500" />
+                      Nama Lengkap <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all outline-none bg-white"
+                      placeholder="Masukkan nama lengkap Anda"
+                    />
+                  </div>
+
+                  {/* Email & Phone */}
+                  <div className="grid sm:grid-cols-2 gap-4 md:gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Nama Lengkap *
+                      <label htmlFor="email" className="text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-500" />
+                        Email <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
+                        type="email"
+                        id="email"
+                        name="email"
+                        value={formData.email}
                         onChange={handleChange}
-                        required
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent transition-all"
-                        placeholder="John Doe"
+                        className="w-full px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all outline-none bg-white"
+                        placeholder="email@contoh.com"
                       />
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label htmlFor="phone" className="text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-500" />
                         Nomor Telepon
                       </label>
                       <input
                         type="tel"
+                        id="phone"
                         name="phone"
                         value={formData.phone}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent transition-all"
-                        placeholder="+62 812-3456-7890"
+                        className="w-full px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all outline-none bg-white"
+                        placeholder="08xx xxxx xxxx"
                       />
                     </div>
                   </div>
 
+                  {/* Subjek */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Email *
+                    <label htmlFor="subject" className="text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <MessageSquare className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-500" />
+                      Subjek Pesan <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent transition-all"
-                      placeholder="john@example.com"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Subjek *
-                    </label>
-                    <select
+                      type="text"
+                      id="subject"
                       name="subject"
                       value={formData.subject}
                       onChange={handleChange}
-                      required
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent transition-all"
-                    >
-                      <option value="">Pilih subjek</option>
-                      <option value="general">Pertanyaan Umum</option>
-                      <option value="technical">Bantuan Teknis</option>
-                      <option value="partnership">Kerjasama</option>
-                      <option value="complaint">Keluhan</option>
-                      <option value="other">Lainnya</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Pesan *
-                    </label>
-                    <textarea
-                      name="message"
-                      value={formData.message}
-                      onChange={handleChange}
-                      required
-                      rows={5}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent transition-all resize-none"
-                      placeholder="Tulis pesan Anda di sini..."
+                      className="w-full px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all outline-none bg-white"
+                      placeholder="Ringkasan pesan Anda"
                     />
                   </div>
 
+                  {/* Pesan */}
+                  <div>
+                    <label htmlFor="message" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2">
+                      Detail Pesan <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      id="message"
+                      name="message"
+                      value={formData.message}
+                      onChange={handleChange}
+                      rows={5}
+                      className="w-full px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all outline-none resize-none bg-white"
+                      placeholder="Jelaskan pesan Anda secara detail..."
+                    />
+                  </div>
+
+                  {/* Upload Gambar */}
+                  <div>
+                    <label className="text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <ImagePlus className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-500" />
+                      Lampiran Gambar (Opsional)
+                    </label>
+                    
+                    {!imagePreview ? (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          id="image-upload"
+                          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                          onChange={handleImageChange}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="image-upload"
+                          className="flex flex-col items-center justify-center w-full px-4 py-6 md:py-8 border-2 border-dashed border-gray-300 rounded-lg md:rounded-xl hover:border-emerald-400 hover:bg-emerald-50/50 transition-all cursor-pointer group"
+                        >
+                          <Upload className="w-8 h-8 md:w-10 md:h-10 text-gray-400 group-hover:text-emerald-500 transition-colors mb-2" />
+                          <p className="text-xs md:text-sm text-gray-600 text-center">
+                            <span className="font-semibold text-emerald-600">Klik untuk upload</span> atau drag & drop
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">JPG, PNG, GIF, WebP (Maks. 50 KB)</p>
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="relative rounded-lg md:rounded-xl overflow-hidden border-2 border-emerald-200 bg-gray-50">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-full h-48 md:h-64 object-contain bg-gray-100"
+                        />
+                        <div className="absolute top-2 right-2">
+                          <button
+                            onClick={removeImage}
+                            type="button"
+                            className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg shadow-lg transition-colors"
+                            title="Hapus gambar"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="p-3 bg-white border-t border-gray-200">
+                          <p className="text-xs md:text-sm text-gray-700 font-medium truncate">
+                            📎 {imageFile?.name}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {imageFile && (imageFile.size / 1024).toFixed(2)} KB
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {uploadError && (
+                      <div className="mt-3 p-3 bg-red-50 border-2 border-red-200 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-red-700 font-medium">{uploadError}</p>
+                      </div>
+                    )}
+                    
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        💡 <strong>Tips:</strong> Untuk mengompres gambar, gunakan tools online seperti TinyPNG atau CompressJPEG agar ukuran di bawah 50 KB
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Messages */}
+                  {status === 'success' && (
+                    <div className="flex items-start gap-3 p-3 md:p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-lg md:rounded-xl">
+                      <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-emerald-800 font-semibold text-sm md:text-base">Pesan Berhasil Dikirim!</p>
+                        <p className="text-emerald-600 text-xs md:text-sm mt-0.5">Kami akan segera merespons ke email Anda.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {status === 'error' && (
+                    <div className="flex items-start gap-3 p-3 md:p-4 bg-red-50 border-2 border-red-200 rounded-lg md:rounded-xl">
+                      <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-red-800 font-medium text-sm md:text-base">{errorMessage}</p>
+                    </div>
+                  )}
+
+                  {/* Submit Button */}
                   <button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg hover:scale-[1.02] transition-all duration-300 flex items-center justify-center gap-2"
+                    onClick={handleSubmit}
+                    disabled={status === 'sending'}
+                    type="button"
+                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-3 md:py-4 px-6 rounded-lg md:rounded-xl flex items-center justify-center gap-2 md:gap-3 transition-all transform hover:scale-[1.01] active:scale-[0.99] hover:shadow-lg disabled:hover:scale-100 disabled:cursor-not-allowed text-sm md:text-base"
                   >
-                    <Send className="w-5 h-5" />
-                    Kirim Pesan
+                    {status === 'sending' ? (
+                      <>
+                        <div className="w-4 h-4 md:w-5 md:h-5 border-2 md:border-3 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Mengirim Pesan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 md:w-5 md:h-5" />
+                        <span>Kirim Pesan {imageFile && '+ Lampiran'}</span>
+                      </>
+                    )}
                   </button>
-                </form>
-              )}
-            </div>
 
-            {/* Info Section */}
-            <div className="space-y-8">
-              {/* Business Hours */}
-              <div className="bg-gradient-to-br from-[#7CE0A8] to-emerald-500 rounded-2xl p-8 text-white shadow-xl">
-                <Clock className="w-12 h-12 mb-4" />
-                <h3 className="text-2xl font-bold mb-4">Jam Operasional</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center pb-3 border-b border-white/20">
-                    <span className="font-medium">Senin - Jumat</span>
-                    <span>09:00 - 18:00 WIB</span>
-                  </div>
-                  <div className="flex justify-between items-center pb-3 border-b border-white/20">
-                    <span className="font-medium">Sabtu</span>
-                    <span>09:00 - 15:00 WIB</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Minggu</span>
-                    <span>Tutup</span>
-                  </div>
+                  <p className="text-center text-xs md:text-sm text-gray-500 leading-relaxed px-2">
+                    Dengan mengirim pesan, Anda menyetujui bahwa tim MARIJASA akan menghubungi Anda melalui email.
+                  </p>
                 </div>
-                <p className="mt-4 text-white/90 text-sm">
-                  * Live chat tersedia 24/7 untuk pertanyaan mendesak
-                </p>
-              </div>
-
-              {/* FAQ Quick Links */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-xl border border-gray-100 dark:border-gray-700">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                  Pertanyaan Umum
-                </h3>
-                <div className="space-y-3">
-                  {["Cara mendaftar", "Metode pembayaran", "Kebijakan refund", "Verifikasi akun"].map((item, i) => (
-                    <a
-                      key={i}
-                      href="#"
-                      className="block p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300 hover:text-[#7CE0A8]"
-                    >
-                      → {item}
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              {/* Map Placeholder */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-xl border border-gray-100 dark:border-gray-700">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                  Lokasi Kantor
-                </h3>
-                <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg flex items-center justify-center">
-                  <MapPin className="w-12 h-12 text-gray-400" />
-                </div>
-                <p className="mt-4 text-gray-600 dark:text-gray-400 text-sm">
-                  Jl. Sudirman No. 123, Jakarta Pusat, DKI Jakarta 10110
-                </p>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </PageTransition>
+    </div>
   );
 }
