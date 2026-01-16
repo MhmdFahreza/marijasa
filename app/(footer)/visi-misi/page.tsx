@@ -100,9 +100,7 @@ export default function VisiMisiPage() {
               <div className="relative bg-white dark:bg-gray-800 rounded-3xl p-8 md:p-12 shadow-xl border border-gray-100 dark:border-gray-700">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#7CE0A8]/10 to-transparent rounded-bl-full" />
                 <p className="text-xl md:text-2xl text-gray-700 dark:text-gray-200 leading-relaxed text-center relative z-10">
-                  Menjadi platform jasa digital terdepan di Indonesia yang menghubungkan 
-                  penyedia jasa profesional dengan pencari jasa, menciptakan ekosistem yang 
-                  adil, transparan, dan memberdayakan ekonomi kreatif lokal.
+                  Tujuan dari penelitian ini adalah untuk merancang dan membangun sebuah aplikasi web yang berfungsi sebagai platform penyedia jasa teknisi rumah tangga. Platform ini secara spesifik dirancang untuk menjembatani kesenjangan antara kebutuhan masyarakat dengan ketersediaan teknisi yang terpercaya, sehingga dapat menjadi solusi modern yang lebih terstruktur dan transparan dibandingkan metode pencarian konvensional.
                 </p>
               </div>
             </motion.div>
