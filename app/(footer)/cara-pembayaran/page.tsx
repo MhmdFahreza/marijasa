@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { ShoppingCart, CreditCard, Clock, CheckCircle, AlertCircle, HelpCircle, Smartphone, Building2, Wallet } from "lucide-react";
 import PageTransition from "@/app/components/transition/PageTransition";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -29,6 +30,7 @@ const itemVariants = {
 
 export default function CaraPembayaranPage() {
   const [activeMethod, setActiveMethod] = useState("ewallet");
+  const router = useRouter();
 
   const paymentSteps = {
     ewallet: [
@@ -328,6 +330,7 @@ export default function CaraPembayaranPage() {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
+                  onClick={() => router.push('/hubungi-kami')}
                   className="bg-white text-[#7CE0A8] px-8 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-shadow"
                 >
                   Hubungi Support
@@ -335,6 +338,7 @@ export default function CaraPembayaranPage() {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
+                  onClick={() => router.push('/pusat-bantuan')}
                   className="bg-white/20 backdrop-blur-sm text-white px-8 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-shadow border-2 border-white/50"
                 >
                   Lihat FAQ

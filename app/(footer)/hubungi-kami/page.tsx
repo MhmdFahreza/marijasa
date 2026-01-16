@@ -9,16 +9,16 @@ const contactMethods = [
     icon: Mail,
     title: "Email",
     description: "Kirim email ke kami",
-    value: "support@marijasa.com",
-    link: "mailto:support@marijasa.com",
+    value: "marijasa.helper@gmail.com",
+    link: "mailto:marijasa.helper@gmail.com",
     color: "from-blue-500 to-cyan-500"
   },
   {
     icon: Phone,
     title: "Telepon",
     description: "Hubungi tim kami",
-    value: "+62 812-3456-7890",
-    link: "tel:+6281234567890",
+    value: "083847882287",
+    link: "tel:+6283847882287",
     color: "from-green-500 to-emerald-500"
   },
   {
