@@ -197,31 +197,120 @@ const technicianCategories: TechnicianCategory[] = [
 export default function Beranda() {
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
   const prefersReduced = useReducedMotion();
 
-  const handlePilihKategori = async (kategori: string) => {
-    setLeaving(true);
-
-    // Tunggu sebentar untuk animasi loader
-    await new Promise(resolve => setTimeout(resolve, prefersReduced ? 0 : 300));
-
-    if (kategori === "semua-kategori") {
-      router.push("/jasa");
-    } else {
-      // Gunakan mapping untuk mengubah key beranda menjadi filter yang sesuai
+  // Fungsi untuk pre-fetch data vendor dengan loading dinamis
+  const preFetchVendors = async (kategori: string): Promise<boolean> => {
+    try {
+      setLoadingMessage("Memuat data penyedia jasa...");
+      
+      const startTime = Date.now();
       const filterKey = CATEGORY_MAPPING[kategori] || kategori;
-      router.push(`/jasa?kategori=${encodeURIComponent(filterKey)}`);
+      
+      // Buat URL dengan parameter kategori jika bukan "semua-kategori"
+      const url = kategori === "semua-kategori" 
+        ? '/api/vendors'
+        : `/api/vendors?kategori=${encodeURIComponent(filterKey)}`;
+      
+      console.log('[Beranda] Pre-fetching vendors from:', url);
+      
+      // Fetch data dari API
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Tambahkan cache control untuk memastikan data fresh
+        cache: 'no-store'
+      });
+
+      const endTime = Date.now();
+      const loadTime = endTime - startTime;
+      
+      console.log(`[Beranda] API response time: ${loadTime}ms`);
+
+      if (!response.ok) {
+        console.error('[Beranda] API error:', response.status);
+        setLoadingMessage("Terjadi kesalahan, mencoba lagi...");
+        // Tambah delay minimal jika error
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return false;
+      }
+
+      const data = await response.json();
+      console.log(`[Beranda] Loaded ${data.vendors?.length || 0} vendors`);
+      
+      setLoadingMessage(`Berhasil memuat ${data.vendors?.length || 0} penyedia jasa`);
+      
+      // Minimal delay 300ms untuk UX yang smooth, atau tunggu response jika lebih lama
+      const minDelay = 300;
+      if (loadTime < minDelay) {
+        await new Promise(resolve => setTimeout(resolve, minDelay - loadTime));
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[Beranda] Error pre-fetching vendors:', error);
+      setLoadingMessage("Gagal memuat data, mencoba lagi...");
+      // Minimal delay saat error
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return false;
     }
   };
 
-  // Fungsi baru untuk navigasi ke halaman daftar mitra
-  const handleNavigateToDaftarMitra = async () => {
+  const handlePilihKategori = async (kategori: string) => {
+    // Cegah multiple clicks
+    if (leaving) return;
+    
     setLeaving(true);
+    setLoadingMessage("Mempersiapkan...");
 
-    // Tunggu sebentar untuk animasi loader
-    await new Promise(resolve => setTimeout(resolve, prefersReduced ? 0 : 300));
+    try {
+      // Pre-fetch data vendors secara asinkron
+      const success = await preFetchVendors(kategori);
+      
+      if (!success) {
+        console.warn('[Beranda] Pre-fetch failed, but continuing to navigation');
+      }
 
-    router.push("/mitra/daftar");
+      // Tunggu sebentar untuk animasi loader (minimal delay untuk UX)
+      if (!prefersReduced) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // Navigasi ke halaman yang sesuai
+      if (kategori === "semua-kategori") {
+        router.push("/jasa");
+      } else {
+        const filterKey = CATEGORY_MAPPING[kategori] || kategori;
+        router.push(`/jasa?kategori=${encodeURIComponent(filterKey)}`);
+      }
+    } catch (error) {
+      console.error('[Beranda] Error during navigation:', error);
+      setLeaving(false);
+      setLoadingMessage("");
+    }
+  };
+
+  // Fungsi untuk navigasi ke halaman daftar mitra
+  const handleNavigateToDaftarMitra = async () => {
+    // Cegah multiple clicks
+    if (leaving) return;
+    
+    setLeaving(true);
+    setLoadingMessage("Memuat halaman pendaftaran...");
+
+    try {
+      // Minimal delay untuk animasi smooth
+      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 100 : 400));
+      
+      router.push("/mitra/daftar");
+    } catch (error) {
+      console.error('[Beranda] Error navigating to mitra:', error);
+      setLeaving(false);
+      setLoadingMessage("");
+    }
   };
 
   return (
@@ -297,7 +386,8 @@ export default function Beranda() {
                     key={cat.key}
                     type="button"
                     onClick={() => handlePilihKategori(cat.key)}
-                    className="group flex flex-col items-center justify-center rounded-xl sm:rounded-lg md:rounded-2xl border border-neutral-200/80 dark:border-neutral-700/70 bg-white/90 hover:bg-blue-50/90 dark:bg-neutral-900/70 backdrop-blur-sm px-2 py-2.5 sm:px-2 sm:py-2 md:px-4 md:py-4 shadow-sm hover:shadow-md transition hover:border-blue-500/70 dark:hover:bg-blue-900/30"
+                    disabled={leaving}
+                    className="group flex flex-col items-center justify-center rounded-xl sm:rounded-lg md:rounded-2xl border border-neutral-200/80 dark:border-neutral-700/70 bg-white/90 hover:bg-blue-50/90 dark:bg-neutral-900/70 backdrop-blur-sm px-2 py-2.5 sm:px-2 sm:py-2 md:px-4 md:py-4 shadow-sm hover:shadow-md transition hover:border-blue-500/70 dark:hover:bg-blue-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="mb-1 sm:mb-1 md:mb-2 flex items-center justify-center">
                       {cat.icon}
@@ -411,7 +501,8 @@ export default function Beranda() {
                 <div className="space-y-4">
                   <button
                     onClick={handleNavigateToDaftarMitra}
-                    className="group inline-flex items-center justify-center gap-2 sm:gap-3 px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-r from-[#7CE0A8] to-emerald-500 hover:from-emerald-500 hover:to-[#7CE0A8] text-white font-semibold sm:font-bold text-sm sm:text-base md:text-lg rounded-lg sm:rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-300 hover:scale-[1.02] w-full sm:w-auto transform hover:-translate-y-0.5 active:scale-95"
+                    disabled={leaving}
+                    className="group inline-flex items-center justify-center gap-2 sm:gap-3 px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-r from-[#7CE0A8] to-emerald-500 hover:from-emerald-500 hover:to-[#7CE0A8] text-white font-semibold sm:font-bold text-sm sm:text-base md:text-lg rounded-lg sm:rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-300 hover:scale-[1.02] w-full sm:w-auto transform hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>DAFTAR SEKARANG</span>
                     <svg
@@ -486,7 +577,7 @@ export default function Beranda() {
 
       <Chatbot />
 
-      {/* Loader untuk transisi halaman */}
+      {/* Loader untuk transisi halaman dengan loading message dinamis */}
       <AnimatePresence>
         {leaving && (
           <motion.div
@@ -495,9 +586,20 @@ export default function Beranda() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: prefersReduced ? 0 : 0.5 }}
-            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
+            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex flex-col items-center justify-center gap-6"
           >
             <LoaderTwo />
+            {loadingMessage && (
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 font-medium"
+              >
+                {loadingMessage}
+              </motion.p>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
