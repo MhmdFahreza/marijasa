@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
   FileText, Upload, CheckCircle, Clock, AlertCircle, 
   Shield, Award, User, Briefcase, Camera, ChevronRight 
@@ -90,6 +91,11 @@ const verificationBenefits = [
 
 export default function PanduanVerifikasiPage() {
   const [activeStep, setActiveStep] = useState(0);
+  const router = useRouter();
+
+  const handleStartVerification = () => {
+    router.push('/mitra/daftar');
+  };
 
   return (
     <PageTransition>
@@ -113,7 +119,10 @@ export default function PanduanVerifikasiPage() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="bg-white text-[#7CE0A8] px-8 py-4 rounded-xl font-semibold hover:bg-gray-50 transition-all shadow-2xl hover:shadow-3xl hover:scale-105">
+              <button 
+                onClick={handleStartVerification}
+                className="bg-white text-[#7CE0A8] px-8 py-4 rounded-xl font-semibold hover:bg-gray-50 transition-all shadow-2xl hover:shadow-3xl hover:scale-105"
+              >
                 Mulai Verifikasi
               </button>
               <button className="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold hover:bg-white hover:text-[#7CE0A8] transition-all">
@@ -279,7 +288,10 @@ export default function PanduanVerifikasiPage() {
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
               Siap Untuk Memulai?
             </h3>
-            <button className="bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white px-10 py-5 rounded-xl font-semibold text-lg hover:shadow-2xl hover:scale-105 transition-all inline-flex items-center gap-2">
+            <button 
+              onClick={handleStartVerification}
+              className="bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white px-10 py-5 rounded-xl font-semibold text-lg hover:shadow-2xl hover:scale-105 transition-all inline-flex items-center gap-2"
+            >
               Mulai Proses Verifikasi
               <ChevronRight className="w-5 h-5" />
             </button>

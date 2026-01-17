@@ -1,91 +1,74 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { 
-  Wrench, Paintbrush, Laptop, Camera, Heart, GraduationCap, 
-  Car, Home, Scissors, ShoppingBag, TrendingUp, Search
+  Zap, AirVent, Sparkles, ShowerHead, Droplets, Trees, Armchair, TrendingUp, Search
 } from "lucide-react";
 import PageTransition from "@/app/components/transition/PageTransition";
 
 const categories = [
   {
-    icon: Wrench,
-    title: "Perbaikan & Renovasi",
-    description: "Tukang, instalasi listrik, plumbing",
-    count: "2,340+ penyedia",
+    icon: Zap,
+    title: "Tukang Listrik",
+    slug: "listrik",
+    description: "Jasa perbaikan dan instalasi listrik rumah",
+    count: "850+ penyedia",
+    color: "from-yellow-500 to-orange-500",
+    popular: true
+  },
+  {
+    icon: AirVent,
+    title: "Tukang AC",
+    slug: "ac",
+    description: "Jasa service, perbaikan, dan instalasi AC",
+    count: "720+ penyedia",
     color: "from-blue-500 to-cyan-500",
     popular: true
   },
   {
-    icon: Paintbrush,
-    title: "Desain & Kreatif",
-    description: "Graphic design, UI/UX, ilustrasi",
-    count: "1,890+ penyedia",
+    icon: Sparkles,
+    title: "Tukang Pembersihan Rumah",
+    slug: "pembersihanrumah",
+    description: "Jasa kebersihan dan pembersihan rumah",
+    count: "1,240+ penyedia",
     color: "from-purple-500 to-pink-500",
     popular: true
   },
   {
-    icon: Laptop,
-    title: "IT & Programming",
-    description: "Web development, app development",
-    count: "3,120+ penyedia",
-    color: "from-emerald-500 to-teal-500",
-    popular: true
-  },
-  {
-    icon: Camera,
-    title: "Fotografi & Video",
-    description: "Wedding, event, product photography",
-    count: "1,560+ penyedia",
-    color: "from-orange-500 to-red-500",
-    popular: true
-  },
-  {
-    icon: Heart,
-    title: "Kesehatan & Kecantikan",
-    description: "Makeup artist, hairstylist, spa",
+    icon: ShowerHead,
+    title: "Tukang Ledeng",
+    slug: "ledeng",
+    description: "Jasa perbaikan pipa dan saluran air",
     count: "980+ penyedia",
-    color: "from-rose-500 to-pink-500",
+    color: "from-blue-600 to-indigo-500",
+    popular: true
+  },
+  {
+    icon: Droplets,
+    title: "Tukang Sedot WC",
+    slug: "sedotwc",
+    description: "Jasa sedot WC dan septic tank",
+    count: "560+ penyedia",
+    color: "from-teal-500 to-cyan-600",
     popular: false
   },
   {
-    icon: GraduationCap,
-    title: "Pendidikan & Les",
-    description: "Tutor, guru les, mentor",
-    count: "1,230+ penyedia",
-    color: "from-indigo-500 to-purple-500",
-    popular: false
-  },
-  {
-    icon: Car,
-    title: "Transportasi & Logistik",
-    description: "Delivery, moving service, driver",
-    count: "2,100+ penyedia",
-    color: "from-yellow-500 to-orange-500",
-    popular: false
-  },
-  {
-    icon: Home,
-    title: "Kebersihan & Perawatan",
-    description: "Cleaning service, laundry, gardening",
-    count: "1,670+ penyedia",
+    icon: Trees,
+    title: "Tukang Kebun",
+    slug: "kebun",
+    description: "Jasa perawatan taman dan kebun",
+    count: "430+ penyedia",
     color: "from-green-500 to-emerald-500",
     popular: false
   },
   {
-    icon: Scissors,
-    title: "Fashion & Jahit",
-    description: "Tailor, alterasi, custom clothing",
-    count: "890+ penyedia",
-    color: "from-fuchsia-500 to-purple-500",
-    popular: false
-  },
-  {
-    icon: ShoppingBag,
-    title: "Event & Katering",
-    description: "Catering, event organizer, dekorasi",
-    count: "1,450+ penyedia",
-    color: "from-amber-500 to-orange-500",
+    icon: Armchair,
+    title: "Tukang Mebel",
+    slug: "furnitur",
+    description: "Jasa pembuatan dan perbaikan furnitur",
+    count: "670+ penyedia",
+    color: "from-amber-600 to-orange-600",
     popular: false
   }
 ];
@@ -113,14 +96,14 @@ export default function KategoriJasaPage() {
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full text-white mb-6">
                 <TrendingUp className="w-4 h-4" />
-                <span className="text-sm font-medium">10+ Kategori Tersedia</span>
+                <span className="text-sm font-medium">{categories.length} Kategori Tersedia</span>
               </div>
               
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                Kategori Jasa Populer
+                Tukang Ledeng
               </h1>
               <p className="text-xl text-white/90 max-w-3xl mx-auto">
-                Temukan penyedia jasa terbaik untuk kebutuhan Anda dari berbagai kategori pilihan
+                Temukan Penyedia Jasa Terpercaya, untuk Kebutuhan Rumah Tangga Anda.
               </p>
             </div>
 
@@ -152,9 +135,10 @@ export default function KategoriJasaPage() {
           {/* Categories Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {displayedCategories.map((category, index) => (
-              <div
+              <Link
                 key={index}
-                className="group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 dark:border-gray-700"
+                href={`/kategori/${category.slug}`}
+                className="group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 dark:border-gray-700 block"
               >
                 {/* Popular Badge */}
                 {category.popular && (
@@ -187,15 +171,15 @@ export default function KategoriJasaPage() {
                     <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
                       {category.count}
                     </span>
-                    <button className="text-[#7CE0A8] hover:text-emerald-600 font-medium text-sm flex items-center gap-1 group-hover:gap-2 transition-all">
+                    <span className="text-[#7CE0A8] hover:text-emerald-600 font-medium text-sm flex items-center gap-1 group-hover:gap-2 transition-all">
                       Lihat Semua
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
-                    </button>
+                    </span>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
@@ -217,9 +201,9 @@ export default function KategoriJasaPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               {[
-                { value: "15,000+", label: "Penyedia Jasa" },
-                { value: "50,000+", label: "Proyek Selesai" },
-                { value: "10+", label: "Kategori" },
+                { value: "5,450+", label: "Penyedia Jasa" },
+                { value: "12,000+", label: "Proyek Selesai" },
+                { value: `${categories.length}+`, label: "Kategori" },
                 { value: "4.8/5", label: "Rating Rata-rata" }
               ].map((stat, i) => (
                 <div key={i} className="text-center">
@@ -246,12 +230,18 @@ export default function KategoriJasaPage() {
                 Hubungi tim kami dan beri tahu kami layanan apa yang Anda butuhkan. Kami akan membantu mencarikan penyedia jasa yang tepat!
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <button className="bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white px-8 py-4 rounded-xl font-semibold hover:shadow-xl hover:scale-105 transition-all">
+                <Link 
+                  href="/hubungi-kami"
+                  className="bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white px-8 py-4 rounded-xl font-semibold hover:shadow-xl hover:scale-105 transition-all inline-block"
+                >
                   Hubungi Kami
-                </button>
-                <button className="border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-8 py-4 rounded-xl font-semibold hover:border-[#7CE0A8] hover:text-[#7CE0A8] transition-all">
+                </Link>
+                <Link 
+                  href="/pusat-bantuan"
+                  className="border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-8 py-4 rounded-xl font-semibold hover:border-[#7CE0A8] hover:text-[#7CE0A8] transition-all inline-block"
+                >
                   Lihat Panduan
-                </button>
+                </Link>
               </div>
             </div>
           </div>
