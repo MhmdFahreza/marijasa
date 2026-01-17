@@ -132,6 +132,7 @@ export default function VendorFormPage() {
   const [initialOrderId, setInitialOrderId] = useState<string>("");
   const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -420,19 +421,33 @@ export default function VendorFormPage() {
       totalAmount: servicePrice + SERVICE_FEE
     };
 
-    const result = await saveOrderToDatabase(orderData);
-    
-    if (!result.success) {
-      toast.error(result.error || "Gagal menyimpan pesanan");
-      return;
-    }
+    // Set loading state
+    setIsSubmittingOrder(true);
 
-    setShowSuccessModal(true);
+    try {
+      // Kirim request ke server (async, waktu tergantung server)
+      const result = await saveOrderToDatabase(orderData);
+      
+      if (!result.success) {
+        toast.error(result.error || "Gagal menyimpan pesanan");
+        setIsSubmittingOrder(false);
+        return;
+      }
 
-    setTimeout(() => {
+      // Tampilkan modal sukses
+      setShowSuccessModal(true);
+
+      // Tunggu 2 detik untuk animasi modal
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       setShowSuccessModal(false);
       setCurrentStep('confirmation');
-    }, 2000);
+    } catch (error) {
+      toast.error("Terjadi kesalahan saat memproses pesanan");
+      console.error(error);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   const handleFinalSubmit = async () => {
@@ -476,23 +491,29 @@ export default function VendorFormPage() {
       totalAmount: totalPrice
     };
 
-    const result = await updatePaymentStatus(initialOrderId, paymentData);
+    try {
+      // Kirim request pembayaran ke server (async, waktu tergantung server)
+      const result = await updatePaymentStatus(initialOrderId, paymentData);
 
-    if (!result.success) {
-      toast.error(result.error || "Gagal memproses pembayaran");
-      setIsProcessingPayment(false);
-      return;
-    }
+      if (!result.success) {
+        toast.error(result.error || "Gagal memproses pembayaran");
+        setIsProcessingPayment(false);
+        return;
+      }
 
-    setTimeout(() => {
-      setIsProcessingPayment(false);
+      // Tampilkan modal sukses pembayaran
       setShowPaymentSuccessModal(true);
 
-      setTimeout(() => {
-        setShowPaymentSuccessModal(false);
-        router.push('/riwayat_pemesanan');
-      }, 3000);
-    }, 1500);
+      // Tunggu 3 detik sebelum redirect
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      setShowPaymentSuccessModal(false);
+      router.push('/riwayat_pemesanan');
+    } catch (error) {
+      toast.error("Terjadi kesalahan saat memproses pembayaran");
+      console.error(error);
+      setIsProcessingPayment(false);
+    }
   };
 
   const calculateServicePrice = () => {
@@ -685,6 +706,7 @@ export default function VendorFormPage() {
             handleServiceToggle={handleServiceToggle}
             handleQuantityChange={handleQuantityChange}
             formatPrice={formatPrice}
+            isSubmittingOrder={isSubmittingOrder}
           />
         ) : (
           <ConfirmationStep
@@ -803,7 +825,8 @@ function OrderForm({
   userProfile,
   handleServiceToggle,
   handleQuantityChange,
-  formatPrice
+  formatPrice,
+  isSubmittingOrder
 }: any) {
   const getTomorrowDate = () => {
     const tomorrow = new Date();
@@ -1208,9 +1231,16 @@ function OrderForm({
                 style={{ backgroundColor: '#7CE0A8' }}
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
-                disabled={!formData.selectedServices || formData.selectedServices.length === 0}
+                disabled={!formData.selectedServices || formData.selectedServices.length === 0 || isSubmittingOrder}
               >
-                Ajukan Pemesanan
+                {isSubmittingOrder ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Memproses...
+                  </>
+                ) : (
+                  'Ajukan Pemesanan'
+                )}
               </Button>
             </div>
           </form>
