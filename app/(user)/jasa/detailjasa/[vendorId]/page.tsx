@@ -1,7 +1,7 @@
 // app/jasa/detailjasa/[vendorId]/page.tsx
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { motion, useReducedMotion, AnimatePresence } from 'framer-motion'
@@ -52,6 +52,37 @@ type Review = {
   vendorLiked?: boolean
 }
 
+// Helper: Get network speed untuk dynamic loading
+const getNetworkSpeed = (): 'slow' | 'medium' | 'fast' => {
+  if (typeof window === 'undefined') return 'medium';
+  
+  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  
+  if (!connection) return 'medium';
+  
+  const effectiveType = connection.effectiveType;
+  
+  if (effectiveType === 'slow-2g' || effectiveType === '2g') return 'slow';
+  if (effectiveType === '3g') return 'medium';
+  return 'fast';
+};
+
+// Helper: Get minimum loading duration based on network
+const getMinLoadingDuration = (): number => {
+  const speed = getNetworkSpeed();
+  
+  switch (speed) {
+    case 'slow':
+      return 150; // Minimal 150ms untuk slow network
+    case 'medium':
+      return 100; // Minimal 100ms untuk medium network
+    case 'fast':
+      return 50; // Minimal 50ms untuk fast network
+    default:
+      return 100;
+  }
+};
+
 export default function VendorDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -71,6 +102,7 @@ export default function VendorDetailPage() {
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
 
   const vendorId = params.vendorId as string
+  const navigationStartTimeRef = useRef<number>(0);
 
   // Load vendor data dari API
   const loadVendor = useCallback(async () => {
@@ -85,7 +117,6 @@ export default function VendorDetailPage() {
         
         console.log('[Vendor Detail] Reviews received:', data.vendor.reviews)
         
-        // ✅ Reviews sudah diparsing di API, langsung gunakan
         setVendor(data.vendor)
         setReviews(data.vendor.reviews || [])
       } else {
@@ -151,11 +182,33 @@ export default function VendorDetailPage() {
     return () => window.removeEventListener('reviewsUpdated', handleReviewsUpdate)
   }, [loadVendor])
 
+  // ✅ UPDATED: Async navigation dengan dynamic loading
   const handleNavigation = async (path: string) => {
-    setLeaving(true)
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 220))
-    router.push(path)
-  }
+    // Record start time
+    navigationStartTimeRef.current = performance.now();
+    
+    // Set loading state
+    setLeaving(true);
+    
+    // Get minimum loading duration based on network
+    const minDuration = prefersReduced ? 0 : getMinLoadingDuration();
+    
+    // Start navigation
+    const navigationPromise = router.push(path);
+    
+    // Wait for minimum duration OR navigation completion (whichever is longer)
+    const elapsedTime = performance.now() - navigationStartTimeRef.current;
+    const remainingTime = Math.max(0, minDuration - elapsedTime);
+    
+    if (remainingTime > 0) {
+      await Promise.all([
+        navigationPromise,
+        new Promise(resolve => setTimeout(resolve, remainingTime))
+      ]);
+    } else {
+      await navigationPromise;
+    }
+  };
 
   const scrollToSection = (sectionId: string) => {
     setActiveTab(sectionId)
@@ -170,18 +223,39 @@ export default function VendorDetailPage() {
     }
   }
 
+  // ✅ UPDATED: Async login success handler
   const handleLoginSuccess = async (email: string) => {
     setShowLoginModal(false);
     setIsTransitioning(true);
-    await new Promise((r) => setTimeout(r, 500));
+    
+    // Dynamic loading based on network
+    const minDuration = getMinLoadingDuration();
+    await new Promise(resolve => setTimeout(resolve, minDuration));
+    
     window.location.reload();
   };
 
+  // ✅ UPDATED: Async register click handler
   const handleRegisterClick = async () => {
     setShowLoginModal(false);
+    
+    navigationStartTimeRef.current = performance.now();
     setIsTransitioning(true);
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-    router.push('/register');
+    
+    const minDuration = prefersReduced ? 0 : getMinLoadingDuration();
+    const navigationPromise = router.push('/register');
+    
+    const elapsedTime = performance.now() - navigationStartTimeRef.current;
+    const remainingTime = Math.max(0, minDuration - elapsedTime);
+    
+    if (remainingTime > 0) {
+      await Promise.all([
+        navigationPromise,
+        new Promise(resolve => setTimeout(resolve, remainingTime))
+      ]);
+    } else {
+      await navigationPromise;
+    }
   };
 
   const handleFavoriteClick = async () => {
@@ -218,20 +292,24 @@ export default function VendorDetailPage() {
     }
   }
 
-  const handlePesanSekarang = () => {
+  // ✅ UPDATED: Async Pesan Sekarang handler
+  const handlePesanSekarang = async () => {
     if (!isAuthenticated) {
       setShowLoginModal(true)
       return
     }
-    handleNavigation(`/jasa/detailjasa/${vendorId}/form`)
+    
+    await handleNavigation(`/jasa/detailjasa/${vendorId}/form`)
   }
 
-  const handleChatClick = () => {
+  // ✅ UPDATED: Async Chat handler
+  const handleChatClick = async () => {
     if (!isAuthenticated) {
       setShowLoginModal(true)
       return
     }
-    handleNavigation(`/chat/${vendorId}`)
+    
+    await handleNavigation(`/chat/${vendorId}`)
   }
 
   const tabs = [
@@ -591,12 +669,10 @@ export default function VendorDetailPage() {
                                     </span>
                                   </div>
 
-                                  {/* ✅ Comment */}
                                   <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 leading-relaxed mb-3 whitespace-pre-wrap">
                                     {review.comment}
                                   </p>
 
-                                  {/* ✅ Display photos if available */}
                                   {review.photos && review.photos.length > 0 && (
                                     <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
                                       {review.photos.map((photo: string, idx: number) => (
@@ -611,7 +687,6 @@ export default function VendorDetailPage() {
                                     </div>
                                   )}
 
-                                  {/* ✅ Display vendor response if available */}
                                   {review.response && (
                                     <div className="mt-3 p-3 bg-gradient-to-r from-[#7CE0A8]/10 to-[#5DD494]/10 rounded-lg border border-[#7CE0A8]/20">
                                       <div className="flex items-start gap-2">
@@ -635,7 +710,6 @@ export default function VendorDetailPage() {
                                     </div>
                                   )}
 
-                                  {/* ✅ NEW: Helpful Counter - Seperti di Dashboard Mitra */}
                                   {review.helpfulCount !== undefined && review.helpfulCount > 0 && (
                                     <motion.div
                                       initial={{ opacity: 0, y: -5 }}

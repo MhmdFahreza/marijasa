@@ -33,6 +33,37 @@ interface Category {
   name: string;
 }
 
+// Helper: Get network speed untuk dynamic loading
+const getNetworkSpeed = (): 'slow' | 'medium' | 'fast' => {
+  if (typeof window === 'undefined') return 'medium';
+  
+  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  
+  if (!connection) return 'medium';
+  
+  const effectiveType = connection.effectiveType;
+  
+  if (effectiveType === 'slow-2g' || effectiveType === '2g') return 'slow';
+  if (effectiveType === '3g') return 'medium';
+  return 'fast';
+};
+
+// Helper: Get minimum loading duration based on network
+const getMinLoadingDuration = (): number => {
+  const speed = getNetworkSpeed();
+  
+  switch (speed) {
+    case 'slow':
+      return 150; // Minimal 150ms untuk slow network
+    case 'medium':
+      return 100; // Minimal 100ms untuk medium network
+    case 'fast':
+      return 50; // Minimal 50ms untuk fast network
+    default:
+      return 100;
+  }
+};
+
 const EmptyState = ({
   onResetFilters,
   selectedCategory,
@@ -154,11 +185,11 @@ export default function JasaPage() {
   const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   
-  // Key untuk force re-render saat reset
   const [renderKey, setRenderKey] = useState(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadVendorsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const navigationStartTimeRef = useRef<number>(0);
 
   // Fetch categories untuk mapping nama
   useEffect(() => {
@@ -242,11 +273,9 @@ export default function JasaPage() {
           const data = await response.json();
           console.log('[JasaPage] Vendors loaded:', data.vendors?.length || 0);
           
-          // Set vendors dengan timeout kecil untuk memastikan state update
           await new Promise(resolve => setTimeout(resolve, 50));
           setVendors(data.vendors || []);
           
-          // Force re-render dengan key baru
           setRenderKey(prev => prev + 1);
         } else {
           console.error('Error loading vendors:', await response.text());
@@ -303,7 +332,7 @@ export default function JasaPage() {
   // Calculate items per page based on displayLimit
   const itemsPerPage = useMemo(() => {
     if (displayLimit === 'all') {
-      return vendors.length || 1; // Show all vendors on one page
+      return vendors.length || 1;
     }
     return parseInt(displayLimit) || 10;
   }, [displayLimit, vendors.length]);
@@ -311,7 +340,7 @@ export default function JasaPage() {
   // Calculate total pages
   const totalPages = useMemo(() => {
     if (displayLimit === 'all') {
-      return 1; // Only one page when showing all
+      return 1;
     }
     return Math.max(1, Math.ceil(vendors.length / itemsPerPage));
   }, [vendors.length, itemsPerPage, displayLimit]);
@@ -319,7 +348,6 @@ export default function JasaPage() {
   // Calculate current page vendors
   const { startIndex, endIndex, currentVendors } = useMemo(() => {
     if (displayLimit === 'all') {
-      // Show all vendors
       return { 
         startIndex: 0, 
         endIndex: vendors.length, 
@@ -342,11 +370,34 @@ export default function JasaPage() {
     }
   }, [vendors.length, currentVendors.length, currentPage]);
 
+  // ✅ UPDATED: Async navigation dengan dynamic loading
   const handleHomeClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
+    
+    // Record start time
+    navigationStartTimeRef.current = performance.now();
+    
+    // Set loading state
     setLeaving(true);
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 300));
-    router.push("/");
+    
+    // Get minimum loading duration based on network
+    const minDuration = prefersReduced ? 0 : getMinLoadingDuration();
+    
+    // Start navigation
+    const navigationPromise = router.push("/");
+    
+    // Wait for minimum duration OR navigation completion (whichever is longer)
+    const elapsedTime = performance.now() - navigationStartTimeRef.current;
+    const remainingTime = Math.max(0, minDuration - elapsedTime);
+    
+    if (remainingTime > 0) {
+      await Promise.all([
+        navigationPromise,
+        new Promise(resolve => setTimeout(resolve, remainingTime))
+      ]);
+    } else {
+      await navigationPromise;
+    }
   };
 
   const handlePageChange = (page: number) => {
@@ -357,7 +408,6 @@ export default function JasaPage() {
   const handleResetFilters = useCallback(async () => {
     console.log('[JasaPage] Resetting all filters...');
     
-    // Cancel ongoing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -365,10 +415,8 @@ export default function JasaPage() {
       clearTimeout(loadVendorsTimeoutRef.current);
     }
     
-    // Show loading state
     setIsFilterLoading(true);
     
-    // Reset all filters
     setSelectedCategory("");
     setSelectedCity("");
     setSelectedRating("");
@@ -376,27 +424,48 @@ export default function JasaPage() {
     setDisplayLimit("10");
     setCurrentPage(1);
     
-    // Update URL
     window.history.replaceState({}, '', '/jasa');
     
-    // Small delay untuk memastikan state terupdate
     await new Promise(resolve => setTimeout(resolve, 100));
     
     console.log('[JasaPage] Filters reset complete');
   }, []);
 
+  // ✅ UPDATED: Async login/register handlers
   const handleLoginSuccess = async (email: string) => {
     setShowLoginModal(false);
     setIsTransitioning(true);
-    await new Promise((r) => setTimeout(r, 500));
+    
+    // Dynamic loading based on network
+    const minDuration = getMinLoadingDuration();
+    const startTime = performance.now();
+    
+    // Reload will happen, so just wait minimum duration
+    await new Promise(resolve => setTimeout(resolve, minDuration));
+    
     window.location.reload(); 
   };
 
   const handleRegisterClick = async () => {
     setShowLoginModal(false);
+    
+    navigationStartTimeRef.current = performance.now();
     setIsTransitioning(true);
-    await new Promise((r) => setTimeout(r, prefersReduced ? 0 : 500));
-    router.push('/register');
+    
+    const minDuration = prefersReduced ? 0 : getMinLoadingDuration();
+    const navigationPromise = router.push('/register');
+    
+    const elapsedTime = performance.now() - navigationStartTimeRef.current;
+    const remainingTime = Math.max(0, minDuration - elapsedTime);
+    
+    if (remainingTime > 0) {
+      await Promise.all([
+        navigationPromise,
+        new Promise(resolve => setTimeout(resolve, remainingTime))
+      ]);
+    } else {
+      await navigationPromise;
+    }
   };
 
   const renderPaginationItems = () => {
@@ -473,12 +542,10 @@ export default function JasaPage() {
     return items;
   };
 
-  // Generate stable key untuk vendor list
   const vendorListKey = useMemo(() => {
     return `vendors-${selectedCategory}-${selectedCity}-${selectedRating}-${searchQuery}-${displayLimit}-${currentPage}-${renderKey}`;
   }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit, currentPage, renderKey]);
 
-  // Pagination info text
   const paginationInfo = useMemo(() => {
     if (vendors.length === 0) return "";
     
@@ -592,7 +659,6 @@ export default function JasaPage() {
                     ))}
                   </motion.section>
 
-                  {/* Show pagination only if displayLimit is not 'all' and totalPages > 1 */}
                   {displayLimit !== 'all' && totalPages > 1 && (
                     <motion.div
                       className="mt-8 mb-6"
@@ -616,7 +682,6 @@ export default function JasaPage() {
                     </motion.div>
                   )}
 
-                  {/* Pagination info */}
                   {vendors.length > 0 && (
                     <div className="mt-4 text-center text-sm text-muted-foreground">
                       {paginationInfo}
