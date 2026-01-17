@@ -68,6 +68,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadingStartTimeRef = useRef<number>(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -111,7 +112,9 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   // Reset loading on pathname change - Asynchronous handling
   useEffect(() => {
     if (navigationInProgress) {
-      console.log("[Layout] Navigation completed, hiding loader");
+      const loadingDuration = Date.now() - loadingStartTimeRef.current;
+      console.log(`[Layout] Navigation completed in ${loadingDuration}ms, hiding loader`);
+      
       setIsLoading(false);
       setNavigationInProgress(false);
       
@@ -205,7 +208,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     
     try {
       setIsLoading(true);
+      loadingStartTimeRef.current = startTime;
+      
       await setLanguage(language);
+      
       const duration = Date.now() - startTime;
       console.log(`[Layout] Language changed in ${duration}ms`);
     } catch (error) {
@@ -223,26 +229,29 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
     console.log(`[Layout] Navigating to: ${path}`);
     const startTime = Date.now();
+    loadingStartTimeRef.current = startTime;
 
     setIsMobileMenuOpen(false);
     setIsLoading(true);
     setNavigationInProgress(true);
 
     try {
-      // Set timeout sebagai fallback (max 10 detik)
+      // Set timeout sebagai fallback (max 15 detik untuk koneksi lambat)
       navigationTimeoutRef.current = setTimeout(() => {
-        console.warn("[Layout] Navigation timeout reached");
+        const timeoutDuration = Date.now() - startTime;
+        console.warn(`[Layout] Navigation timeout reached after ${timeoutDuration}ms`);
         setIsLoading(false);
         setNavigationInProgress(false);
-      }, 10000);
+      }, 15000);
 
       // Trigger navigation - router.push is async in Next.js App Router
       await router.push(path);
       
       const duration = Date.now() - startTime;
-      console.log(`[Layout] Navigation initiated in ${duration}ms`);
+      console.log(`[Layout] Navigation to ${path} initiated in ${duration}ms`);
     } catch (error) {
-      console.error("[Layout] Navigation error:", error);
+      const errorDuration = Date.now() - startTime;
+      console.error(`[Layout] Navigation error after ${errorDuration}ms:`, error);
       setIsLoading(false);
       setNavigationInProgress(false);
       
@@ -261,48 +270,26 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     handleNavigation("/register");
   };
 
-  // Updated: Async loading untuk logo click (ke home)
-  const handleLogoClick = useCallback(async () => {
+  // Page transition only - TANPA loader untuk logo/title click
+  const handleLogoClick = useCallback(() => {
     if (pathname === "/") {
       setIsMobileMenuOpen(false);
       return;
     }
 
-    console.log("[Layout] Logo clicked - navigating to home");
-    const startTime = Date.now();
+    console.log("[Layout] Logo/Title clicked - navigating to home with page transition");
     
+    // Tutup mobile menu jika terbuka
     setIsMobileMenuOpen(false);
-    setIsLoading(true);
-    setNavigationInProgress(true);
 
-    try {
-      // Set timeout sebagai fallback
-      navigationTimeoutRef.current = setTimeout(() => {
-        console.warn("[Layout] Home navigation timeout reached");
-        setIsLoading(false);
-        setNavigationInProgress(false);
-      }, 10000);
-
-      // Navigate to home
-      await router.push("/");
-      
-      const duration = Date.now() - startTime;
-      console.log(`[Layout] Home navigation initiated in ${duration}ms`);
-    } catch (error) {
-      console.error("[Layout] Home navigation error:", error);
-      setIsLoading(false);
-      setNavigationInProgress(false);
-      
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-        navigationTimeoutRef.current = null;
-      }
-    }
+    // Navigate langsung tanpa loading state - page transition akan handle animasi
+    router.push("/");
   }, [pathname, router]);
 
   const handleLogout = useCallback(async () => {
     console.log("[Layout] Logout initiated");
     const startTime = Date.now();
+    loadingStartTimeRef.current = startTime;
     
     // Tutup semua menu segera
     setIsMobileMenuOpen(false);
@@ -322,7 +309,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       await notificationContext.resetNotifications();
       
     } catch (error) {
-      console.error("[Layout] Logout error:", error);
+      const errorDuration = Date.now() - startTime;
+      console.error(`[Layout] Logout error after ${errorDuration}ms:`, error);
     } finally {
       // Minimal loading time untuk UX (500ms)
       const elapsed = Date.now() - startTime;
@@ -342,14 +330,15 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     handleNavigation("/riwayat_pemesanan");
   };
 
-  // Updated: Async loading untuk favorite vendors click
+  // Async loading untuk favorite vendors click
   const handleFavoriteVendorsClick = useCallback(async () => {
     if (pathname === "/vendor_favorit") {
       return;
     }
 
-    console.log("[Layout] Navigating to vendor favorit");
+    console.log("[Layout] Navigating to vendor favorit asynchronously");
     const startTime = Date.now();
+    loadingStartTimeRef.current = startTime;
     
     setIsMobileMenuOpen(false);
     setIsLoading(true);
@@ -358,10 +347,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     try {
       // Set timeout sebagai fallback
       navigationTimeoutRef.current = setTimeout(() => {
-        console.warn("[Layout] Vendor favorit navigation timeout reached");
+        const timeoutDuration = Date.now() - startTime;
+        console.warn(`[Layout] Vendor favorit navigation timeout reached after ${timeoutDuration}ms`);
         setIsLoading(false);
         setNavigationInProgress(false);
-      }, 10000);
+      }, 15000);
 
       // Navigate to vendor favorit
       await router.push("/vendor_favorit");
@@ -369,7 +359,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       const duration = Date.now() - startTime;
       console.log(`[Layout] Vendor favorit navigation initiated in ${duration}ms`);
     } catch (error) {
-      console.error("[Layout] Vendor favorit navigation error:", error);
+      const errorDuration = Date.now() - startTime;
+      console.error(`[Layout] Vendor favorit navigation error after ${errorDuration}ms:`, error);
       setIsLoading(false);
       setNavigationInProgress(false);
       
@@ -385,7 +376,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsNotificationOpen(newState);
     
     if (newState) {
-      console.log("[Layout] Marking all notifications as read");
+      console.log("[Layout] Marking all notifications as read asynchronously");
       const startTime = Date.now();
       
       try {
@@ -420,7 +411,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    console.log("[Layout] Notification clicked:", notification.id);
+    console.log("[Layout] Notification clicked asynchronously:", notification.id);
     const startTime = Date.now();
     
     try {
