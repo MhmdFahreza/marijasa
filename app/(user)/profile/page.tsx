@@ -58,8 +58,9 @@ export default function ProfilePage() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
   const hasLoadedOnce = useRef(false);
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load user profile
+  // Load user profile - ASYNC WITH DYNAMIC LOADING
   useEffect(() => {
     const loadProfile = async () => {
       if (hasLoadedOnce.current || authLoading) {
@@ -67,14 +68,26 @@ export default function ProfilePage() {
       }
 
       if (!isAuthenticated || !user) {
+        console.log("[Profile] ❌ User not authenticated, redirecting to login");
         toast.error("Anda harus login terlebih dahulu");
         router.push("/login");
         return;
       }
 
+      console.log("[Profile] 🚀 Starting profile load...");
+      const startTime = Date.now();
+      
       try {
         setIsInitialLoading(true);
-        console.log("[Profile] 📊 Loading profile from database...");
+        
+        // Set timeout sebagai fallback (max 10 detik)
+        loadTimeoutRef.current = setTimeout(() => {
+          console.warn("[Profile] ⏱️ Profile load timeout reached");
+          toast.error("Gagal memuat profil. Silakan refresh halaman.");
+          setIsInitialLoading(false);
+        }, 10000);
+
+        console.log("[Profile] 📊 Fetching profile from database...");
         
         const response = await fetch("/api/user/profile", {
           method: "GET",
@@ -86,8 +99,18 @@ export default function ProfilePage() {
           }
         });
 
+        // Clear timeout jika berhasil
+        if (loadTimeoutRef.current) {
+          clearTimeout(loadTimeoutRef.current);
+          loadTimeoutRef.current = null;
+        }
+
+        const duration = Date.now() - startTime;
+        console.log(`[Profile] ⏱️ Fetch completed in ${duration}ms`);
+
         if (!response.ok) {
           if (response.status === 401) {
+            console.log("[Profile] 🔒 Session expired");
             toast.error("Sesi Anda telah berakhir. Silakan login kembali.");
             router.push("/login");
             return;
@@ -98,21 +121,27 @@ export default function ProfilePage() {
         const data = await response.json();
         
         if (data.profile) {
-          console.log("[Profile] ✅ Profile loaded:", {
+          console.log("[Profile] ✅ Profile loaded successfully:", {
             name: data.profile.name,
             email: data.profile.email,
             hasAvatar: !!data.profile.avatar,
-            avatarType: data.profile.avatar?.substring(0, 20) + "..."
+            totalTime: Date.now() - startTime
           });
           
           setProfile(data.profile);
-          // Set avatar preview - either base64 from DB or default
           setAvatarPreview(data.profile.avatar || "/profile.svg");
           hasLoadedOnce.current = true;
         }
       } catch (error) {
-        console.error("[Profile] ❌ Error loading profile:", error);
+        const duration = Date.now() - startTime;
+        console.error(`[Profile] ❌ Error loading profile after ${duration}ms:`, error);
         toast.error("Terjadi kesalahan saat memuat profil");
+        
+        // Clear timeout on error
+        if (loadTimeoutRef.current) {
+          clearTimeout(loadTimeoutRef.current);
+          loadTimeoutRef.current = null;
+        }
       } finally {
         setIsInitialLoading(false);
         setTimeout(() => {
@@ -124,9 +153,15 @@ export default function ProfilePage() {
     if (!hasLoadedOnce.current) {
       loadProfile();
     }
+
+    return () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+    };
   }, [isAuthenticated, user, authLoading, router]);
 
-  // Auto-save function
+  // Auto-save function - ASYNC
   const autoSaveProfile = useCallback(async (updatedProfile: UserProfile) => {
     if (isInitialMount.current) {
       console.log("[Profile] ⏭️ Skipping save during initial mount");
@@ -134,7 +169,8 @@ export default function ProfilePage() {
     }
     
     setSaveStatus("saving");
-    console.log("[Profile] 💾 Auto-saving profile...");
+    console.log("[Profile] 💾 Starting auto-save...");
+    const startTime = Date.now();
 
     try {
       const response = await fetch("/api/user/profile", {
@@ -150,18 +186,21 @@ export default function ProfilePage() {
         }),
       });
 
+      const duration = Date.now() - startTime;
+
       if (!response.ok) {
         throw new Error("Gagal menyimpan profil");
       }
 
       const data = await response.json();
       
-      console.log("[Profile] ✅ Profile saved successfully");
+      console.log(`[Profile] ✅ Profile saved successfully in ${duration}ms`);
       
       // Update local state with server response
       setProfile(data.profile);
       
       // Refresh auth context to update navbar
+      console.log("[Profile] 🔄 Refreshing auth context...");
       await refreshUser();
       
       setSaveStatus("saved");
@@ -170,7 +209,8 @@ export default function ProfilePage() {
         setSaveStatus("idle");
       }, 2000);
     } catch (error) {
-      console.error("[Profile] ❌ Error saving profile:", error);
+      const duration = Date.now() - startTime;
+      console.error(`[Profile] ❌ Error saving profile after ${duration}ms:`, error);
       setSaveStatus("error");
       toast.error("Gagal menyimpan perubahan");
       
@@ -191,7 +231,7 @@ export default function ProfilePage() {
     }, 1500);
   }, [autoSaveProfile]);
 
-  // Handle avatar change - save as base64 to database
+  // Handle avatar change - ASYNC with base64 save to database
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !profile) return;
@@ -201,6 +241,7 @@ export default function ProfilePage() {
       fileSize: file.size,
       fileType: file.type
     });
+    const startTime = Date.now();
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
@@ -235,11 +276,16 @@ export default function ProfilePage() {
       formData.append("avatar", file);
 
       console.log("[Profile] ⬆️ Uploading to server...");
+      const uploadStartTime = Date.now();
+      
       const uploadResponse = await fetch("/api/user/upload-avatar", {
         method: "POST",
         credentials: "include",
         body: formData,
       });
+
+      const uploadDuration = Date.now() - uploadStartTime;
+      console.log(`[Profile] ⏱️ Upload request completed in ${uploadDuration}ms`);
 
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json();
@@ -251,7 +297,8 @@ export default function ProfilePage() {
       console.log("[Profile] ✅ Upload successful:", {
         hasAvatar: !!uploadData.avatarUrl,
         avatarLength: uploadData.avatarUrl?.length || 0,
-        isBase64: uploadData.avatarUrl?.startsWith('data:image') || false
+        isBase64: uploadData.avatarUrl?.startsWith('data:image') || false,
+        totalTime: Date.now() - startTime
       });
 
       // Update local state with base64 from server
@@ -263,14 +310,17 @@ export default function ProfilePage() {
       setAvatarPreview(uploadData.avatarUrl);
 
       console.log("[Profile] 🔄 Refreshing auth context...");
-      // Refresh auth context to update navbar
+      const refreshStartTime = Date.now();
       await refreshUser();
+      console.log(`[Profile] ✅ Auth context refreshed in ${Date.now() - refreshStartTime}ms`);
 
       setSaveStatus("saved");
       toast.success("Avatar berhasil diupdate!");
 
       // Verify by fetching fresh data
       console.log("[Profile] 🔍 Verifying avatar in database...");
+      const verifyStartTime = Date.now();
+      
       const verifyResponse = await fetch("/api/user/profile", {
         method: "GET",
         credentials: "include",
@@ -283,19 +333,24 @@ export default function ProfilePage() {
 
       if (verifyResponse.ok) {
         const verifyData = await verifyResponse.json();
-        console.log("[Profile] ✅ Verification - Avatar in DB:", {
+        const verifyDuration = Date.now() - verifyStartTime;
+        console.log(`[Profile] ✅ Verification completed in ${verifyDuration}ms - Avatar in DB:`, {
           exists: !!verifyData.profile.avatar,
           length: verifyData.profile.avatar?.length || 0,
           matches: verifyData.profile.avatar === uploadData.avatarUrl
         });
       }
 
+      const totalDuration = Date.now() - startTime;
+      console.log(`[Profile] 🎉 Total avatar upload process: ${totalDuration}ms`);
+
       setTimeout(() => {
         setSaveStatus("idle");
       }, 2000);
 
     } catch (error) {
-      console.error("[Profile] ❌ Avatar upload error:", error);
+      const totalDuration = Date.now() - startTime;
+      console.error(`[Profile] ❌ Avatar upload error after ${totalDuration}ms:`, error);
       setSaveStatus("error");
       toast.error(error instanceof Error ? error.message : "Gagal mengupload avatar");
       
@@ -336,6 +391,9 @@ export default function ProfilePage() {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+      }
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
       }
     };
   }, []);

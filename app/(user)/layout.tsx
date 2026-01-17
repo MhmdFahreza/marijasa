@@ -63,9 +63,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [navigationInProgress, setNavigationInProgress] = useState(false);
   
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -106,24 +108,59 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     });
   }, [isAuthenticated, user, authLoading]);
 
-  // Reset loading on pathname change
+  // Reset loading on pathname change - Asynchronous handling
   useEffect(() => {
-    setIsLoading(false);
-  }, [pathname]);
-
-  // Fetch notifikasi ketika user login
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      notificationContext.fetchNotifications();
+    if (navigationInProgress) {
+      console.log("[Layout] Navigation completed, hiding loader");
+      setIsLoading(false);
+      setNavigationInProgress(false);
+      
+      // Clear any pending timeout
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+        navigationTimeoutRef.current = null;
+      }
     }
+  }, [pathname, navigationInProgress]);
+
+  // Fetch notifikasi ketika user login - Async
+  useEffect(() => {
+    const fetchNotificationsAsync = async () => {
+      if (isAuthenticated && user) {
+        console.log("[Layout] Fetching notifications asynchronously...");
+        const startTime = Date.now();
+        
+        try {
+          await notificationContext.fetchNotifications();
+          const duration = Date.now() - startTime;
+          console.log(`[Layout] Notifications fetched in ${duration}ms`);
+        } catch (error) {
+          console.error("[Layout] Failed to fetch notifications:", error);
+        }
+      }
+    };
+
+    fetchNotificationsAsync();
   }, [isAuthenticated, user]);
 
-  // Refresh user data ketika layout mount untuk memastikan data selalu fresh
+  // Refresh user data ketika layout mount - Async
   useEffect(() => {
-    if (isAuthenticated && user) {
-      console.log("[Layout] Refreshing user data on mount...");
-      refreshUser();
-    }
+    const refreshUserAsync = async () => {
+      if (isAuthenticated && user) {
+        console.log("[Layout] Refreshing user data asynchronously on mount...");
+        const startTime = Date.now();
+        
+        try {
+          await refreshUser();
+          const duration = Date.now() - startTime;
+          console.log(`[Layout] User data refreshed in ${duration}ms`);
+        } catch (error) {
+          console.error("[Layout] Failed to refresh user:", error);
+        }
+      }
+    };
+
+    refreshUserAsync();
   }, [isAuthenticated, refreshUser]);
 
   // Close notifications ketika klik di luar
@@ -153,21 +190,67 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     };
   }, [isNotificationOpen]);
 
-  const handleSelectLanguage = (language: string) => {
-    setLanguage(language);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleSelectLanguage = async (language: string) => {
+    console.log("[Layout] Changing language to:", language);
+    const startTime = Date.now();
+    
+    try {
+      setIsLoading(true);
+      await setLanguage(language);
+      const duration = Date.now() - startTime;
+      console.log(`[Layout] Language changed in ${duration}ms`);
+    } catch (error) {
+      console.error("[Layout] Failed to change language:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleNavigation = useCallback((path: string) => {
+  const handleNavigation = useCallback(async (path: string) => {
     if (pathname === path) {
       setIsMobileMenuOpen(false);
       return;
     }
 
+    console.log(`[Layout] Navigating to: ${path}`);
+    const startTime = Date.now();
+
     setIsMobileMenuOpen(false);
     setIsLoading(true);
-    setTimeout(() => {
-      router.push(path);
-    }, 300);
+    setNavigationInProgress(true);
+
+    try {
+      // Set timeout sebagai fallback (max 10 detik)
+      navigationTimeoutRef.current = setTimeout(() => {
+        console.warn("[Layout] Navigation timeout reached");
+        setIsLoading(false);
+        setNavigationInProgress(false);
+      }, 10000);
+
+      // Trigger navigation - router.push is async in Next.js App Router
+      await router.push(path);
+      
+      const duration = Date.now() - startTime;
+      console.log(`[Layout] Navigation initiated in ${duration}ms`);
+    } catch (error) {
+      console.error("[Layout] Navigation error:", error);
+      setIsLoading(false);
+      setNavigationInProgress(false);
+      
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+        navigationTimeoutRef.current = null;
+      }
+    }
   }, [pathname, router]);
 
   const handleLoginClick = () => {
@@ -178,21 +261,48 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     handleNavigation("/register");
   };
 
-  const handleLogoClick = () => {
+  // Updated: Async loading untuk logo click (ke home)
+  const handleLogoClick = useCallback(async () => {
     if (pathname === "/") {
       setIsMobileMenuOpen(false);
       return;
     }
 
+    console.log("[Layout] Logo clicked - navigating to home");
+    const startTime = Date.now();
+    
     setIsMobileMenuOpen(false);
     setIsLoading(true);
-    setTimeout(() => {
-      router.push("/");
-    }, 300);
-  };
+    setNavigationInProgress(true);
+
+    try {
+      // Set timeout sebagai fallback
+      navigationTimeoutRef.current = setTimeout(() => {
+        console.warn("[Layout] Home navigation timeout reached");
+        setIsLoading(false);
+        setNavigationInProgress(false);
+      }, 10000);
+
+      // Navigate to home
+      await router.push("/");
+      
+      const duration = Date.now() - startTime;
+      console.log(`[Layout] Home navigation initiated in ${duration}ms`);
+    } catch (error) {
+      console.error("[Layout] Home navigation error:", error);
+      setIsLoading(false);
+      setNavigationInProgress(false);
+      
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+        navigationTimeoutRef.current = null;
+      }
+    }
+  }, [pathname, router]);
 
   const handleLogout = useCallback(async () => {
-    console.log("[Layout] Logout button clicked");
+    console.log("[Layout] Logout initiated");
+    const startTime = Date.now();
     
     // Tutup semua menu segera
     setIsMobileMenuOpen(false);
@@ -202,18 +312,25 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsLoading(true);
     
     try {
-      // Panggil logout dari AuthContext
+      // Panggil logout dari AuthContext - async operation
       await logout();
-      console.log("[Layout] Logout completed successfully");
+      
+      const duration = Date.now() - startTime;
+      console.log(`[Layout] Logout completed in ${duration}ms`);
       
       // Reset notifikasi setelah logout
-      notificationContext.resetNotifications();
+      await notificationContext.resetNotifications();
+      
     } catch (error) {
       console.error("[Layout] Logout error:", error);
     } finally {
+      // Minimal loading time untuk UX (500ms)
+      const elapsed = Date.now() - startTime;
+      const remainingTime = Math.max(500 - elapsed, 0);
+      
       setTimeout(() => {
         setIsLoading(false);
-      }, 500);
+      }, remainingTime);
     }
   }, [logout, notificationContext]);
 
@@ -225,15 +342,59 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     handleNavigation("/riwayat_pemesanan");
   };
 
-  const handleFavoriteVendorsClick = () => {
-    handleNavigation("/vendor_favorit");
-  };
+  // Updated: Async loading untuk favorite vendors click
+  const handleFavoriteVendorsClick = useCallback(async () => {
+    if (pathname === "/vendor_favorit") {
+      return;
+    }
 
-  const toggleNotification = () => {
+    console.log("[Layout] Navigating to vendor favorit");
+    const startTime = Date.now();
+    
+    setIsMobileMenuOpen(false);
+    setIsLoading(true);
+    setNavigationInProgress(true);
+
+    try {
+      // Set timeout sebagai fallback
+      navigationTimeoutRef.current = setTimeout(() => {
+        console.warn("[Layout] Vendor favorit navigation timeout reached");
+        setIsLoading(false);
+        setNavigationInProgress(false);
+      }, 10000);
+
+      // Navigate to vendor favorit
+      await router.push("/vendor_favorit");
+      
+      const duration = Date.now() - startTime;
+      console.log(`[Layout] Vendor favorit navigation initiated in ${duration}ms`);
+    } catch (error) {
+      console.error("[Layout] Vendor favorit navigation error:", error);
+      setIsLoading(false);
+      setNavigationInProgress(false);
+      
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+        navigationTimeoutRef.current = null;
+      }
+    }
+  }, [pathname, router]);
+
+  const toggleNotification = async () => {
     const newState = !isNotificationOpen;
     setIsNotificationOpen(newState);
+    
     if (newState) {
-      markAllAsRead();
+      console.log("[Layout] Marking all notifications as read");
+      const startTime = Date.now();
+      
+      try {
+        await markAllAsRead();
+        const duration = Date.now() - startTime;
+        console.log(`[Layout] Notifications marked as read in ${duration}ms`);
+      } catch (error) {
+        console.error("[Layout] Failed to mark notifications as read:", error);
+      }
     }
   };
 
@@ -258,15 +419,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleNotificationClick = (notification: Notification) => {
-    markAsRead(notification.id);
+  const handleNotificationClick = async (notification: Notification) => {
+    console.log("[Layout] Notification clicked:", notification.id);
+    const startTime = Date.now();
+    
+    try {
+      await markAsRead(notification.id);
+      const duration = Date.now() - startTime;
+      console.log(`[Layout] Notification marked as read in ${duration}ms`);
 
-    if (notification.orderId) {
-      setIsNotificationOpen(false);
-      setIsLoading(true);
-      setTimeout(() => {
-        router.push(`/riwayat_pemesanan`);
-      }, 300);
+      if (notification.orderId) {
+        setIsNotificationOpen(false);
+        await handleNavigation("/riwayat_pemesanan");
+      }
+    } catch (error) {
+      console.error("[Layout] Failed to handle notification click:", error);
     }
   };
 

@@ -41,14 +41,18 @@ export default function VendorFavoritPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [navigationInProgress, setNavigationInProgress] = useState(false);
 
-  // Load favorites dari API
+  // Load favorites dari API dengan async handling
   const loadFavoritesFromAPI = useCallback(async () => {
     if (!isAuthenticated || !user) {
       setFavorites([]);
       setIsLoading(false);
       return;
     }
+
+    console.log("[VendorFavorit] Loading favorites from API...");
+    const startTime = Date.now();
 
     try {
       setIsLoading(true);
@@ -59,12 +63,14 @@ export default function VendorFavoritPage() {
       if (response.ok) {
         const data = await response.json();
         setFavorites(data.favorites || []);
+        const duration = Date.now() - startTime;
+        console.log(`[VendorFavorit] Favorites loaded in ${duration}ms`);
       } else {
-        console.error('Error loading favorites:', await response.text());
+        console.error('[VendorFavorit] Error loading favorites:', await response.text());
         setFavorites([]);
       }
     } catch (error) {
-      console.error('Error loading favorites:', error);
+      console.error('[VendorFavorit] Error loading favorites:', error);
       setFavorites([]);
     } finally {
       setIsLoading(false);
@@ -78,6 +84,7 @@ export default function VendorFavoritPage() {
   // Listen for favorites updates
   useEffect(() => {
     const handleFavoritesUpdate = () => {
+      console.log("[VendorFavorit] Favorites updated event received");
       loadFavoritesFromAPI();
     };
 
@@ -88,9 +95,12 @@ export default function VendorFavoritPage() {
     };
   }, [loadFavoritesFromAPI]);
 
-  // Remove favorite handler
+  // Remove favorite handler dengan async
   const handleRemoveFavorite = useCallback(async (vendorId: string) => {
     if (!isAuthenticated || !user) return;
+
+    console.log(`[VendorFavorit] Removing favorite: ${vendorId}`);
+    const startTime = Date.now();
 
     // Tandai sebagai removing
     setRemovingIds(prev => new Set(prev).add(vendorId));
@@ -109,11 +119,15 @@ export default function VendorFavoritPage() {
       });
 
       if (!response.ok) {
+        console.error('[VendorFavorit] Failed to remove favorite');
         // Jika gagal, kembalikan ke state sebelumnya
         await loadFavoritesFromAPI();
+      } else {
+        const duration = Date.now() - startTime;
+        console.log(`[VendorFavorit] Favorite removed in ${duration}ms`);
       }
     } catch (error) {
-      console.error('Error removing favorite:', error);
+      console.error('[VendorFavorit] Error removing favorite:', error);
       // Jika error, kembalikan ke state sebelumnya
       await loadFavoritesFromAPI();
     } finally {
@@ -128,27 +142,70 @@ export default function VendorFavoritPage() {
     }
   }, [isAuthenticated, user, loadFavoritesFromAPI]);
 
-  // Navigation handlers
-  const handleViewProfile = useCallback((vendorId: string) => {
+  // Navigation handlers dengan async loading
+  const handleViewProfile = useCallback(async (vendorId: string) => {
+    console.log(`[VendorFavorit] Navigating to vendor profile: ${vendorId}`);
+    const startTime = Date.now();
+
     setLeaving(true);
-    setTimeout(() => {
-      router.push(`/jasa/detailjasa/${vendorId}`);
-    }, prefersReduced ? 50 : 200);
+    setNavigationInProgress(true);
+
+    try {
+      // Small delay untuk animasi
+      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 50 : 200));
+      
+      await router.push(`/jasa/detailjasa/${vendorId}`);
+      
+      const duration = Date.now() - startTime;
+      console.log(`[VendorFavorit] Navigation to profile initiated in ${duration}ms`);
+    } catch (error) {
+      console.error('[VendorFavorit] Navigation error:', error);
+      setLeaving(false);
+      setNavigationInProgress(false);
+    }
   }, [router, prefersReduced]);
 
-  const handleHomeClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleHomeClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
+    console.log("[VendorFavorit] Navigating to home");
+    const startTime = Date.now();
+
     setLeaving(true);
-    setTimeout(() => {
-      router.push("/");
-    }, prefersReduced ? 50 : 200);
+    setNavigationInProgress(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 50 : 200));
+      
+      await router.push("/");
+      
+      const duration = Date.now() - startTime;
+      console.log(`[VendorFavorit] Navigation to home initiated in ${duration}ms`);
+    } catch (error) {
+      console.error('[VendorFavorit] Navigation error:', error);
+      setLeaving(false);
+      setNavigationInProgress(false);
+    }
   }, [router, prefersReduced]);
 
-  const handleBrowseServices = useCallback(() => {
+  const handleBrowseServices = useCallback(async () => {
+    console.log("[VendorFavorit] Navigating to services");
+    const startTime = Date.now();
+
     setLeaving(true);
-    setTimeout(() => {
-      router.push("/jasa");
-    }, prefersReduced ? 50 : 200);
+    setNavigationInProgress(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 50 : 200));
+      
+      await router.push("/jasa");
+      
+      const duration = Date.now() - startTime;
+      console.log(`[VendorFavorit] Navigation to services initiated in ${duration}ms`);
+    } catch (error) {
+      console.error('[VendorFavorit] Navigation error:', error);
+      setLeaving(false);
+      setNavigationInProgress(false);
+    }
   }, [router, prefersReduced]);
 
   if (isLoading) {
