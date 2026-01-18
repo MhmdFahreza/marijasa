@@ -1,4 +1,4 @@
-// app/jasa/page.tsx
+// app/jasa/page.tsx - OPTIMIZED WITH SMOOTH LOADING
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -33,7 +33,7 @@ interface Category {
   name: string;
 }
 
-// Helper: Get network speed untuk dynamic loading
+// ✅ Network detection helpers
 const getNetworkSpeed = (): 'slow' | 'medium' | 'fast' => {
   if (typeof window === 'undefined') return 'medium';
   
@@ -48,21 +48,56 @@ const getNetworkSpeed = (): 'slow' | 'medium' | 'fast' => {
   return 'fast';
 };
 
-// Helper: Get minimum loading duration based on network
+const getAdaptiveDebounceTime = (): number => {
+  const speed = getNetworkSpeed();
+  
+  switch (speed) {
+    case 'slow':
+      return 400;
+    case 'medium':
+      return 250;
+    case 'fast':
+      return 150;
+    default:
+      return 200;
+  }
+};
+
 const getMinLoadingDuration = (): number => {
   const speed = getNetworkSpeed();
   
   switch (speed) {
     case 'slow':
-      return 150; // Minimal 150ms untuk slow network
+      return 200;
     case 'medium':
-      return 100; // Minimal 100ms untuk medium network
+      return 150;
     case 'fast':
-      return 50; // Minimal 50ms untuk fast network
-    default:
       return 100;
+    default:
+      return 150;
   }
 };
+
+// ✅ Skeleton Loading Component
+const VendorCardSkeleton = () => (
+  <div className="rounded-xl border border-border bg-card p-4 animate-pulse">
+    <div className="flex flex-col md:flex-row gap-4">
+      {/* Image skeleton */}
+      <div className="w-full md:w-48 h-48 bg-muted rounded-lg" />
+      
+      {/* Content skeleton */}
+      <div className="flex-1 space-y-3">
+        <div className="h-6 bg-muted rounded w-3/4" />
+        <div className="h-4 bg-muted rounded w-1/2" />
+        <div className="h-4 bg-muted rounded w-2/3" />
+        <div className="flex gap-2 mt-3">
+          <div className="h-6 w-20 bg-muted rounded-full" />
+          <div className="h-6 w-20 bg-muted rounded-full" />
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 const EmptyState = ({
   onResetFilters,
@@ -190,6 +225,8 @@ export default function JasaPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadVendorsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const navigationStartTimeRef = useRef<number>(0);
+  const requestIdRef = useRef<number>(0);
+  const minLoadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch categories untuk mapping nama
   useEffect(() => {
@@ -233,11 +270,14 @@ export default function JasaPage() {
     setInitialLoadDone(true);
   }, [searchParams, initialLoadDone]);
 
-  // Load vendors dari API dengan debounce - TRIGGER OTOMATIS
+  // ✅ OPTIMIZED: Async vendor loading dengan smooth loading state
   useEffect(() => {
     if (!initialLoadDone) return;
 
     const loadVendors = async () => {
+      // Generate unique request ID
+      const currentRequestId = ++requestIdRef.current;
+      
       // Cancel previous requests
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -245,11 +285,18 @@ export default function JasaPage() {
       if (loadVendorsTimeoutRef.current) {
         clearTimeout(loadVendorsTimeoutRef.current);
       }
+      if (minLoadingTimeoutRef.current) {
+        clearTimeout(minLoadingTimeoutRef.current);
+      }
 
       abortControllerRef.current = new AbortController();
 
       try {
+        // Show loading immediately
         setIsFilterLoading(true);
+        
+        const minLoadingDuration = getMinLoadingDuration();
+        const loadingStartTime = performance.now();
 
         const params = new URLSearchParams();
         if (selectedCategory) params.set('kategori', selectedCategory);
@@ -262,43 +309,88 @@ export default function JasaPage() {
         const queryString = params.toString();
         const url = `/api/vendors${queryString ? `?${queryString}` : ''}`;
 
-        console.log('[JasaPage] Loading vendors with URL:', url);
+        console.log(`[JasaPage] Request #${currentRequestId} - Loading vendors with URL:`, url);
+        console.log(`[JasaPage] Network speed detected:`, getNetworkSpeed());
+
+        const fetchStartTime = performance.now();
 
         const response = await fetch(url, {
           credentials: 'include',
           signal: abortControllerRef.current.signal,
         });
 
+        // Check if this request is still the latest one
+        if (currentRequestId !== requestIdRef.current) {
+          console.log(`[JasaPage] Request #${currentRequestId} - Discarded (newer request exists)`);
+          return;
+        }
+
         if (response.ok) {
           const data = await response.json();
-          console.log('[JasaPage] Vendors loaded:', data.vendors?.length || 0);
+          const fetchDuration = performance.now() - fetchStartTime;
           
-          await new Promise(resolve => setTimeout(resolve, 50));
-          setVendors(data.vendors || []);
+          console.log(`[JasaPage] Request #${currentRequestId} - Vendors loaded:`, data.vendors?.length || 0);
+          console.log(`[JasaPage] Request #${currentRequestId} - Fetch duration: ${fetchDuration.toFixed(2)}ms`);
           
-          setRenderKey(prev => prev + 1);
+          // Calculate remaining time to meet minimum loading duration
+          const elapsedTime = performance.now() - loadingStartTime;
+          const remainingDelay = Math.max(0, minLoadingDuration - elapsedTime);
+          
+          if (remainingDelay > 0) {
+            console.log(`[JasaPage] Request #${currentRequestId} - Adding ${remainingDelay.toFixed(2)}ms delay for smooth UX`);
+            
+            // Use timeout to ensure smooth transition
+            await new Promise(resolve => {
+              minLoadingTimeoutRef.current = setTimeout(resolve, remainingDelay);
+            });
+          }
+          
+          // Double-check request is still latest before updating state
+          if (currentRequestId === requestIdRef.current) {
+            setVendors(data.vendors || []);
+            setRenderKey(prev => prev + 1);
+            setIsFilterLoading(false);
+            setIsLoading(false);
+            console.log(`[JasaPage] Request #${currentRequestId} - State updated successfully`);
+          } else {
+            console.log(`[JasaPage] Request #${currentRequestId} - Discarded before state update`);
+          }
         } else {
-          console.error('Error loading vendors:', await response.text());
-          setVendors([]);
+          console.error(`[JasaPage] Request #${currentRequestId} - Error:`, await response.text());
+          if (currentRequestId === requestIdRef.current) {
+            setVendors([]);
+            setIsFilterLoading(false);
+            setIsLoading(false);
+          }
         }
       } catch (error: any) {
         if (error.name !== 'AbortError') {
-          console.error('Error loading vendors:', error);
-          setVendors([]);
+          console.error(`[JasaPage] Request #${currentRequestId} - Error:`, error);
+          if (currentRequestId === requestIdRef.current) {
+            setVendors([]);
+            setIsFilterLoading(false);
+            setIsLoading(false);
+          }
+        } else {
+          console.log(`[JasaPage] Request #${currentRequestId} - Aborted`);
         }
-      } finally {
-        setIsFilterLoading(false);
-        setIsLoading(false);
       }
     };
 
+    // Use adaptive debounce time based on network speed
+    const debounceTime = getAdaptiveDebounceTime();
+    console.log(`[JasaPage] Scheduling vendor load with ${debounceTime}ms debounce`);
+
     loadVendorsTimeoutRef.current = setTimeout(() => {
       loadVendors();
-    }, 150);
+    }, debounceTime);
 
     return () => {
       if (loadVendorsTimeoutRef.current) {
         clearTimeout(loadVendorsTimeoutRef.current);
+      }
+      if (minLoadingTimeoutRef.current) {
+        clearTimeout(minLoadingTimeoutRef.current);
       }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -370,23 +462,16 @@ export default function JasaPage() {
     }
   }, [vendors.length, currentVendors.length, currentPage]);
 
-  // ✅ UPDATED: Async navigation dengan dynamic loading
+  // ✅ Async navigation handlers
   const handleHomeClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     
-    // Record start time
     navigationStartTimeRef.current = performance.now();
-    
-    // Set loading state
     setLeaving(true);
     
-    // Get minimum loading duration based on network
     const minDuration = prefersReduced ? 0 : getMinLoadingDuration();
-    
-    // Start navigation
     const navigationPromise = router.push("/");
     
-    // Wait for minimum duration OR navigation completion (whichever is longer)
     const elapsedTime = performance.now() - navigationStartTimeRef.current;
     const remainingTime = Math.max(0, minDuration - elapsedTime);
     
@@ -414,6 +499,9 @@ export default function JasaPage() {
     if (loadVendorsTimeoutRef.current) {
       clearTimeout(loadVendorsTimeoutRef.current);
     }
+    if (minLoadingTimeoutRef.current) {
+      clearTimeout(minLoadingTimeoutRef.current);
+    }
     
     setIsFilterLoading(true);
     
@@ -431,16 +519,11 @@ export default function JasaPage() {
     console.log('[JasaPage] Filters reset complete');
   }, []);
 
-  // ✅ UPDATED: Async login/register handlers
   const handleLoginSuccess = async (email: string) => {
     setShowLoginModal(false);
     setIsTransitioning(true);
     
-    // Dynamic loading based on network
     const minDuration = getMinLoadingDuration();
-    const startTime = performance.now();
-    
-    // Reload will happen, so just wait minimum duration
     await new Promise(resolve => setTimeout(resolve, minDuration));
     
     window.location.reload(); 
@@ -560,6 +643,13 @@ export default function JasaPage() {
     return `Menampilkan ${start}-${end} dari ${vendors.length} vendor (${limit} per halaman)`;
   }, [vendors.length, displayLimit, startIndex, endIndex, itemsPerPage]);
 
+  // ✅ Calculate skeleton count based on display limit
+  const skeletonCount = useMemo(() => {
+    if (displayLimit === 'all') return 5;
+    const limit = parseInt(displayLimit) || 10;
+    return Math.min(limit, 10); // Max 10 skeletons untuk UX yang baik
+  }, [displayLimit]);
+
   return (
     <>
       <motion.main
@@ -612,84 +702,99 @@ export default function JasaPage() {
               />
             </motion.div>
 
-            <motion.div
-              key={vendorListKey}
-              animate={{ opacity: isFilterLoading ? 0.5 : 1 }}
-              transition={{ duration: 0.15 }}
-            >
-              {vendors.length === 0 ? (
-                <EmptyState
-                  onResetFilters={handleResetFilters}
-                  selectedCategory={selectedCategory}
-                  selectedCity={selectedCity}
-                  selectedRating={selectedRating}
-                  searchQuery={searchQuery}
-                  categoryMap={categoryMap}
-                />
-              ) : (
-                <>
-                  <motion.section
-                    key={vendorListKey}
-                    className="mt-6 space-y-4"
-                    initial="hidden"
-                    animate="show"
-                    variants={{
-                      hidden: { opacity: 0 },
-                      show: {
-                        opacity: 1,
-                        transition: { staggerChildren: 0.04, delayChildren: 0.02 },
-                      },
-                    }}
-                  >
-                    {currentVendors.map((v, index) => (
-                      <motion.div
-                        key={`${v.vendor_id || v.id}-${index}-${renderKey}`}
-                        variants={{
-                          hidden: { opacity: 0, y: 8 },
-                          show: { opacity: 1, y: 0 },
-                        }}
-                        transition={{ duration: prefersReduced ? 0 : 0.2, ease: "easeOut" }}
-                      >
-                        <VendorCard
-                          vendor={v}
-                          isLoggedIn={isAuthenticated}
-                          onLoginRequired={() => setShowLoginModal(true)}
-                        />
-                      </motion.div>
-                    ))}
-                  </motion.section>
-
-                  {displayLimit !== 'all' && totalPages > 1 && (
-                    <motion.div
-                      className="mt-8 mb-6"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.2 }}
+            {/* ✅ Loading State with Skeletons */}
+            {isFilterLoading ? (
+              <motion.section
+                className="mt-6 space-y-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+              >
+                {[...Array(skeletonCount)].map((_, index) => (
+                  <VendorCardSkeleton key={`skeleton-${index}`} />
+                ))}
+              </motion.section>
+            ) : (
+              <motion.div
+                key={vendorListKey}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                {vendors.length === 0 ? (
+                  <EmptyState
+                    onResetFilters={handleResetFilters}
+                    selectedCategory={selectedCategory}
+                    selectedCity={selectedCity}
+                    selectedRating={selectedRating}
+                    searchQuery={searchQuery}
+                    categoryMap={categoryMap}
+                  />
+                ) : (
+                  <>
+                    <motion.section
+                      key={vendorListKey}
+                      className="mt-6 space-y-4"
+                      initial="hidden"
+                      animate="show"
+                      variants={{
+                        hidden: { opacity: 0 },
+                        show: {
+                          opacity: 1,
+                          transition: { staggerChildren: 0.05, delayChildren: 0.05 },
+                        },
+                      }}
                     >
-                      <Pagination>
-                        <PaginationContent>
-                          <PaginationPrevious
-                            onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
-                            className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      {currentVendors.map((v, index) => (
+                        <motion.div
+                          key={`${v.vendor_id || v.id}-${index}-${renderKey}`}
+                          variants={{
+                            hidden: { opacity: 0, y: 12 },
+                            show: { opacity: 1, y: 0 },
+                          }}
+                          transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
+                        >
+                          <VendorCard
+                            vendor={v}
+                            isLoggedIn={isAuthenticated}
+                            onLoginRequired={() => setShowLoginModal(true)}
                           />
-                          {renderPaginationItems()}
-                          <PaginationNext
-                            onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
-                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                          />
-                        </PaginationContent>
-                      </Pagination>
-                    </motion.div>
-                  )}
+                        </motion.div>
+                      ))}
+                    </motion.section>
 
-                  {vendors.length > 0 && (
-                    <div className="mt-4 text-center text-sm text-muted-foreground">
-                      {paginationInfo}
-                    </div>
-                  )}
-                </>
-              )}
-            </motion.div>
+                    {displayLimit !== 'all' && totalPages > 1 && (
+                      <motion.div
+                        className="mt-8 mb-6"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.3 }}
+                      >
+                        <Pagination>
+                          <PaginationContent>
+                            <PaginationPrevious
+                              onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
+                              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                            {renderPaginationItems()}
+                            <PaginationNext
+                              onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
+                              className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationContent>
+                        </Pagination>
+                      </motion.div>
+                    )}
+
+                    {vendors.length > 0 && (
+                      <div className="mt-4 text-center text-sm text-muted-foreground">
+                        {paginationInfo}
+                      </div>
+                    )}
+                  </>
+                )}
+              </motion.div>
+            )}
 
             <div className="mt-10">
               <SiteFooter />

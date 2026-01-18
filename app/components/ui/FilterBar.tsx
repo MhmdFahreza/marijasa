@@ -1,8 +1,8 @@
-// app/components/ui/FilterBar.tsx
+// app/components/ui/FilterBar.tsx - WITH LOADING INDICATOR
 "use client";
 
-import { useMemo, useState, useCallback, memo, useEffect } from "react";
-import { SlidersHorizontal, X, RotateCcw } from "lucide-react";
+import { useMemo, useState, useCallback, memo, useEffect, useRef } from "react";
+import { SlidersHorizontal, X, RotateCcw, Loader2 } from "lucide-react";
 
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -91,6 +91,16 @@ const PLACEHOLDERS = [
     "Cari berdasarkan jangkauan layanan...",
 ];
 
+// ✅ Loading Indicator Component
+const LoadingIndicator = memo(() => (
+    <div className="flex items-center justify-center gap-2 py-2 text-[#7CE0A8]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm font-medium">Memuat data...</span>
+    </div>
+));
+
+LoadingIndicator.displayName = "LoadingIndicator";
+
 export default function FilterBar({
     selectedCategory,
     onCategoryChange,
@@ -107,11 +117,19 @@ export default function FilterBar({
     const [isSmallMobile, setIsSmallMobile] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+    const [isProcessing, setIsProcessing] = useState(false);
 
     // Master data state
     const [cities, setCities] = useState<City[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [dataReady, setDataReady] = useState(false);
+
+    // Refs untuk debounce
+    const categoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const cityDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const ratingDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const limitDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Fetch master data
     useEffect(() => {
@@ -187,27 +205,101 @@ export default function FilterBar({
         window.history.replaceState({}, '', newURL);
     }, []);
 
-    // Direct handlers
+    // ✅ Show processing indicator
+    const showProcessingIndicator = useCallback(() => {
+        setIsProcessing(true);
+        
+        // Clear previous timeout
+        if (processingTimeoutRef.current) {
+            clearTimeout(processingTimeoutRef.current);
+        }
+        
+        // Auto hide after 5 seconds (safety timeout)
+        processingTimeoutRef.current = setTimeout(() => {
+            setIsProcessing(false);
+        }, 5000);
+    }, []);
+
+    // ✅ Hide processing indicator
+    const hideProcessingIndicator = useCallback(() => {
+        if (processingTimeoutRef.current) {
+            clearTimeout(processingTimeoutRef.current);
+        }
+        setIsProcessing(false);
+    }, []);
+
+    // ✅ OPTIMIZED: Async handlers with loading feedback
     const handleCategoryChange = useCallback((value: string) => {
-        console.log('[FilterBar] Category changed to:', value);
-        onCategoryChange(value);
-        updateURL(value, selectedCity, selectedRating, searchQuery, displayLimit);
-    }, [onCategoryChange, selectedCity, selectedRating, searchQuery, displayLimit, updateURL]);
+        console.log('[FilterBar] Category change initiated:', value);
+        
+        showProcessingIndicator();
+        
+        if (categoryDebounceRef.current) {
+            clearTimeout(categoryDebounceRef.current);
+        }
+
+        categoryDebounceRef.current = setTimeout(() => {
+            console.log('[FilterBar] Category applied:', value);
+            onCategoryChange(value);
+            updateURL(value, selectedCity, selectedRating, searchQuery, displayLimit);
+            
+            setTimeout(hideProcessingIndicator, 300);
+        }, 100);
+    }, [onCategoryChange, selectedCity, selectedRating, searchQuery, displayLimit, updateURL, showProcessingIndicator, hideProcessingIndicator]);
 
     const handleCityChange = useCallback((value: string) => {
-        onCityChange(value);
-        updateURL(selectedCategory, value, selectedRating, searchQuery, displayLimit);
-    }, [onCityChange, selectedCategory, selectedRating, searchQuery, displayLimit, updateURL]);
+        console.log('[FilterBar] City change initiated:', value);
+        
+        showProcessingIndicator();
+        
+        if (cityDebounceRef.current) {
+            clearTimeout(cityDebounceRef.current);
+        }
+
+        cityDebounceRef.current = setTimeout(() => {
+            console.log('[FilterBar] City applied:', value);
+            onCityChange(value);
+            updateURL(selectedCategory, value, selectedRating, searchQuery, displayLimit);
+            
+            setTimeout(hideProcessingIndicator, 300);
+        }, 100);
+    }, [onCityChange, selectedCategory, selectedRating, searchQuery, displayLimit, updateURL, showProcessingIndicator, hideProcessingIndicator]);
 
     const handleRatingChange = useCallback((value: string) => {
-        onRatingChange(value);
-        updateURL(selectedCategory, selectedCity, value, searchQuery, displayLimit);
-    }, [onRatingChange, selectedCategory, selectedCity, searchQuery, displayLimit, updateURL]);
+        console.log('[FilterBar] Rating change initiated:', value);
+        
+        showProcessingIndicator();
+        
+        if (ratingDebounceRef.current) {
+            clearTimeout(ratingDebounceRef.current);
+        }
+
+        ratingDebounceRef.current = setTimeout(() => {
+            console.log('[FilterBar] Rating applied:', value);
+            onRatingChange(value);
+            updateURL(selectedCategory, selectedCity, value, searchQuery, displayLimit);
+            
+            setTimeout(hideProcessingIndicator, 300);
+        }, 100);
+    }, [onRatingChange, selectedCategory, selectedCity, searchQuery, displayLimit, updateURL, showProcessingIndicator, hideProcessingIndicator]);
 
     const handleDisplayLimitChange = useCallback((value: string) => {
-        onDisplayLimitChange(value);
-        updateURL(selectedCategory, selectedCity, selectedRating, searchQuery, value);
-    }, [onDisplayLimitChange, selectedCategory, selectedCity, selectedRating, searchQuery, updateURL]);
+        console.log('[FilterBar] Display limit change initiated:', value);
+        
+        showProcessingIndicator();
+        
+        if (limitDebounceRef.current) {
+            clearTimeout(limitDebounceRef.current);
+        }
+
+        limitDebounceRef.current = setTimeout(() => {
+            console.log('[FilterBar] Display limit applied:', value);
+            onDisplayLimitChange(value);
+            updateURL(selectedCategory, selectedCity, selectedRating, searchQuery, value);
+            
+            setTimeout(hideProcessingIndicator, 300);
+        }, 100);
+    }, [onDisplayLimitChange, selectedCategory, selectedCity, selectedRating, searchQuery, updateURL, showProcessingIndicator, hideProcessingIndicator]);
 
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalSearchQuery(e.target.value);
@@ -215,11 +307,27 @@ export default function FilterBar({
 
     const handleSearchSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        console.log('[FilterBar] Search submitted:', localSearchQuery);
+        
+        showProcessingIndicator();
+        
         onSearchChange(localSearchQuery);
         updateURL(selectedCategory, selectedCity, selectedRating, localSearchQuery, displayLimit);
-    }, [localSearchQuery, onSearchChange, selectedCategory, selectedCity, selectedRating, displayLimit, updateURL]);
+        
+        setTimeout(hideProcessingIndicator, 300);
+    }, [localSearchQuery, onSearchChange, selectedCategory, selectedCity, selectedRating, displayLimit, updateURL, showProcessingIndicator, hideProcessingIndicator]);
 
     const resetAll = useCallback(() => {
+        console.log('[FilterBar] Resetting all filters');
+        
+        showProcessingIndicator();
+        
+        // Clear all timeouts
+        if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current);
+        if (cityDebounceRef.current) clearTimeout(cityDebounceRef.current);
+        if (ratingDebounceRef.current) clearTimeout(ratingDebounceRef.current);
+        if (limitDebounceRef.current) clearTimeout(limitDebounceRef.current);
+
         onCategoryChange("");
         onCityChange("");
         onRatingChange("");
@@ -229,10 +337,23 @@ export default function FilterBar({
         onResetFilters();
         setSheetOpen(false);
         window.history.replaceState({}, '', '/jasa');
-    }, [onCategoryChange, onCityChange, onRatingChange, onSearchChange, onDisplayLimitChange, onResetFilters]);
+        
+        setTimeout(hideProcessingIndicator, 300);
+    }, [onCategoryChange, onCityChange, onRatingChange, onSearchChange, onDisplayLimitChange, onResetFilters, showProcessingIndicator, hideProcessingIndicator]);
 
     const handleSaveFilters = useCallback(() => {
         setSheetOpen(false);
+    }, []);
+
+    // Cleanup timeouts on unmount
+    useEffect(() => {
+        return () => {
+            if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current);
+            if (cityDebounceRef.current) clearTimeout(cityDebounceRef.current);
+            if (ratingDebounceRef.current) clearTimeout(ratingDebounceRef.current);
+            if (limitDebounceRef.current) clearTimeout(limitDebounceRef.current);
+            if (processingTimeoutRef.current) clearTimeout(processingTimeoutRef.current);
+        };
     }, []);
 
     // Active chips
@@ -279,6 +400,8 @@ export default function FilterBar({
     }, [selectedCategory, selectedCity, selectedRating, searchQuery, displayLimit, getCategoryLabel]);
 
     const removeChip = useCallback((key: "kategori" | "kota" | "rating" | "search" | "limit") => {
+        showProcessingIndicator();
+        
         switch (key) {
             case "kategori":
                 handleCategoryChange("");
@@ -293,12 +416,13 @@ export default function FilterBar({
                 setLocalSearchQuery("");
                 onSearchChange("");
                 updateURL(selectedCategory, selectedCity, selectedRating, "", displayLimit);
+                setTimeout(hideProcessingIndicator, 300);
                 break;
             case "limit":
                 handleDisplayLimitChange("10");
                 break;
         }
-    }, [handleCategoryChange, handleCityChange, handleRatingChange, handleDisplayLimitChange, onSearchChange, updateURL, selectedCategory, selectedCity, selectedRating, displayLimit]);
+    }, [handleCategoryChange, handleCityChange, handleRatingChange, handleDisplayLimitChange, onSearchChange, updateURL, selectedCategory, selectedCity, selectedRating, displayLimit, showProcessingIndicator, hideProcessingIndicator]);
 
     // Chips component
     const ChipsComponent = useMemo(() => {
@@ -356,6 +480,9 @@ export default function FilterBar({
 
     return (
         <section aria-label="Filter jasa" className="mt-4 mb-6">
+            {/* ✅ Processing Indicator */}
+            {isProcessing && <LoadingIndicator />}
+            
             {/* DESKTOP/TABLET (1024px+) */}
             <div className="hidden lg:grid lg:grid-cols-12 items-center gap-2 lg:gap-3">
                 {/* Kategori */}
@@ -363,8 +490,9 @@ export default function FilterBar({
                     <Select
                         value={selectedCategory}
                         onValueChange={handleCategoryChange}
+                        disabled={isProcessing}
                     >
-                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all disabled:opacity-60">
                             <SelectValue placeholder="Pilih kategori" />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px] overflow-y-auto z-[100]">
@@ -384,7 +512,7 @@ export default function FilterBar({
                         onValueChange={handleCityChange}
                         cities={cityNames}
                         placeholder="Pilih kota"
-                        triggerClassName="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all"
+                        triggerClassName={`h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all ${isProcessing ? 'opacity-60 pointer-events-none' : ''}`}
                         contentClassName="z-[100]"
                     />
                 </div>
@@ -394,8 +522,9 @@ export default function FilterBar({
                     <Select
                         value={selectedRating}
                         onValueChange={handleRatingChange}
+                        disabled={isProcessing}
                     >
-                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all disabled:opacity-60">
                             <SelectValue placeholder="Pilih rating" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -411,15 +540,17 @@ export default function FilterBar({
 
                 {/* Search */}
                 <div className="lg:col-span-4">
-                    <PlaceholdersAndVanishInput
-                        placeholders={PLACEHOLDERS}
-                        onChange={handleSearchChange}
-                        onSubmit={handleSearchSubmit}
-                        value={localSearchQuery}
-                        className="h-12 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
-                        inputClassName="pl-4 pr-10 text-sm lg:text-base"
-                        buttonClassName="h-8 w-8 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
-                    />
+                    <div className={isProcessing ? 'pointer-events-none opacity-60' : ''}>
+                        <PlaceholdersAndVanishInput
+                            placeholders={PLACEHOLDERS}
+                            onChange={handleSearchChange}
+                            onSubmit={handleSearchSubmit}
+                            value={localSearchQuery}
+                            className="h-12 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
+                            inputClassName="pl-4 pr-10 text-sm lg:text-base"
+                            buttonClassName="h-8 w-8 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
+                        />
+                    </div>
                 </div>
 
                 {/* Tampilkan */}
@@ -427,8 +558,9 @@ export default function FilterBar({
                     <Select
                         value={displayLimit}
                         onValueChange={handleDisplayLimitChange}
+                        disabled={isProcessing}
                     >
-                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                        <SelectTrigger className="h-11 rounded-xl px-4 text-base w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all disabled:opacity-60">
                             <SelectValue placeholder="Tampilkan" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -445,8 +577,8 @@ export default function FilterBar({
             {/* TABLET (768px - 1023px) */}
             <div className="hidden md:grid lg:hidden grid-cols-12 items-center gap-2">
                 <div className="col-span-2">
-                    <Select value={selectedCategory} onValueChange={handleCategoryChange}>
-                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                    <Select value={selectedCategory} onValueChange={handleCategoryChange} disabled={isProcessing}>
+                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all disabled:opacity-60">
                             <SelectValue placeholder="Kategori" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -465,14 +597,14 @@ export default function FilterBar({
                         onValueChange={handleCityChange}
                         cities={cityNames}
                         placeholder="Kota"
-                        triggerClassName="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all"
+                        triggerClassName={`h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all ${isProcessing ? 'opacity-60 pointer-events-none' : ''}`}
                         contentClassName="z-[100]"
                     />
                 </div>
 
                 <div className="col-span-2">
-                    <Select value={selectedRating} onValueChange={handleRatingChange}>
-                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                    <Select value={selectedRating} onValueChange={handleRatingChange} disabled={isProcessing}>
+                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all disabled:opacity-60">
                             <SelectValue placeholder="Rating" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -487,20 +619,22 @@ export default function FilterBar({
                 </div>
 
                 <div className="col-span-4">
-                    <PlaceholdersAndVanishInput
-                        placeholders={PLACEHOLDERS}
-                        onChange={handleSearchChange}
-                        onSubmit={handleSearchSubmit}
-                        value={localSearchQuery}
-                        className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
-                        inputClassName="pl-3 pr-9 text-sm"
-                        buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
-                    />
+                    <div className={isProcessing ? 'pointer-events-none opacity-60' : ''}>
+                        <PlaceholdersAndVanishInput
+                            placeholders={PLACEHOLDERS}
+                            onChange={handleSearchChange}
+                            onSubmit={handleSearchSubmit}
+                            value={localSearchQuery}
+                            className="h-11 rounded-xl border border-input bg-background text-foreground shadow-none w-full focus-within:ring-2 focus-within:ring-[#7CE0A8] focus-within:border-[#7CE0A8] transition-all"
+                            inputClassName="pl-3 pr-9 text-sm"
+                            buttonClassName="h-7 w-7 rounded-md bg-[#7CE0A8] hover:bg-[#5CA68A] text-white transition-all"
+                        />
+                    </div>
                 </div>
 
                 <div className="col-span-2">
-                    <Select value={displayLimit} onValueChange={handleDisplayLimitChange}>
-                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all">
+                    <Select value={displayLimit} onValueChange={handleDisplayLimitChange} disabled={isProcessing}>
+                        <SelectTrigger className="h-11 rounded-xl px-3 text-sm w-full focus:ring-[#7CE0A8] focus:border-[#7CE0A8] transition-all disabled:opacity-60">
                             <SelectValue placeholder="Tampilkan" />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
@@ -521,7 +655,7 @@ export default function FilterBar({
 
             {/* MOBILE (< 768px) */}
             <div className="md:hidden mt-2 flex items-center gap-2">
-                <div className="flex-1">
+                <div className={`flex-1 ${isProcessing ? 'pointer-events-none opacity-60' : ''}`}>
                     <PlaceholdersAndVanishInput
                         placeholders={PLACEHOLDERS}
                         onChange={handleSearchChange}
@@ -538,9 +672,14 @@ export default function FilterBar({
                         <Button
                             variant="outline"
                             size="icon"
-                            className="h-11 w-11 rounded-xl p-0 border-[#7CE0A8]/30 hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-all"
+                            className="h-11 w-11 rounded-xl p-0 border-[#7CE0A8]/30 hover:border-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-all disabled:opacity-60"
+                            disabled={isProcessing}
                         >
-                            <SlidersHorizontal className="h-5 w-5 text-[#7CE0A8]" />
+                            {isProcessing ? (
+                                <Loader2 className="h-5 w-5 text-[#7CE0A8] animate-spin" />
+                            ) : (
+                                <SlidersHorizontal className="h-5 w-5 text-[#7CE0A8]" />
+                            )}
                         </Button>
                     </SheetTrigger>
 
@@ -631,6 +770,7 @@ export default function FilterBar({
                                     variant="outline"
                                     className="h-12 rounded-xl flex-1 border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8]/5 transition-all"
                                     onClick={resetAll}
+                                    disabled={isProcessing}
                                 >
                                     <RotateCcw className="mr-2 h-4 w-4" />
                                     Reset
