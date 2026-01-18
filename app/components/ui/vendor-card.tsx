@@ -143,7 +143,8 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
           >
             {/* KIRI: info vendor */}
             <div className="flex items-start gap-2 md:gap-4 min-w-0">
-              <Avatar className="h-9 w-9 sm:h-12 sm:w-12 md:h-14 md:w-14 shrink-0 ring-2 ring-offset-2 ring-[#7CE0A8]/20">
+              {/* Avatar - Mobile & Tablet/Desktop */}
+              <Avatar className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 shrink-0 ring-2 ring-offset-2 ring-[#7CE0A8]/20">
                 <AvatarImage src={avatar ?? ""} alt={name} />
                 <AvatarFallback>
                   {(name || "?")
@@ -156,124 +157,151 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
               </Avatar>
 
               <div className="flex-1 min-w-0">
-                {/* Nama + verified + like mobile */}
-                <div className="flex items-start gap-1">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <h2 className="text-xs sm:text-base md:text-2xl font-semibold leading-tight line-clamp-1">
+                {/* MOBILE LAYOUT: Vertical stack dengan favorite button di kanan */}
+                <div className="md:hidden">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    {/* Kiri: Nama + Verified */}
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-sm font-semibold leading-tight line-clamp-1 mb-0.5">
                         {name}
                       </h2>
                       {verified && <Check className="text-primary" />}
                     </div>
+
+                    {/* Kanan: Favorite button */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={handleToggleFavorite}
+                            disabled={isProcessing}
+                            className="shrink-0 h-7 w-7 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all duration-200 flex items-center justify-center active:scale-95 relative disabled:opacity-70"
+                            aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
+                          >
+                            <motion.div
+                              animate={isAnimating ? { scale: [1, 1.3, 1] } : {}}
+                              transition={{ duration: 0.3, ease: "easeOut" }}
+                            >
+                              <Heart
+                                className={`h-4 w-4 transition-all duration-200 ${
+                                  isFavorite
+                                    ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
+                                    : "text-muted-foreground scale-100"
+                                }`}
+                              />
+                            </motion.div>
+                            {isAnimating && (
+                              <motion.span
+                                initial={{ opacity: 0.6, scale: 0.8 }}
+                                animate={{ opacity: 0, scale: 2.5 }}
+                                transition={{ duration: 0.4 }}
+                                className="absolute inset-0 rounded-full bg-[#7CE0A8]/30"
+                              />
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {!isLoggedIn 
+                            ? "Login untuk menyimpan favorit"
+                            : isFavorite 
+                              ? "Hapus dari favorit" 
+                              : "Tambah ke favorit"
+                          }
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
 
-                  {/* Favorite mobile */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={handleToggleFavorite}
-                          disabled={isProcessing}
-                          className="ml-auto h-6 w-6 p-0.5 md:hidden shrink-0 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all duration-200 flex items-center justify-center active:scale-95 relative disabled:opacity-70"
-                          aria-label={isFavorite ? "Hapus dari favorit" : "Tambah ke favorit"}
-                        >
-                          <motion.div
-                            animate={isAnimating ? { scale: [1, 1.3, 1] } : {}}
-                            transition={{ duration: 0.3, ease: "easeOut" }}
-                          >
-                            <Heart
-                              className={`h-3 w-3 transition-all duration-200 ${
-                                isFavorite
-                                  ? "text-[#7CE0A8] fill-[#7CE0A8] scale-110"
-                                  : "text-muted-foreground scale-100"
-                              }`}
-                            />
-                          </motion.div>
-                          {isAnimating && (
-                            <motion.span
-                              initial={{ opacity: 0.6, scale: 0.8 }}
-                              animate={{ opacity: 0, scale: 2.5 }}
-                              transition={{ duration: 0.4 }}
-                              className="absolute inset-0 rounded-full bg-[#7CE0A8]/30"
-                            />
-                          )}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {!isLoggedIn 
-                          ? "Login untuk menyimpan favorit"
-                          : isFavorite 
-                            ? "Hapus dari favorit" 
-                            : "Tambah ke favorit"
-                        }
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
+                  {/* Rating - langsung dibawah nama */}
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                    <RatingStars value={rating} size="sm" />
+                    <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
+                    <span>({reviewCount})</span>
+                  </div>
 
-                {/* Rating */}
-                <div className="mt-1 flex items-center gap-1.5 text-[10px] sm:text-sm md:text-base text-muted-foreground">
-                  <RatingStars value={rating} size="sm" />
-                  <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
-                  <span>({reviewCount})</span>
-                </div>
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1 items-center mb-2">
+                    {tags.slice(0, 2).map((t, i) => (
+                      <Badge
+                        key={i}
+                        variant="secondary"
+                        className="rounded-full px-1.5 py-0 text-[9px] leading-none h-4"
+                      >
+                        {t}
+                      </Badge>
+                    ))}
+                    {tags.length > 2 && (
+                      <span className="text-[9px] text-blue-500 font-medium">
+                        +{tags.length - 2} lainnya
+                      </span>
+                    )}
+                  </div>
 
-                {/* Tag mobile */}
-                <div className="mt-1.5 flex flex-wrap gap-1 items-center md:hidden">
-                  {tags.slice(0, 1).map((t, i) => (
-                    <Badge
-                      key={i}
-                      variant="secondary"
-                      className="rounded-full px-1.5 py-0 text-[8px] leading-none h-4"
+                  {/* Deskripsi */}
+                  <p className="text-[11px] text-foreground/80 leading-relaxed line-clamp-2 mb-2">
+                    {summary}
+                  </p>
+
+                  {/* Tombol aksi */}
+                  <div className="flex gap-1.5">
+                    <Button
+                      className="flex-1 px-2 py-1 h-7 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] text-[10px] font-medium whitespace-nowrap transition-all"
+                      onClick={handleOrderNow}
                     >
-                      {t}
-                    </Badge>
-                  ))}
-                  {tags.length > 1 && (
-                    <span className="text-[7px] text-blue-500 font-medium">
-                      +{tags.length - 1} lainnya
-                    </span>
-                  )}
-                </div>
-
-                {/* Tag tablet/desktop */}
-                <div className="mt-2 hidden md:flex flex-wrap gap-1.5 items-center">
-                  {tags.slice(0, 3).map((t, i) => (
-                    <Badge
-                      key={i}
-                      variant="secondary"
-                      className="rounded-full px-2 py-0.5 text-xs md:text-sm"
+                      Pesan Sekarang
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 px-2 py-1 h-7 text-[10px] font-medium whitespace-nowrap transition-all"
+                      onClick={handleViewProfile}
                     >
-                      {t}
-                    </Badge>
-                  ))}
-                  {tags.length > 3 && (
-                    <span className="text-[10px] md:text-xs text-blue-500 font-medium">
-                      +{tags.length - 3} lainnya
-                    </span>
-                  )}
+                      Lihat Profil
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Deskripsi */}
-                <p className="mt-1.5 text-[10px] sm:text-sm md:text-base text-foreground/80 leading-relaxed line-clamp-2 md:line-clamp-5">
-                  {summary}
-                </p>
+                {/* TABLET/DESKTOP LAYOUT: Original layout */}
+                <div className="hidden md:block">
+                  <div className="flex items-start justify-between gap-1.5 mb-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <h2 className="text-base md:text-2xl font-semibold leading-tight line-clamp-1">
+                          {name}
+                        </h2>
+                        {verified && <Check className="text-primary shrink-0" />}
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Aksi mobile */}
-                <div className="mt-2 flex gap-1.5 md:hidden">
-                  <Button
-                    className="flex-1 px-1.5 py-1 h-7 bg-[#7CE0A8] text-white hover:bg-[#5CA68A] text-[9px] font-medium whitespace-nowrap transition-all"
-                    onClick={handleOrderNow}
-                  >
-                    Pesan Sekarang
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 px-1.5 py-1 h-7 text-[9px] font-medium whitespace-nowrap transition-all"
-                    onClick={handleViewProfile}
-                  >
-                    Lihat Profil
-                  </Button>
+                  {/* Rating */}
+                  <div className="flex items-center gap-1.5 text-sm md:text-base text-muted-foreground mb-2">
+                    <RatingStars value={rating} size="sm" />
+                    <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
+                    <span>({reviewCount})</span>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1.5 items-center mb-2">
+                    {tags.slice(0, 3).map((t, i) => (
+                      <Badge
+                        key={i}
+                        variant="secondary"
+                        className="rounded-full px-2 py-0.5 text-xs md:text-sm"
+                      >
+                        {t}
+                      </Badge>
+                    ))}
+                    {tags.length > 3 && (
+                      <span className="text-[10px] md:text-xs text-blue-500 font-medium">
+                        +{tags.length - 3} lainnya
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Deskripsi */}
+                  <p className="text-sm md:text-base text-foreground/80 leading-relaxed line-clamp-5">
+                    {summary}
+                  </p>
                 </div>
               </div>
             </div>
@@ -400,9 +428,9 @@ export default function VendorCard({ vendor, isLoggedIn, onLoginRequired }: Vend
 function Check({ className }: { className?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-[8px] sm:text-xs md:text-sm font-medium ${className ?? ""}`}
+      className={`inline-flex items-center gap-0.5 text-[9px] sm:text-xs md:text-sm font-medium ${className ?? ""}`}
     >
-      <CheckCircle2 className="h-2.5 w-2.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />
+      <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5" />
       Verified
     </span>
   );
