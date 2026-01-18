@@ -72,19 +72,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // CRITICAL: Menggunakan context untuk semua fitur
+  // Contexts
   const authContext = useAuth();
   const notificationContext = useNotification();
   const languageContext = useLanguage();
   
-  // Access properties dari context
+  // Auth
   const user = authContext.user;
   const isAuthenticated = authContext.isAuthenticated;
   const authLoading = authContext.isLoading;
   const logout = authContext.logout;
   const refreshUser = authContext.refreshUser;
   
-  // Mengambil notifikasi dari context
+  // Notifications
   const notifications = notificationContext.notifications;
   const unreadCount = notificationContext.unreadCount;
   const markAllAsRead = notificationContext.markAllAsRead;
@@ -92,33 +92,23 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const deleteNotification = notificationContext.deleteNotification;
   const deleteAllNotifications = notificationContext.deleteAllNotifications;
   
-  // Mengambil bahasa dari context
+  // Language
   const selectedLanguage = languageContext.language;
   const setLanguage = languageContext.setLanguage;
 
-  // Log auth state changes untuk debugging
-  useEffect(() => {
-    console.log("[Layout] Auth state:", {
-      isAuthenticated,
-      user: user ? {
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar
-      } : null,
-      authLoading
-    });
-  }, [isAuthenticated, user, authLoading]);
+  // ============================================
+  // EFFECTS - Optimized
+  // ============================================
 
-  // Reset loading on pathname change - Asynchronous handling
+  // Reset loading on pathname change
   useEffect(() => {
     if (navigationInProgress) {
-      const loadingDuration = Date.now() - loadingStartTimeRef.current;
-      console.log(`[Layout] Navigation completed in ${loadingDuration}ms, hiding loader`);
+      const duration = Date.now() - loadingStartTimeRef.current;
+      console.log(`[Layout] Navigation completed in ${duration}ms`);
       
       setIsLoading(false);
       setNavigationInProgress(false);
       
-      // Clear any pending timeout
       if (navigationTimeoutRef.current) {
         clearTimeout(navigationTimeoutRef.current);
         navigationTimeoutRef.current = null;
@@ -126,47 +116,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   }, [pathname, navigationInProgress]);
 
-  // Fetch notifikasi ketika user login - Async
-  useEffect(() => {
-    const fetchNotificationsAsync = async () => {
-      if (isAuthenticated && user) {
-        console.log("[Layout] Fetching notifications asynchronously...");
-        const startTime = Date.now();
-        
-        try {
-          await notificationContext.fetchNotifications();
-          const duration = Date.now() - startTime;
-          console.log(`[Layout] Notifications fetched in ${duration}ms`);
-        } catch (error) {
-          console.error("[Layout] Failed to fetch notifications:", error);
-        }
-      }
-    };
+  // REMOVED: Fetch notifications on mount (handled by NotificationContext)
 
-    fetchNotificationsAsync();
-  }, [isAuthenticated, user]);
+  // REMOVED: Refresh user on mount (handled by AuthContext)
 
-  // Refresh user data ketika layout mount - Async
-  useEffect(() => {
-    const refreshUserAsync = async () => {
-      if (isAuthenticated && user) {
-        console.log("[Layout] Refreshing user data asynchronously on mount...");
-        const startTime = Date.now();
-        
-        try {
-          await refreshUser();
-          const duration = Date.now() - startTime;
-          console.log(`[Layout] User data refreshed in ${duration}ms`);
-        } catch (error) {
-          console.error("[Layout] Failed to refresh user:", error);
-        }
-      }
-    };
-
-    refreshUserAsync();
-  }, [isAuthenticated, refreshUser]);
-
-  // Close notifications ketika klik di luar
+  // Close notification dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -202,20 +156,16 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // ============================================
+  // HANDLERS - Optimized
+  // ============================================
+
   const handleSelectLanguage = async (language: string) => {
-    console.log("[Layout] Changing language to:", language);
-    const startTime = Date.now();
-    
     try {
       setIsLoading(true);
-      loadingStartTimeRef.current = startTime;
-      
       await setLanguage(language);
-      
-      const duration = Date.now() - startTime;
-      console.log(`[Layout] Language changed in ${duration}ms`);
     } catch (error) {
-      console.error("[Layout] Failed to change language:", error);
+      console.error("[Layout] Language change error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -227,7 +177,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       return;
     }
 
-    console.log(`[Layout] Navigating to: ${path}`);
     const startTime = Date.now();
     loadingStartTimeRef.current = startTime;
 
@@ -236,22 +185,14 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setNavigationInProgress(true);
 
     try {
-      // Set timeout sebagai fallback (max 15 detik untuk koneksi lambat)
       navigationTimeoutRef.current = setTimeout(() => {
-        const timeoutDuration = Date.now() - startTime;
-        console.warn(`[Layout] Navigation timeout reached after ${timeoutDuration}ms`);
         setIsLoading(false);
         setNavigationInProgress(false);
       }, 15000);
 
-      // Trigger navigation - router.push is async in Next.js App Router
       await router.push(path);
-      
-      const duration = Date.now() - startTime;
-      console.log(`[Layout] Navigation to ${path} initiated in ${duration}ms`);
     } catch (error) {
-      const errorDuration = Date.now() - startTime;
-      console.error(`[Layout] Navigation error after ${errorDuration}ms:`, error);
+      console.error("[Layout] Navigation error:", error);
       setIsLoading(false);
       setNavigationInProgress(false);
       
@@ -262,57 +203,32 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   }, [pathname, router]);
 
-  const handleLoginClick = () => {
-    handleNavigation("/login");
-  };
+  const handleLoginClick = () => handleNavigation("/login");
+  const handleRegisterClick = () => handleNavigation("/register");
 
-  const handleRegisterClick = () => {
-    handleNavigation("/register");
-  };
-
-  // Page transition only - TANPA loader untuk logo/title click
   const handleLogoClick = useCallback(() => {
     if (pathname === "/") {
       setIsMobileMenuOpen(false);
       return;
     }
 
-    console.log("[Layout] Logo/Title clicked - navigating to home with page transition");
-    
-    // Tutup mobile menu jika terbuka
     setIsMobileMenuOpen(false);
-
-    // Navigate langsung tanpa loading state - page transition akan handle animasi
     router.push("/");
   }, [pathname, router]);
 
   const handleLogout = useCallback(async () => {
-    console.log("[Layout] Logout initiated");
     const startTime = Date.now();
-    loadingStartTimeRef.current = startTime;
     
-    // Tutup semua menu segera
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
-    
-    // Tampilkan loading
     setIsLoading(true);
     
     try {
-      // Panggil logout dari AuthContext - async operation
       await logout();
-      
-      const duration = Date.now() - startTime;
-      console.log(`[Layout] Logout completed in ${duration}ms`);
-      
-      // Reset notifikasi setelah logout
       await notificationContext.resetNotifications();
-      
     } catch (error) {
-      const errorDuration = Date.now() - startTime;
-      console.error(`[Layout] Logout error after ${errorDuration}ms:`, error);
+      console.error("[Layout] Logout error:", error);
     } finally {
-      // Minimal loading time untuk UX (500ms)
       const elapsed = Date.now() - startTime;
       const remainingTime = Math.max(500 - elapsed, 0);
       
@@ -322,69 +238,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   }, [logout, notificationContext]);
 
-  const handleProfileClick = () => {
-    handleNavigation("/profile");
-  };
-
-  const handleOrderHistoryClick = () => {
-    handleNavigation("/riwayat_pemesanan");
-  };
-
-  // Async loading untuk favorite vendors click
-  const handleFavoriteVendorsClick = useCallback(async () => {
-    if (pathname === "/vendor_favorit") {
-      return;
-    }
-
-    console.log("[Layout] Navigating to vendor favorit asynchronously");
-    const startTime = Date.now();
-    loadingStartTimeRef.current = startTime;
-    
-    setIsMobileMenuOpen(false);
-    setIsLoading(true);
-    setNavigationInProgress(true);
-
-    try {
-      // Set timeout sebagai fallback
-      navigationTimeoutRef.current = setTimeout(() => {
-        const timeoutDuration = Date.now() - startTime;
-        console.warn(`[Layout] Vendor favorit navigation timeout reached after ${timeoutDuration}ms`);
-        setIsLoading(false);
-        setNavigationInProgress(false);
-      }, 15000);
-
-      // Navigate to vendor favorit
-      await router.push("/vendor_favorit");
-      
-      const duration = Date.now() - startTime;
-      console.log(`[Layout] Vendor favorit navigation initiated in ${duration}ms`);
-    } catch (error) {
-      const errorDuration = Date.now() - startTime;
-      console.error(`[Layout] Vendor favorit navigation error after ${errorDuration}ms:`, error);
-      setIsLoading(false);
-      setNavigationInProgress(false);
-      
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-        navigationTimeoutRef.current = null;
-      }
-    }
-  }, [pathname, router]);
+  const handleProfileClick = () => handleNavigation("/profile");
+  const handleOrderHistoryClick = () => handleNavigation("/riwayat_pemesanan");
+  const handleFavoriteVendorsClick = () => handleNavigation("/vendor_favorit");
 
   const toggleNotification = async () => {
     const newState = !isNotificationOpen;
     setIsNotificationOpen(newState);
     
     if (newState) {
-      console.log("[Layout] Marking all notifications as read asynchronously");
-      const startTime = Date.now();
-      
       try {
         await markAllAsRead();
-        const duration = Date.now() - startTime;
-        console.log(`[Layout] Notifications marked as read in ${duration}ms`);
       } catch (error) {
-        console.error("[Layout] Failed to mark notifications as read:", error);
+        console.error("[Layout] Mark all read error:", error);
       }
     }
   };
@@ -411,26 +277,24 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    console.log("[Layout] Notification clicked asynchronously:", notification.id);
-    const startTime = Date.now();
-    
     try {
       await markAsRead(notification.id);
-      const duration = Date.now() - startTime;
-      console.log(`[Layout] Notification marked as read in ${duration}ms`);
 
       if (notification.orderId) {
         setIsNotificationOpen(false);
         await handleNavigation("/riwayat_pemesanan");
       }
     } catch (error) {
-      console.error("[Layout] Failed to handle notification click:", error);
+      console.error("[Layout] Notification click error:", error);
     }
   };
 
   const defaultAvatar = "/profile.svg";
+  const userName = user?.name || "User";
+  const userAvatar = user?.avatar || defaultAvatar;
+  const userEmail = user?.email || "";
 
-  // Show loading while checking auth - ONLY on initial load
+  // Loading screen during auth check
   if (authLoading) {
     return (
       <div className="relative w-full min-h-screen">
@@ -440,13 +304,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
-  // Get user display values with fallbacks
-  const userName = user?.name || "User";
-  const userAvatar = user?.avatar || defaultAvatar;
-  const userEmail = user?.email || "";
-
-  console.log("[Layout] Rendering with user:", { userName, userAvatar, userEmail });
 
   return (
     <div className="relative w-full min-h-screen">
@@ -479,7 +336,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   >
                     <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
+                      <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full animate-pulse">
                         {unreadCount > 9 ? "9+" : unreadCount}
                       </span>
                     )}
@@ -487,7 +344,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
                   {/* Desktop Notification Dropdown */}
                   {isNotificationOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-80 md:w-96 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 z-50">
+                    <div className="absolute right-0 top-full mt-2 w-80 md:w-96 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                       <div className="p-4 border-b border-gray-200 dark:border-neutral-700">
                         <div className="flex items-center justify-between">
                           <h3 className="font-bold text-lg">Notifikasi</h3>
@@ -498,7 +355,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                   e.stopPropagation();
                                   markAllAsRead();
                                 }}
-                                className="text-xs text-blue-500 hover:text-blue-700"
+                                className="text-xs text-blue-500 hover:text-blue-700 transition-colors"
                               >
                                 Tandai semua dibaca
                               </button>
@@ -508,15 +365,14 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                 e.stopPropagation();
                                 setIsNotificationOpen(false);
                               }}
-                              className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700"
+                              className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
                             >
                               <X className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {notifications.length} notifikasi • {unreadCount} belum
-                          dibaca
+                          {notifications.length} notifikasi • {unreadCount} belum dibaca
                         </p>
                       </div>
 
@@ -526,9 +382,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                             {notifications.map((notification) => (
                               <div
                                 key={notification.id}
-                                onClick={() =>
-                                  handleNotificationClick(notification)
-                                }
+                                onClick={() => handleNotificationClick(notification)}
                                 className={`p-4 hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer transition-colors ${
                                   !notification.read
                                     ? "bg-blue-50 dark:bg-blue-900/10"
@@ -541,7 +395,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between gap-2 mb-1">
-                                      <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                                         {notification.title}
                                       </h4>
                                       <div className="flex items-center gap-1">
@@ -559,7 +413,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                         </button>
                                       </div>
                                     </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
                                       {notification.message}
                                     </p>
                                     <div className="flex items-center justify-between">
@@ -567,10 +421,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                                         {notification.date} • {notification.time}
                                       </span>
                                       {notification.orderId && (
-                                        <Badge
-                                          variant="outline"
-                                          className="text-xs"
-                                        >
+                                        <Badge variant="outline" className="text-xs">
                                           #{notification.orderId}
                                         </Badge>
                                       )}
@@ -731,7 +582,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   >
                     <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
+                      <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full animate-pulse">
                         {unreadCount > 9 ? "9+" : unreadCount}
                       </span>
                     )}

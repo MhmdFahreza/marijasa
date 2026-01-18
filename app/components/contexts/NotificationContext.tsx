@@ -49,15 +49,18 @@ const NotificationContext = createContext<NotificationContextType | undefined>(
   undefined
 );
 
-// CRITICAL FIX: Polling interval diperlambat ke 30 detik untuk mengurangi beban
-const POLLING_INTERVAL = 30000; // 30 seconds
+// ⚡ REAL-TIME POLLING: Fast 5-second updates untuk notifikasi instant
+const FAST_POLLING_INTERVAL = 5000; // 5 seconds - untuk real-time experience
+const SLOW_POLLING_INTERVAL = 30000; // 30 seconds - saat tab tidak aktif
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY = 2000; // 2 seconds
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { user, isAuthenticated } = useAuth();
   
-  // Refs untuk audio dan tracking
+  // Refs untuk optimization
   const audioContextRef = useRef<AudioContext | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastNotificationIdsRef = useRef<Set<string>>(new Set());
@@ -65,10 +68,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const audioInitializedRef = useRef<boolean>(false);
   const isFetchingRef = useRef<boolean>(false);
   const mountedRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const retryCountRef = useRef<number>(0);
+  const isTabVisibleRef = useRef<boolean>(true);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // IMPROVED: Audio initialization dengan better error handling
+  // ============================================
+  // AUDIO SETUP - Simplified & Optimized
+  // ============================================
   const initializeAudio = useCallback(() => {
     if (audioInitializedRef.current || typeof window === "undefined") {
       return true;
@@ -81,117 +89,139 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         
         if (audioContextRef.current.state === "suspended") {
           audioContextRef.current.resume().then(() => {
-            console.log("[Notification] AudioContext resumed");
             audioInitializedRef.current = true;
-          }).catch(err => {
-            console.warn("[Notification] Failed to resume audio:", err);
+          }).catch(() => {
+            // Silent fail
           });
         } else {
           audioInitializedRef.current = true;
-          console.log("[Notification] AudioContext initialized");
         }
         return true;
       }
     } catch (error) {
-      console.warn("[Notification] Audio init failed (this is OK):", error);
+      // Silent fail - audio is optional
     }
     return false;
   }, []);
 
-  // One-time audio initialization
+  // Initialize audio on first user interaction
   useEffect(() => {
     const handleUserInteraction = () => {
-      if (initializeAudio()) {
-        document.removeEventListener("click", handleUserInteraction);
-        document.removeEventListener("keydown", handleUserInteraction);
-        document.removeEventListener("touchstart", handleUserInteraction);
-      }
+      initializeAudio();
     };
 
     document.addEventListener("click", handleUserInteraction, { once: true });
     document.addEventListener("keydown", handleUserInteraction, { once: true });
-    document.addEventListener("touchstart", handleUserInteraction, { once: true });
 
     return () => {
       document.removeEventListener("click", handleUserInteraction);
       document.removeEventListener("keydown", handleUserInteraction);
-      document.removeEventListener("touchstart", handleUserInteraction);
       
-      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-        audioContextRef.current.close().catch(() => {});
+      if (audioContextRef.current?.state !== "closed") {
+        audioContextRef.current?.close().catch(() => {});
       }
     };
   }, [initializeAudio]);
 
-  // IMPROVED: Simplified sound playback
+  // Play notification sound - Simple & Fast
   const playNotificationSound = useCallback(() => {
     try {
-      if (!audioContextRef.current || !audioInitializedRef.current) {
-        // Silently fail jika audio tidak ready
-        return;
-      }
+      if (!audioContextRef.current || !audioInitializedRef.current) return;
 
-      const audioContext = audioContextRef.current;
-      
-      if (audioContext.state === "suspended") {
-        audioContext.resume().then(() => {
-          playTones(audioContext);
+      const ctx = audioContextRef.current;
+      if (ctx.state === "suspended") {
+        ctx.resume().then(() => {
+          playTones(ctx);
         }).catch(() => {});
       } else {
-        playTones(audioContext);
+        playTones(ctx);
       }
     } catch (error) {
-      // Silent fail untuk audio errors
+      // Silent fail
     }
   }, []);
 
-  const playTones = (audioContext: AudioContext) => {
+  const playTones = (ctx: AudioContext) => {
     try {
-      const currentTime = audioContext.currentTime;
+      const now = ctx.currentTime;
       
-      // Simple two-tone notification
-      playTone(audioContext, 880, currentTime, 0.1);
-      playTone(audioContext, 660, currentTime + 0.1, 0.15);
-
-      console.log("[Notification] 🔔 Sound played");
+      // Two-tone bell sound
+      playTone(ctx, 880, now, 0.1);
+      playTone(ctx, 660, now + 0.1, 0.15);
     } catch (error) {
       // Silent fail
     }
   };
 
   const playTone = (
-    audioContext: AudioContext,
-    frequency: number,
-    startTime: number,
-    duration: number
+    ctx: AudioContext,
+    freq: number,
+    start: number,
+    dur: number
   ) => {
     try {
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-      oscillator.frequency.value = frequency;
-      oscillator.type = "sine";
+      osc.frequency.value = freq;
+      osc.type = "sine";
 
-      gainNode.gain.setValueAtTime(0, startTime);
-      gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.005);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.3, start + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
 
-      oscillator.start(startTime);
-      oscillator.stop(startTime + duration);
+      osc.start(start);
+      osc.stop(start + dur);
     } catch (error) {
       // Silent fail
     }
   };
 
-  // CRITICAL FIX: Prevent concurrent fetches
+  // ============================================
+  // VISIBILITY API - Smart Polling Management
+  // ============================================
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      isTabVisibleRef.current = !document.hidden;
+      
+      console.log(
+        `[Notification] Tab visibility: ${isTabVisibleRef.current ? "VISIBLE" : "HIDDEN"}`
+      );
+
+      // Restart polling dengan interval yang sesuai
+      if (isTabVisibleRef.current && isAuthenticated && user) {
+        setupPolling(FAST_POLLING_INTERVAL);
+      } else if (!isTabVisibleRef.current) {
+        // Slow down polling saat tab hidden
+        setupPolling(SLOW_POLLING_INTERVAL);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isAuthenticated, user]);
+
+  // ============================================
+  // FETCH NOTIFICATIONS - Optimized dengan Abort Controller
+  // ============================================
   const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated || !user || isFetchingRef.current) {
       return;
     }
 
+    // Cancel previous request jika masih running
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller
+    abortControllerRef.current = new AbortController();
     isFetchingRef.current = true;
 
     try {
@@ -203,11 +233,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         headers: {
           "Cache-Control": "no-cache",
         },
+        signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
-        console.error("[Notification] Fetch failed:", response.status);
-        return;
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -236,43 +266,81 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       }));
 
       // Detect NEW notifications
-      const currentIds = new Set<string>(formattedNotifications.map((n: Notification) => n.id));
+      const currentIds = new Set<string>(
+        formattedNotifications.map((n: Notification) => n.id)
+      );
       const newNotifications = formattedNotifications.filter(
         (n: Notification) => !n.read && !lastNotificationIdsRef.current.has(n.id)
       );
 
-      // Update state
+      // Update state only if mounted
       if (mountedRef.current) {
         setNotifications(formattedNotifications);
       }
 
-      // Play sound for NEW notifications (skip initial load)
+      // Play sound for NEW unread notifications (skip initial load)
       if (!isInitialLoadRef.current && newNotifications.length > 0) {
-        console.log(`[Notification] 🔔 ${newNotifications.length} new notification(s)`);
+        console.log(
+          `[Notification] 🔔 ${newNotifications.length} new notification(s)!`
+        );
         playNotificationSound();
       }
 
       // Mark initial load complete
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
-        console.log("[Notification] Initial load complete");
       }
 
       // Update tracking
       lastNotificationIdsRef.current = currentIds;
 
+      // Reset retry count on success
+      retryCountRef.current = 0;
+
       console.log(
-        `[Notification] Total: ${formattedNotifications.length} | Unread: ${formattedNotifications.filter((n: Notification) => !n.read).length}`
+        `[Notification] ✅ Fetched: ${formattedNotifications.length} | Unread: ${formattedNotifications.filter((n: Notification) => !n.read).length}`
       );
 
-    } catch (error) {
-      console.error("[Notification] Fetch error:", error);
+    } catch (error: any) {
+      // Handle abort (not an error)
+      if (error.name === "AbortError") {
+        console.log("[Notification] Request aborted (normal)");
+        return;
+      }
+
+      // Handle other errors with retry logic
+      console.error("[Notification] Fetch error:", error.message);
+
+      retryCountRef.current++;
+
+      // Exponential backoff untuk retry
+      if (retryCountRef.current <= MAX_RETRY_ATTEMPTS) {
+        const delay = RETRY_DELAY * retryCountRef.current;
+        console.log(
+          `[Notification] Retry ${retryCountRef.current}/${MAX_RETRY_ATTEMPTS} in ${delay}ms`
+        );
+
+        setTimeout(() => {
+          if (mountedRef.current) {
+            fetchNotifications();
+          }
+        }, delay);
+      } else {
+        console.error(
+          "[Notification] Max retry attempts reached, will retry on next interval"
+        );
+        retryCountRef.current = 0;
+      }
     } finally {
       setIsLoading(false);
       isFetchingRef.current = false;
+      abortControllerRef.current = null;
     }
   }, [isAuthenticated, user, playNotificationSound]);
 
+  // ============================================
+  // NOTIFICATION ACTIONS - Optimized
+  // ============================================
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
       const response = await fetch(`/api/notifications/${notificationId}/read`, {
@@ -358,6 +426,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
     lastNotificationIdsRef.current.clear();
     isInitialLoadRef.current = true;
+    retryCountRef.current = 0;
     console.log("[Notification] Reset complete");
   }, []);
 
@@ -373,12 +442,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setNotifications((prev) => [newNotification, ...prev]);
         lastNotificationIdsRef.current.add(newNotification.id);
         
-        console.log("[Notification] Added:", newNotification.title);
         playNotificationSound();
       }
     },
     [playNotificationSound]
   );
+
+  // ============================================
+  // SMART POLLING SETUP - Adaptive Interval
+  // ============================================
+  const setupPolling = useCallback((interval: number) => {
+    // Clear existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Setup new interval
+    pollingIntervalRef.current = setInterval(() => {
+      fetchNotifications();
+    }, interval);
+
+    console.log(
+      `[Notification] ⚡ Polling setup: ${interval / 1000}s interval`
+    );
+  }, [fetchNotifications]);
 
   // Mounted tracking
   useEffect(() => {
@@ -388,20 +475,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // CRITICAL FIX: Slower polling interval (30 seconds)
+  // ============================================
+  // MAIN POLLING EFFECT - Real-time Updates
+  // ============================================
   useEffect(() => {
     if (isAuthenticated && user) {
+      console.log("[Notification] 🚀 Starting REAL-TIME notifications");
+
       // Initial fetch
       fetchNotifications();
 
-      // Setup polling dengan interval yang lebih lambat
-      pollingIntervalRef.current = setInterval(() => {
-        fetchNotifications();
-      }, POLLING_INTERVAL);
+      // Setup fast polling (5 seconds) untuk real-time experience
+      const interval = isTabVisibleRef.current
+        ? FAST_POLLING_INTERVAL
+        : SLOW_POLLING_INTERVAL;
+      
+      setupPolling(interval);
 
       return () => {
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
+        }
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
         }
       };
     } else {
@@ -410,7 +506,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         clearInterval(pollingIntervalRef.current);
       }
     }
-  }, [isAuthenticated, user, fetchNotifications, resetNotifications]);
+  }, [isAuthenticated, user, fetchNotifications, resetNotifications, setupPolling]);
 
   const value: NotificationContextType = {
     notifications,
