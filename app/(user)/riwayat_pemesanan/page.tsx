@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { useRouter } from "next/navigation"; // TAMBAHKAN IMPORT INI
+import { useRouter } from "next/navigation";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -81,12 +81,12 @@ const PAYMENT_FEES: Record<string, number> = {
 };
 
 export default function OrderHistoryPage() {
-  const router = useRouter(); // TAMBAHKAN INI
+  const router = useRouter();
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [isAddServiceModalOpen, setIsAddServiceModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPageLoading, setIsPageLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("semua");
   const [newServiceData, setNewServiceData] = useState({
     selectedServices: [] as string[],
@@ -137,7 +137,18 @@ export default function OrderHistoryPage() {
   const [selectedAdditionalService, setSelectedAdditionalService] = useState<any>(null);
   const [paymentForAdditional, setPaymentForAdditional] = useState<"main" | "additional">("main");
 
-  // TAMBAHKAN FUNGSI INI UNTUK HANDLE CHAT VENDOR
+  // Loading states untuk setiap aktivitas
+  const [actionLoadingStates, setActionLoadingStates] = useState<Record<string, boolean>>({});
+
+  // Fungsi untuk mengatur loading state
+  const setActionLoading = useCallback((key: string, isLoading: boolean) => {
+    setActionLoadingStates(prev => ({ ...prev, [key]: isLoading }));
+  }, []);
+
+  const isActionLoading = useCallback((key: string) => {
+    return actionLoadingStates[key] || false;
+  }, [actionLoadingStates]);
+
   const handleChatVendor = (vendorId: string) => {
     if (!vendorId) {
       toast.error("Vendor ID tidak ditemukan");
@@ -201,7 +212,7 @@ export default function OrderHistoryPage() {
 
   const loadOrders = useCallback(async () => {
     try {
-      setIsLoading(true);
+      setIsPageLoading(true);
       const response = await fetch('/api/user/orders', {
         method: 'GET',
         credentials: 'include',
@@ -218,10 +229,8 @@ export default function OrderHistoryPage() {
 
       const data = await response.json();
       if (data.success) {
-        // Pastikan setiap order memiliki struktur data pembayaran yang benar
         const processedOrders = data.orders.map((order: any) => ({
           ...order,
-          // Pastikan ada paymentDetails
           paymentDetails: order.paymentDetails || {
             subtotal: order.totalPrice - SERVICE_FEE,
             serviceFee: SERVICE_FEE,
@@ -236,7 +245,7 @@ export default function OrderHistoryPage() {
       toast.error("Gagal memuat data pesanan");
       setOrders([]);
     } finally {
-      setIsLoading(false);
+      setIsPageLoading(false);
     }
   }, []);
 
@@ -384,6 +393,9 @@ export default function OrderHistoryPage() {
       return;
     }
 
+    const loadingKey = `add_service_${selectedOrder.id}`;
+    setActionLoading(loadingKey, true);
+
     try {
       const response = await fetch('/api/user/orders/additional-service', {
         method: 'POST',
@@ -434,6 +446,8 @@ export default function OrderHistoryPage() {
     } catch (error: any) {
       console.error("Error submitting additional service:", error);
       toast.error(error.message || "Gagal mengirim permintaan layanan tambahan");
+    } finally {
+      setActionLoading(loadingKey, false);
     }
   };
 
@@ -482,11 +496,15 @@ export default function OrderHistoryPage() {
       }
     }
 
+    const loadingKey = paymentForAdditional === "additional" 
+      ? `save_payment_additional_${selectedAdditionalService?.id}` 
+      : `save_payment_${selectedOrder.id}`;
+    setActionLoading(loadingKey, true);
+
     try {
       const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
 
       if (paymentForAdditional === "additional" && selectedAdditionalService) {
-        // Bayar layanan tambahan
         const response = await fetch('/api/user/orders/additional-service/payment', {
           method: 'POST',
           headers: {
@@ -506,7 +524,6 @@ export default function OrderHistoryPage() {
           throw new Error(errorData.message || 'Payment failed');
         }
 
-        // Update state untuk layanan tambahan
         setOrders(prevOrders => prevOrders.map(order => {
           if (order.id === selectedOrder.id) {
             const updatedAdditionalServices = order.additionalServices?.map((service: any) => 
@@ -531,7 +548,6 @@ export default function OrderHistoryPage() {
 
         toast.success("Pembayaran layanan tambahan berhasil!");
       } else {
-        // Bayar pembayaran utama
         const response = await fetch('/api/user/orders', {
           method: 'PUT',
           headers: {
@@ -579,21 +595,30 @@ export default function OrderHistoryPage() {
       setSelectedAdditionalService(null);
       setPaymentForAdditional("main");
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating payment method:", error);
-      toast.error("Gagal menyimpan metode pembayaran");
+      toast.error(error.message || "Gagal menyimpan metode pembayaran");
+    } finally {
+      setActionLoading(loadingKey, false);
     }
   };
 
   const handlePayNow = async (order: any, forAdditional: boolean = false, additionalService?: any) => {
+    const loadingKey = forAdditional 
+      ? `pay_additional_${additionalService?.id}` 
+      : `pay_${order.id}`;
+    setActionLoading(loadingKey, true);
+
     if (forAdditional && additionalService) {
       handleOpenPaymentModal(order, true, additionalService);
+      setActionLoading(loadingKey, false);
       return;
     }
 
     if (!order.paymentMethod || order.paymentMethod === "Belum Dibayar") {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
       handleOpenPaymentModal(order);
+      setActionLoading(loadingKey, false);
       return;
     }
 
@@ -646,10 +671,12 @@ export default function OrderHistoryPage() {
         toast.success("Pembayaran berhasil! Status pesanan telah diperbarui.");
       }, 2000);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing payment:", error);
       setShowSuccessModal(false);
-      toast.error("Gagal memproses pembayaran");
+      toast.error(error.message || "Gagal memproses pembayaran");
+    } finally {
+      setActionLoading(loadingKey, false);
     }
   };
 
@@ -669,7 +696,8 @@ export default function OrderHistoryPage() {
       return;
     }
 
-    setIsCancelling(true);
+    const loadingKey = `cancel_${selectedOrder.id}`;
+    setActionLoading(loadingKey, true);
 
     try {
       const response = await fetch('/api/user/orders', {
@@ -720,11 +748,11 @@ export default function OrderHistoryPage() {
       setCancelReason("");
       toast.success("Pesanan berhasil dibatalkan!");
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error cancelling order:", error);
-      toast.error("Gagal membatalkan pesanan");
+      toast.error(error.message || "Gagal membatalkan pesanan");
     } finally {
-      setIsCancelling(false);
+      setActionLoading(loadingKey, false);
     }
   };
 
@@ -734,7 +762,6 @@ export default function OrderHistoryPage() {
       return;
     }
 
-    // Check if there's unpaid additional service
     const hasUnpaidAdditionalService = order.additionalServices?.some(
       (addService: any) => addService.status === "disetujui" && !addService.isPaid
     );
@@ -759,6 +786,8 @@ export default function OrderHistoryPage() {
     if (!selectedOrder) return;
 
     const hasRating = ratingData.rating > 0;
+    const loadingKey = `complete_${selectedOrder.id}`;
+    setActionLoading(loadingKey, true);
 
     try {
       const response = await fetch('/api/user/orders', {
@@ -838,9 +867,11 @@ export default function OrderHistoryPage() {
         toast.success("Pekerjaan telah dikonfirmasi selesai!");
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error completing order:", error);
-      toast.error("Gagal mengkonfirmasi pesanan selesai");
+      toast.error(error.message || "Gagal mengkonfirmasi pesanan selesai");
+    } finally {
+      setActionLoading(loadingKey, false);
     }
   };
 
@@ -946,7 +977,6 @@ export default function OrderHistoryPage() {
     return total;
   };
 
-  // Fungsi untuk memeriksa apakah ada layanan tambahan yang belum dibayar
   const hasUnpaidAdditionalServices = (order: any) => {
     const approvedServices = order.additionalServices?.filter((addService: any) => 
       addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima"
@@ -955,7 +985,6 @@ export default function OrderHistoryPage() {
     return approvedServices.some((addService: any) => !addService.isPaid);
   };
 
-  // Fungsi untuk menghitung total layanan tambahan yang belum dibayar
   const getUnpaidAdditionalServicesTotal = (order: any) => {
     let total = 0;
     const approvedServices = order.additionalServices?.filter((addService: any) => 
@@ -972,7 +1001,6 @@ export default function OrderHistoryPage() {
     return total;
   };
 
-  // Fungsi untuk menghitung total semua layanan tambahan (baik yang sudah dibayar maupun belum)
   const getAllAdditionalServicesTotal = (order: any) => {
     let total = 0;
     const approvedServices = order.additionalServices?.filter((addService: any) => 
@@ -987,14 +1015,13 @@ export default function OrderHistoryPage() {
     return total;
   };
 
-  // Fungsi untuk mendapatkan semua layanan tambahan yang disetujui
   const getApprovedAdditionalServices = (order: any) => {
     return order.additionalServices?.filter((addService: any) => 
       addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima"
     ) || [];
   };
 
-  if (isLoading) {
+  if (isPageLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoaderTwo />
@@ -1295,6 +1322,7 @@ export default function OrderHistoryPage() {
                                                 e.stopPropagation();
                                                 handleOpenPaymentModal(order);
                                               }}
+                                              disabled={isActionLoading(`pay_${order.id}`)}
                                             >
                                               <CreditCard className="h-4 w-4 mr-2" />
                                               Pilih Metode
@@ -1305,10 +1333,19 @@ export default function OrderHistoryPage() {
                                                 e.stopPropagation();
                                                 handlePayNow(order);
                                               }}
-                                              disabled={!order.paymentMethod || order.paymentMethod === "Belum Dibayar"}
+                                              disabled={!order.paymentMethod || order.paymentMethod === "Belum Dibayar" || isActionLoading(`pay_${order.id}`)}
                                             >
-                                              <CreditCard className="h-4 w-4 mr-2" />
-                                              Bayar Sekarang
+                                              {isActionLoading(`pay_${order.id}`) ? (
+                                                <>
+                                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                  Memproses...
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <CreditCard className="h-4 w-4 mr-2" />
+                                                  Bayar Sekarang
+                                                </>
+                                              )}
                                             </Button>
                                           </div>
                                           <p className="text-xs text-center text-gray-500 mt-2">
@@ -1405,6 +1442,7 @@ export default function OrderHistoryPage() {
                                                           e.stopPropagation();
                                                           handleOpenPaymentModal(order, true, addService);
                                                         }}
+                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
                                                       >
                                                         <CreditCard className="h-4 w-4 mr-2" />
                                                         Pilih Metode
@@ -1415,9 +1453,19 @@ export default function OrderHistoryPage() {
                                                           e.stopPropagation();
                                                           handlePayNow(order, true, addService);
                                                         }}
+                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
                                                       >
-                                                        <CreditCard className="h-4 w-4 mr-2" />
-                                                        Bayar Sekarang
+                                                        {isActionLoading(`pay_additional_${addService.id}`) ? (
+                                                          <>
+                                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                            Memproses...
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            <CreditCard className="h-4 w-4 mr-2" />
+                                                            Bayar Sekarang
+                                                          </>
+                                                        )}
                                                       </Button>
                                                     </div>
                                                   </div>
@@ -1584,7 +1632,6 @@ export default function OrderHistoryPage() {
                                       <h4 className="font-medium mb-3 text-[#7CE0A8]">Layanan Tambahan</h4>
                                       <div className="space-y-3">
                                         {order.additionalServices.map((addService: any, idx: number) => {
-                                          // Perbarui status untuk ditampilkan
                                           let statusText = "";
                                           let statusClass = "";
                                           let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
@@ -1672,6 +1719,7 @@ export default function OrderHistoryPage() {
                                                           e.stopPropagation();
                                                           handleOpenPaymentModal(order, true, addService);
                                                         }}
+                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
                                                       >
                                                         <CreditCard className="h-4 w-4 mr-2" />
                                                         Pilih Metode
@@ -1682,9 +1730,19 @@ export default function OrderHistoryPage() {
                                                           e.stopPropagation();
                                                           handlePayNow(order, true, addService);
                                                         }}
+                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
                                                       >
-                                                        <CreditCard className="h-4 w-4 mr-2" />
-                                                        Bayar Sekarang
+                                                        {isActionLoading(`pay_additional_${addService.id}`) ? (
+                                                          <>
+                                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                            Memproses...
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            <CreditCard className="h-4 w-4 mr-2" />
+                                                            Bayar Sekarang
+                                                          </>
+                                                        )}
                                                       </Button>
                                                     </div>
                                                   </div>
@@ -1729,10 +1787,19 @@ export default function OrderHistoryPage() {
                                       handleAddServiceClick();
                                     }}
                                     className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
-                                    disabled={order.status === "dibatalkan" || order.status === "selesai"}
+                                    disabled={order.status === "dibatalkan" || order.status === "selesai" || isActionLoading(`add_service_${order.id}`)}
                                   >
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Tambah Layanan
+                                    {isActionLoading(`add_service_${order.id}`) ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Memuat...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Tambah Layanan
+                                      </>
+                                    )}
                                   </Button>
                                 </div>
                               </div>
@@ -1743,7 +1810,7 @@ export default function OrderHistoryPage() {
                         {/* Action Buttons - DIPERBARUI KONDISI DISABLE */}
                         <div className="border-t p-4 md:p-6 bg-gray-50 dark:bg-gray-800/50">
                           <div className="flex flex-wrap gap-3">
-                            {/* TOMBOL CHAT VENDOR - DIPERBARUI */}
+                            {/* TOMBOL CHAT VENDOR */}
                             <Button 
                               variant="outline" 
                               className="flex-1 min-w-[140px]"
@@ -1755,9 +1822,19 @@ export default function OrderHistoryPage() {
                                   toast.error("Vendor ID tidak ditemukan");
                                 }
                               }}
+                              disabled={isActionLoading(`chat_${order.id}`)}
                             >
-                              <MessageSquare className="h-4 w-4 mr-2" />
-                              Chat Vendor
+                              {isActionLoading(`chat_${order.id}`) ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Memuat...
+                                </>
+                              ) : (
+                                <>
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  Chat Vendor
+                                </>
+                              )}
                             </Button>
 
                             {/* Tombol Konfirmasi Pekerjaan Selesai */}
@@ -1768,10 +1845,19 @@ export default function OrderHistoryPage() {
                                   e.stopPropagation();
                                   handleOpenCompletionModal(order);
                                 }}
-                                disabled={order.status === "menunggu pembayaran" || hasUnpaidAdditionalServices(order)}
+                                disabled={order.status === "menunggu pembayaran" || hasUnpaidAdditionalServices(order) || isActionLoading(`complete_${order.id}`)}
                               >
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                Konfirmasi Selesai
+                                {isActionLoading(`complete_${order.id}`) ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Memuat...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Konfirmasi Selesai
+                                  </>
+                                )}
                               </Button>
                             )}
 
@@ -1784,9 +1870,19 @@ export default function OrderHistoryPage() {
                                   e.stopPropagation();
                                   handleOpenCancelModal(order);
                                 }}
+                                disabled={isActionLoading(`cancel_${order.id}`)}
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Batalkan Pesanan
+                                {isActionLoading(`cancel_${order.id}`) ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Memuat...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Batalkan Pesanan
+                                  </>
+                                )}
                               </Button>
                             )}
 
@@ -1872,6 +1968,7 @@ export default function OrderHistoryPage() {
                     size="sm"
                     onClick={() => setIsAddServiceModalOpen(false)}
                     className="h-8 w-8 p-0"
+                    disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -1908,6 +2005,7 @@ export default function OrderHistoryPage() {
                                     handleServiceSelection(service.id, checked as boolean)
                                   }
                                   className="mt-1"
+                                  disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                                 />
                                 <div className="flex-1">
                                   <Label
@@ -1947,6 +2045,7 @@ export default function OrderHistoryPage() {
                                         handleQuantityChange(service.id, qty);
                                       }}
                                       className="w-20 mt-1"
+                                      disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                                     />
                                   </div>
                                 )}
@@ -2000,6 +2099,7 @@ export default function OrderHistoryPage() {
                       }))}
                       className="resize-none"
                       required
+                      disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Jelaskan alasan mengapa Anda memerlukan layanan tambahan ini
@@ -2032,6 +2132,7 @@ export default function OrderHistoryPage() {
                               type="button"
                               onClick={() => removeImage(index)}
                               className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                              disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                             >
                               <X className="h-3 w-3" />
                             </button>
@@ -2064,6 +2165,7 @@ export default function OrderHistoryPage() {
                         multiple
                         onChange={handleImageUpload}
                         required
+                        disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                       />
                     </label>
 
@@ -2108,6 +2210,7 @@ export default function OrderHistoryPage() {
                     variant="outline"
                     className="flex-1"
                     onClick={() => setIsAddServiceModalOpen(false)}
+                    disabled={isActionLoading(`add_service_${selectedOrder.id}`)}
                   >
                     Batal
                   </Button>
@@ -2117,11 +2220,21 @@ export default function OrderHistoryPage() {
                     disabled={
                       newServiceData.selectedServices.length === 0 ||
                       !newServiceData.reason.trim() ||
-                      newServiceData.images.length === 0
+                      newServiceData.images.length === 0 ||
+                      isActionLoading(`add_service_${selectedOrder.id}`)
                     }
                   >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Kirim Permintaan ke Admin
+                    {isActionLoading(`add_service_${selectedOrder.id}`) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Mengirim...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Kirim Permintaan ke Admin
+                      </>
+                    )}
                   </Button>
                 </div>
                 <p className="text-xs text-center text-gray-500 mt-3">
@@ -2192,6 +2305,9 @@ export default function OrderHistoryPage() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
             onClick={() => {
+              if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
+                return;
+              }
               setShowPaymentModal(false);
               setShowPaymentOptions(false);
               setSelectedAdditionalService(null);
@@ -2222,12 +2338,16 @@ export default function OrderHistoryPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
+                        return;
+                      }
                       setShowPaymentModal(false);
                       setShowPaymentOptions(false);
                       setSelectedAdditionalService(null);
                       setPaymentForAdditional("main");
                     }}
                     className="h-8 w-8 p-0"
+                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -2287,6 +2407,7 @@ export default function OrderHistoryPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowPaymentOptions(true)}
+                            disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                           >
                             Ubah
                           </Button>
@@ -2299,6 +2420,7 @@ export default function OrderHistoryPage() {
                           variant="outline"
                           className="mt-2"
                           onClick={() => setShowPaymentOptions(true)}
+                          disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                         >
                           Pilih Metode Pembayaran
                         </Button>
@@ -2335,6 +2457,7 @@ export default function OrderHistoryPage() {
                                   setCardData({ ...cardData, cardNumber: formatted });
                                 }}
                                 maxLength={19}
+                                disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                               />
                               <p className="text-xs text-muted-foreground">
                                 Nomor yang terletak pada kartu debit/credit Anda
@@ -2356,6 +2479,7 @@ export default function OrderHistoryPage() {
                                   setCardData({ ...cardData, expiryDate: formatted });
                                 }}
                                 maxLength={5}
+                                disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                               />
                               <p className="text-xs text-muted-foreground">
                                 Masa berlaku pada kartu Anda
@@ -2378,6 +2502,7 @@ export default function OrderHistoryPage() {
                                   }
                                 }}
                                 maxLength={4}
+                                disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                               />
                               <p className="text-xs text-muted-foreground">
                                 3 atau 4 digit terakhir pada kartu Anda
@@ -2397,7 +2522,12 @@ export default function OrderHistoryPage() {
                           exit={{ opacity: 0, y: 20 }}
                           transition={{ duration: 0.2 }}
                           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
-                          onClick={() => setShowPaymentOptions(false)}
+                          onClick={() => {
+                            if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
+                              return;
+                            }
+                            setShowPaymentOptions(false);
+                          }}
                         >
                           <motion.div
                             initial={{ scale: 0.95 }}
@@ -2413,6 +2543,7 @@ export default function OrderHistoryPage() {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => setShowPaymentOptions(false)}
+                                  disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                 >
                                   ✕
                                 </Button>
@@ -2436,6 +2567,7 @@ export default function OrderHistoryPage() {
                                     type="button"
                                     className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                                     onClick={() => toggleSection('ewallet')}
+                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                   >
                                     <div className="flex items-center gap-3">
                                       <Wallet className="h-5 w-5" />
@@ -2493,6 +2625,7 @@ export default function OrderHistoryPage() {
                                     type="button"
                                     className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                                     onClick={() => toggleSection('va')}
+                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                   >
                                     <div className="flex items-center gap-3">
                                       <BuildingIcon className="h-5 w-5" />
@@ -2550,6 +2683,7 @@ export default function OrderHistoryPage() {
                                     type="button"
                                     className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                                     onClick={() => toggleSection('card')}
+                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                   >
                                     <div className="flex items-center gap-3">
                                       <CreditCardIcon className="h-5 w-5" />
@@ -2607,6 +2741,7 @@ export default function OrderHistoryPage() {
                                     type="button"
                                     className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                                     onClick={() => toggleSection('qris')}
+                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                   >
                                     <div className="flex items-center gap-3">
                                       <QrCode className="h-5 w-5" />
@@ -2664,6 +2799,7 @@ export default function OrderHistoryPage() {
                                     type="button"
                                     className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                                     onClick={() => toggleSection('cash')}
+                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                   >
                                     <div className="flex items-center gap-3">
                                       <Banknote className="h-5 w-5" />
@@ -2724,6 +2860,7 @@ export default function OrderHistoryPage() {
                                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
                                   onClick={() => setShowPaymentOptions(false)}
+                                  disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                                 >
                                   Simpan Metode Pembayaran
                                 </Button>
@@ -2767,11 +2904,15 @@ export default function OrderHistoryPage() {
                           variant="outline"
                           className="flex-1"
                           onClick={() => {
+                            if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
+                              return;
+                            }
                             setShowPaymentModal(false);
                             setShowPaymentOptions(false);
                             setSelectedAdditionalService(null);
                             setPaymentForAdditional("main");
                           }}
+                          disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                         >
                           Batal
                         </Button>
@@ -2782,9 +2923,18 @@ export default function OrderHistoryPage() {
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
                           onClick={handleSavePaymentMethod}
-                          disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv))}
+                          disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv)) || isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
                         >
-                          {paymentForAdditional === "additional" ? "Bayar Sekarang" : "Simpan Metode Pembayaran"}
+                          {isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`) ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Menyimpan...
+                            </>
+                          ) : paymentForAdditional === "additional" ? (
+                            "Bayar Sekarang"
+                          ) : (
+                            "Simpan Metode Pembayaran"
+                          )}
                         </Button>
                       </div>
 
@@ -2810,7 +2960,12 @@ export default function OrderHistoryPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-            onClick={() => setShowCompletionModal(false)}
+            onClick={() => {
+              if (isActionLoading(`complete_${selectedOrder.id}`)) {
+                return;
+              }
+              setShowCompletionModal(false);
+            }}
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
@@ -2831,8 +2986,14 @@ export default function OrderHistoryPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowCompletionModal(false)}
+                    onClick={() => {
+                      if (isActionLoading(`complete_${selectedOrder.id}`)) {
+                        return;
+                      }
+                      setShowCompletionModal(false);
+                    }}
                     className="h-8 w-8 p-0"
+                    disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -2875,6 +3036,7 @@ export default function OrderHistoryPage() {
                           type="button"
                           onClick={() => handleStarClick(star)}
                           className="focus:outline-none transition-transform hover:scale-110"
+                          disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                         >
                           <Star
                             className={`h-10 w-10 ${star <= ratingData.rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
@@ -2903,6 +3065,7 @@ export default function OrderHistoryPage() {
                                 isAnonymous: e.target.checked
                               }))}
                               className="h-4 w-4 rounded border-gray-300 text-[#7CE0A8] focus:ring-[#7CE0A8]"
+                              disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                             />
                             <label htmlFor="anonymous" className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                               Sembunyikan identitas saya (Anonymous)
@@ -2929,6 +3092,7 @@ export default function OrderHistoryPage() {
                           comment: e.target.value
                         }))}
                         className="resize-none"
+                        disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                       />
                     </div>
 
@@ -2955,6 +3119,7 @@ export default function OrderHistoryPage() {
                                 type="button"
                                 onClick={() => removeRatingPhoto(index)}
                                 className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                               >
                                 <X className="h-3 w-3" />
                               </button>
@@ -2981,6 +3146,7 @@ export default function OrderHistoryPage() {
                             accept="image/*"
                             multiple
                             onChange={handleRatingPhotoUpload}
+                            disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                           />
                         </label>
                       )}
@@ -3005,15 +3171,26 @@ export default function OrderHistoryPage() {
                     variant="outline"
                     className="flex-1"
                     onClick={() => setShowCompletionModal(false)}
+                    disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                   >
                     Batal
                   </Button>
                   <Button
                     className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                     onClick={handleConfirmCompletion}
+                    disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Konfirmasi Selesai
+                    {isActionLoading(`complete_${selectedOrder.id}`) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Mengonfirmasi...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Konfirmasi Selesai
+                      </>
+                    )}
                   </Button>
                 </div>
                 <p className="text-xs text-center text-gray-500 mt-3">
@@ -3104,7 +3281,12 @@ export default function OrderHistoryPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-            onClick={() => !isCancelling && setShowCancelModal(false)}
+            onClick={() => {
+              if (isActionLoading(`cancel_${selectedOrder.id}`)) {
+                return;
+              }
+              setShowCancelModal(false);
+            }}
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
@@ -3122,12 +3304,13 @@ export default function OrderHistoryPage() {
                       Pesanan #{selectedOrder.id} • {selectedOrder.vendorName}
                     </p>
                   </div>
-                  {!isCancelling && (
+                  {!isActionLoading(`cancel_${selectedOrder.id}`) && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowCancelModal(false)}
                       className="h-8 w-8 p-0"
+                      disabled={isActionLoading(`cancel_${selectedOrder.id}`)}
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -3164,7 +3347,7 @@ export default function OrderHistoryPage() {
                       rows={3}
                       value={cancelReason}
                       onChange={(e) => setCancelReason(e.target.value)}
-                      disabled={isCancelling}
+                      disabled={isActionLoading(`cancel_${selectedOrder.id}`)}
                       className="resize-none"
                     />
                   </div>
@@ -3183,23 +3366,32 @@ export default function OrderHistoryPage() {
               {/* Footer */}
               <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t px-6 py-4">
                 <div className="flex flex-col sm:flex-row gap-3">
-                  {!isCancelling ? (
+                  {!isActionLoading(`cancel_${selectedOrder.id}`) ? (
                     <>
                       <Button
                         variant="outline"
                         className="flex-1"
                         onClick={() => setShowCancelModal(false)}
-                        disabled={isCancelling}
+                        disabled={isActionLoading(`cancel_${selectedOrder.id}`)}
                       >
                         Batal
                       </Button>
                       <Button
                         className="flex-1 bg-red-600 hover:bg-red-700 text-white"
                         onClick={handleCancelOrder}
-                        disabled={!cancelReason.trim() || isCancelling}
+                        disabled={!cancelReason.trim() || isActionLoading(`cancel_${selectedOrder.id}`)}
                       >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Batalkan Pesanan
+                        {isActionLoading(`cancel_${selectedOrder.id}`) ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Membatalkan...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Batalkan Pesanan
+                          </>
+                        )}
                       </Button>
                     </>
                   ) : (
