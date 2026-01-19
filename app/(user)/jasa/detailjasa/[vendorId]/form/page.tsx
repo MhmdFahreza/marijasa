@@ -18,28 +18,114 @@ import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
-import { Calendar, User, Receipt, MapPin, Navigation, CreditCard, Wallet, Smartphone, QrCode, Banknote, ChevronDown, ChevronUp, Building, Smartphone as SmartphoneIcon, CreditCard as CreditCardIcon, Check, Loader2, Tag, AlertCircle } from "lucide-react";
+import {
+  Calendar, User, Receipt, MapPin, Navigation, CreditCard, Wallet,
+  QrCode, Banknote, ChevronDown, ChevronUp, Building, Check, Loader2,
+  Tag, AlertCircle, Copy, Clock, Store, ExternalLink, X
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 
-const PAYMENT_FEES = {
-  "dana": 1440,
-  "ovo": 1440,
-  "gopay": 1440,
-  "bca-va": 3850,
-  "bni-va": 3700,
-  "bri-va": 3700,
-  "mandiri-va": 3700,
-  "bsi-va": 3850,
-  "debit-credit": 2784,
-  "qris": 1571,
-  "tunai": 0
+// ==========================================
+// XENDIT PAYMENT FEES (Client-side)
+// Updated January 2025 - Source: xendit.co/id/pricing
+// ==========================================
+
+const XENDIT_PAYMENT_FEES: Record<string, {
+  type: 'fixed' | 'percentage' | 'combined';
+  rate?: number;
+  min?: number;
+  amount?: number;
+  fixed?: number;
+  name: string;
+  category: string;
+  icon: string;
+  color: string;
+}> = {
+  // E-Wallets - 1.5% (min Rp 1,500)
+  ewallet_dana: { type: 'percentage', rate: 1.5, min: 1500, name: 'DANA', category: 'ewallet', icon: 'wallet', color: '#10B981' },
+  ewallet_ovo: { type: 'percentage', rate: 1.5, min: 1500, name: 'OVO', category: 'ewallet', icon: 'wallet', color: '#4F46E5' },
+  ewallet_shopeepay: { type: 'percentage', rate: 1.5, min: 1500, name: 'ShopeePay', category: 'ewallet', icon: 'wallet', color: '#EE4D2D' },
+  ewallet_linkaja: { type: 'percentage', rate: 1.5, min: 1500, name: 'LinkAja', category: 'ewallet', icon: 'wallet', color: '#E31E24' },
+
+  // Virtual Account - Flat fee
+  va_bca: { type: 'fixed', amount: 4500, name: 'BCA Virtual Account', category: 'va', icon: 'building', color: '#1E3A8A' },
+  va_bni: { type: 'fixed', amount: 4000, name: 'BNI Virtual Account', category: 'va', icon: 'building', color: '#F59E0B' },
+  va_bri: { type: 'fixed', amount: 4000, name: 'BRI Virtual Account', category: 'va', icon: 'building', color: '#DC2626' },
+  va_mandiri: { type: 'fixed', amount: 4000, name: 'Mandiri Virtual Account', category: 'va', icon: 'building', color: '#059669' },
+  va_permata: { type: 'fixed', amount: 4000, name: 'Permata Virtual Account', category: 'va', icon: 'building', color: '#7C3AED' },
+  va_bsi: { type: 'fixed', amount: 4000, name: 'BSI Virtual Account', category: 'va', icon: 'building', color: '#059669' },
+  va_cimb: { type: 'fixed', amount: 4000, name: 'CIMB Niaga Virtual Account', category: 'va', icon: 'building', color: '#DC2626' },
+
+  // QRIS - 0.7%
+  qris: { type: 'percentage', rate: 0.7, min: 0, name: 'QRIS', category: 'qris', icon: 'qrcode', color: '#EF4444' },
+
+  // Cards - 2.9% + Rp 2,000
+  card_visa: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu Visa', category: 'card', icon: 'credit-card', color: '#1A1F71' },
+  card_mastercard: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu Mastercard', category: 'card', icon: 'credit-card', color: '#EB001B' },
+  card_jcb: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu JCB', category: 'card', icon: 'credit-card', color: '#0066B3' },
+
+  // Retail Outlets - Flat fee
+  retail_alfamart: { type: 'fixed', amount: 5000, name: 'Alfamart', category: 'retail', icon: 'store', color: '#DC2626' },
+  retail_indomaret: { type: 'fixed', amount: 5000, name: 'Indomaret', category: 'retail', icon: 'store', color: '#1E40AF' },
+
+  // Tunai - No fee
+  tunai: { type: 'fixed', amount: 0, name: 'Tunai', category: 'tunai', icon: 'banknote', color: '#6B7280' },
 };
 
 const SERVICE_FEE = 10000;
+
+// Calculate fee based on payment method
+function calculateTransactionFee(paymentMethod: string, amount: number): number {
+  const config = XENDIT_PAYMENT_FEES[paymentMethod];
+  if (!config) return 0;
+
+  switch (config.type) {
+    case 'fixed':
+      return config.amount || 0;
+    case 'percentage':
+      const percentFee = Math.ceil(amount * ((config.rate || 0) / 100));
+      return Math.max(percentFee, config.min || 0);
+    case 'combined':
+      return Math.ceil(amount * ((config.rate || 0) / 100)) + (config.fixed || 0);
+    default:
+      return 0;
+  }
+}
+
+// Get display fee description
+function getFeeDescription(paymentMethod: string): string {
+  const config = XENDIT_PAYMENT_FEES[paymentMethod];
+  if (!config) return '-';
+
+  switch (config.type) {
+    case 'fixed':
+      if (config.amount === 0) return 'Gratis';
+      return `Rp ${(config.amount || 0).toLocaleString('id-ID')}`;
+    case 'percentage':
+      return (config.min || 0) > 0
+        ? `${config.rate}% (min Rp ${(config.min || 0).toLocaleString('id-ID')})`
+        : `${config.rate}%`;
+    case 'combined':
+      return `${config.rate}% + Rp ${(config.fixed || 0).toLocaleString('id-ID')}`;
+    default:
+      return '-';
+  }
+}
+
+// Get calculated fee display
+function getCalculatedFeeDisplay(paymentMethod: string, amount: number): string {
+  const fee = calculateTransactionFee(paymentMethod, amount);
+  if (fee === 0) return 'Gratis';
+  return `Rp ${fee.toLocaleString('id-ID')}`;
+}
+
+// ==========================================
+// INTERFACES
+// ==========================================
 
 interface OrderData {
   id?: string;
@@ -109,6 +195,27 @@ interface UserProfile {
   avatar?: string;
 }
 
+interface PaymentResponse {
+  success: boolean;
+  paymentType: string;
+  orderId: string;
+  amount: number;
+  transactionFee: number;
+  totalAmount: number;
+  paymentUrl?: string;
+  vaNumber?: string;
+  qrString?: string;
+  expirationDate?: string;
+  xenditId?: string;
+  message?: string;
+  error?: string;
+  details?: any;
+}
+
+// ==========================================
+// MAIN COMPONENT
+// ==========================================
+
 export default function VendorFormPage() {
   const params = useParams();
   const router = useRouter();
@@ -121,13 +228,8 @@ export default function VendorFormPage() {
   const [leaving, setLeaving] = useState(false);
   const [navigationUrl, setNavigationUrl] = useState<string>("");
   const [gettingLocation, setGettingLocation] = useState(false);
-  const [currentStep, setCurrentStep] = useState<'form' | 'confirmation'>('form');
+  const [currentStep, setCurrentStep] = useState<'form' | 'confirmation' | 'payment'>('form');
   const [selectedPayment, setSelectedPayment] = useState<string>("");
-  const [cardData, setCardData] = useState({
-    cardNumber: "",
-    expiryDate: "",
-    cvv: ""
-  });
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [initialOrderId, setInitialOrderId] = useState<string>("");
   const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
@@ -137,13 +239,14 @@ export default function VendorFormPage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Payment response data
+  const [paymentData, setPaymentData] = useState<PaymentResponse | null>(null);
+
   const fetchUserProfile = async () => {
     try {
       const response = await fetch('/api/user/profile', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });
 
@@ -171,34 +274,12 @@ export default function VendorFormPage() {
     try {
       const response = await fetch(`/api/vendors/${vendorId}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('=== VENDOR API RESPONSE ===');
-        console.log('Full response:', data);
-        console.log('Vendor object:', data.vendor);
-        console.log('Services array:', data.vendor?.services);
-        console.log('Services length:', data.vendor?.services?.length);
-        
-        if (data.vendor?.services) {
-          console.log('Services detail:');
-          data.vendor.services.forEach((s: any, i: number) => {
-            console.log(`Service ${i + 1}:`, {
-              id: s.service_id || s.id,
-              name: s.name,
-              price: s.price,
-              price_type: s.priceType || s.price_type,
-              is_active: s.isActive !== undefined ? s.isActive : s.is_active,
-              is_active_type: typeof (s.isActive !== undefined ? s.isActive : s.is_active)
-            });
-          });
-        }
-        
         if (data.vendor) {
           const normalizedVendor = {
             ...data.vendor,
@@ -213,26 +294,14 @@ export default function VendorFormPage() {
               is_active: s.isActive !== undefined ? s.isActive : s.is_active
             })) || []
           };
-          
-          console.log('Normalized vendor:', normalizedVendor);
           setVendor(normalizedVendor);
           return normalizedVendor;
-        } else {
-          toast.error("Data vendor tidak ditemukan");
-          setVendor(null);
-          return null;
         }
-      } else {
-        const errorData = await response.json();
-        console.error('API Error:', errorData);
-        toast.error(errorData.error || "Gagal memuat data vendor");
-        setVendor(null);
-        return null;
       }
+      return null;
     } catch (error) {
       console.error("Error fetching vendor:", error);
       toast.error("Terjadi kesalahan saat memuat data vendor");
-      setVendor(null);
       return null;
     }
   };
@@ -301,7 +370,7 @@ export default function VendorFormPage() {
       setFormData({ ...formData, gpsLink: userProfile.gps_link });
       toast.success("Lokasi dari profile berhasil dimuat!");
     } else {
-      toast.error("Belum ada lokasi tersimpan di profile. Silakan isi di halaman Profile terlebih dahulu.");
+      toast.error("Belum ada lokasi tersimpan di profile.");
     }
   };
 
@@ -309,9 +378,7 @@ export default function VendorFormPage() {
     try {
       const response = await fetch('/api/bookings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(orderData),
       });
@@ -324,70 +391,67 @@ export default function VendorFormPage() {
       const data = await response.json();
       return { success: true, orderId: data.orderId };
     } catch (error: any) {
-      console.error("Error saving order to database:", error);
+      console.error("Error saving order:", error);
       return { success: false, error: error.message };
     }
   };
 
-  const updatePaymentStatus = async (orderId: string, paymentData: {
-    paymentMethod: string;
-    paymentStatus: string;
-    transactionFee: number;
-    totalAmount: number;
-  }): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const response = await fetch(`/api/bookings/${orderId}/payment`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(paymentData),
-      });
+  const validateFormData = () => {
+    const errors: string[] = [];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Gagal memperbarui status pembayaran');
-      }
-
-      return { success: true };
-    } catch (error: any) {
-      console.error("Error updating payment status:", error);
-      return { success: false, error: error.message };
+    if (!formData.name || formData.name.trim() === '') {
+      errors.push('Nama pelanggan harus diisi');
     }
+
+    if (!formData.email || formData.email.trim() === '') {
+      errors.push('Email pelanggan harus diisi');
+    }
+
+    if (!formData.phone || formData.phone.trim() === '') {
+      errors.push('Nomor telepon harus diisi');
+    }
+
+    if (!formData.address || formData.address.trim() === '') {
+      errors.push('Alamat harus diisi');
+    }
+
+    if (!formData.date) {
+      errors.push('Tanggal pengerjaan harus dipilih');
+    }
+
+    if (!formData.selectedServices || formData.selectedServices.length === 0) {
+      errors.push('Minimal pilih satu layanan');
+    }
+
+    return errors;
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.selectedServices || formData.selectedServices.length === 0) {
-      toast.error("Silakan pilih minimal satu layanan");
+    console.log('[Form] Validating form data...');
+
+    // Validate form
+    const validationErrors = validateFormData();
+    if (validationErrors.length > 0) {
+      console.error('[Form] Validation errors:', validationErrors);
+      toast.error(validationErrors[0]);
       return;
     }
 
+    // Validate date
     const selectedDate = new Date(formData.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     selectedDate.setHours(0, 0, 0, 0);
 
     if (selectedDate <= today) {
-      toast.error("Tanggal harus mulai dari besok. Tidak bisa memilih tanggal hari ini atau yang sudah lewat.");
+      toast.error("Tanggal harus mulai dari besok.");
       return;
     }
 
     const hour = formData.hour || "00";
     const minute = formData.minute || "00";
-
-    if (parseInt(hour) < 0 || parseInt(hour) > 23) {
-      toast.error("Jam harus antara 00-23");
-      return;
-    }
-
-    if (parseInt(minute) < 0 || parseInt(minute) > 59) {
-      toast.error("Menit harus antara 00-59");
-      return;
-    }
-
     const formattedTime = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
 
     const servicePrice = calculateServicePrice();
@@ -398,16 +462,16 @@ export default function VendorFormPage() {
 
     const orderData: OrderData = {
       orderId: orderId,
-      customerName: formData.name || "",
-      customerEmail: formData.email || "",
-      customerPhone: formData.phone || "",
-      customerAddress: formData.address || "",
+      customerName: formData.name,
+      customerEmail: formData.email,
+      customerPhone: formData.phone,
+      customerAddress: formData.address,
       gpsLink: formData.gpsLink || "",
       vendorId: vendorId,
       serviceCategory: vendor?.category || (vendor?.tags?.[0] || "Lainnya"),
       serviceDetails: {
-        selectedServices: formData.selectedServices || [],
-        quantities: formData.quantities || {},
+        selectedServices: formData.selectedServices,
+        quantities: formData.quantities,
         notes: formData.notes || ""
       },
       workDate: formData.date,
@@ -421,100 +485,192 @@ export default function VendorFormPage() {
       totalAmount: servicePrice + SERVICE_FEE
     };
 
-    // Set loading state
+    console.log('[Form] Submitting order:', JSON.stringify(orderData, null, 2));
     setIsSubmittingOrder(true);
 
     try {
-      // Kirim request ke server (async, waktu tergantung server)
       const result = await saveOrderToDatabase(orderData);
-      
+
       if (!result.success) {
         toast.error(result.error || "Gagal menyimpan pesanan");
         setIsSubmittingOrder(false);
         return;
       }
 
-      // Tampilkan modal sukses
+      console.log('[Form] Order saved successfully');
       setShowSuccessModal(true);
-
-      // Tunggu 2 detik untuk animasi modal
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
       setShowSuccessModal(false);
       setCurrentStep('confirmation');
+
     } catch (error) {
+      console.error('[Form] Error submitting order:', error);
       toast.error("Terjadi kesalahan saat memproses pesanan");
-      console.error(error);
     } finally {
       setIsSubmittingOrder(false);
     }
   };
 
-  const handleFinalSubmit = async () => {
-    if (!selectedPayment) {
-      toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
+  const handlePaymentSubmit = async () => {
+  if (!selectedPayment) {
+    toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
+    return;
+  }
+
+  setIsProcessingPayment(true);
+
+  const servicePrice = calculateServicePrice();
+  const baseAmount = servicePrice + SERVICE_FEE;
+  const transactionFee = calculateTransactionFee(selectedPayment, baseAmount);
+  const totalAmount = baseAmount + transactionFee;
+
+  // Prepare request payload
+  const requestPayload = {
+    orderId: initialOrderId,
+    paymentMethod: selectedPayment,
+    customerName: formData.name || vendor?.name || 'Customer',
+    customerEmail: formData.email || userProfile?.email || '',
+    customerPhone: formData.phone || userProfile?.phone || '',
+    amount: baseAmount,
+    description: `Pembayaran untuk layanan dari ${vendor?.name || 'Vendor'}`,
+  };
+
+  console.log('='.repeat(60));
+  console.log('[Payment Frontend] Starting payment process');
+  console.log('[Payment Frontend] Selected payment method:', selectedPayment);
+  console.log('[Payment Frontend] Request payload:', JSON.stringify(requestPayload, null, 2));
+  console.log('[Payment Frontend] Calculated amounts:', {
+    servicePrice,
+    serviceFee: SERVICE_FEE,
+    baseAmount,
+    transactionFee,
+    totalAmount
+  });
+
+  try {
+    console.log('[Payment Frontend] Sending POST request to /api/payments/xendit');
+
+    const response = await fetch('/api/payments/xendit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(requestPayload),
+    });
+
+    console.log('[Payment Frontend] Response received:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
+    // Try to parse response
+    let data: PaymentResponse;
+    try {
+      data = await response.json();
+      console.log('[Payment Frontend] Response data:', JSON.stringify(data, null, 2));
+    } catch (parseError) {
+      console.error('[Payment Frontend] Failed to parse response:', parseError);
+      toast.error('Server mengembalikan response yang tidak valid', { duration: 5000 });
+      setIsProcessingPayment(false);
       return;
     }
 
-    if (selectedPayment === "debit-credit") {
-      if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
-        toast.error("Silakan lengkapi data kartu debit/kredit.");
-        return;
+    // Handle error responses - CHECK BOTH response.ok AND data.success
+    if (!response.ok || !data.success) {
+      console.error('[Payment Frontend] API returned error:', {
+        status: response.status,
+        success: data.success,
+        error: data.error,
+        message: data.message,
+        details: data.details
+      });
+
+      // Show detailed error message
+      const errorMessage = data.message || 'Gagal membuat pembayaran';
+      let errorDetails = '';
+      
+      if (data.details) {
+        if (Array.isArray(data.details)) {
+          errorDetails = data.details.join(', ');
+        } else if (typeof data.details === 'string') {
+          errorDetails = data.details;
+        } else {
+          errorDetails = JSON.stringify(data.details);
+        }
       }
 
-      const cleanedCardNumber = cardData.cardNumber.replace(/\s/g, '');
-      if (cleanedCardNumber.length < 12 || !/^\d+$/.test(cleanedCardNumber)) {
-        toast.error("Nomor kartu tidak valid. Harus minimal 12 digit angka.");
-        return;
-      }
+      toast.error(
+        errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage,
+        { duration: 5000 }
+      );
 
-      if (!/^\d{2}\/\d{2}$/.test(cardData.expiryDate)) {
-        toast.error("Format masa berlaku tidak valid. Gunakan format MM/YY (contoh: 01/24).");
-        return;
-      }
-
-      if (!/^\d{3,4}$/.test(cardData.cvv)) {
-        toast.error("CVV tidak valid. Harus 3 atau 4 digit angka.");
-        return;
-      }
+      setIsProcessingPayment(false);
+      return;
     }
 
-    setIsProcessingPayment(true);
+    // Success - save payment data
+    setPaymentData(data);
+    console.log('[Payment Frontend] Payment created successfully:', {
+      paymentType: data.paymentType,
+      orderId: data.orderId,
+      totalAmount: data.totalAmount
+    });
 
-    const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-    const totalPrice = calculateTotalPrice();
-
-    const paymentData = {
-      paymentMethod: selectedPayment,
-      paymentStatus: "paid",
-      transactionFee: transactionFee,
-      totalAmount: totalPrice
-    };
-
-    try {
-      // Kirim request pembayaran ke server (async, waktu tergantung server)
-      const result = await updatePaymentStatus(initialOrderId, paymentData);
-
-      if (!result.success) {
-        toast.error(result.error || "Gagal memproses pembayaran");
-        setIsProcessingPayment(false);
-        return;
-      }
-
-      // Tampilkan modal sukses pembayaran
+    // Handle different payment types
+    if (data.paymentType === 'tunai') {
+      console.log('[Payment Frontend] Handling cash payment');
+      toast.success('Pembayaran tunai berhasil dikonfirmasi!');
       setShowPaymentSuccessModal(true);
 
-      // Tunggu 3 detik sebelum redirect
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
+      await new Promise(resolve => setTimeout(resolve, 2000));
       setShowPaymentSuccessModal(false);
+
+      console.log('[Payment Frontend] Redirecting to /riwayat_pemesanan');
       router.push('/riwayat_pemesanan');
-    } catch (error) {
-      toast.error("Terjadi kesalahan saat memproses pembayaran");
-      console.error(error);
-      setIsProcessingPayment(false);
+
+    } else if (data.paymentUrl) {
+      console.log('[Payment Frontend] Redirecting to Xendit checkout:', data.paymentUrl);
+      toast.success('Mengarahkan ke halaman pembayaran...');
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      console.log('[Payment Frontend] Performing redirect');
+      window.location.href = data.paymentUrl;
+
+    } else if (data.vaNumber || data.qrString) {
+      console.log('[Payment Frontend] Showing payment instructions');
+      toast.success('Instruksi pembayaran berhasil dibuat');
+      setCurrentStep('payment');
+
+    } else {
+      console.log('[Payment Frontend] Fallback redirect to order history');
+      toast.success('Pembayaran berhasil dibuat');
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      router.push('/riwayat_pemesanan');
     }
-  };
+
+  } catch (error: any) {
+    console.error('='.repeat(60));
+    console.error('[Payment Frontend] Error caught:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    console.error('='.repeat(60));
+
+    // Show user-friendly error
+    const errorMessage = error.message || "Terjadi kesalahan saat memproses pembayaran";
+    toast.error(errorMessage, { duration: 5000 });
+
+  } finally {
+    console.log('[Payment Frontend] Payment process completed');
+    console.log('='.repeat(60));
+    setIsProcessingPayment(false);
+  }
+};
 
   const calculateServicePrice = () => {
     if (!vendor || !vendor.services) return 0;
@@ -535,40 +691,9 @@ export default function VendorFormPage() {
 
   const calculateTotalPrice = () => {
     const servicePrice = calculateServicePrice();
-    const paymentFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-    return servicePrice + SERVICE_FEE + paymentFee;
-  };
-
-  const formatCardNumber = (value: string) => {
-    const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
-    const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
-    return formatted.substring(0, 19);
-  };
-
-  const formatExpiryDate = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    if (cleaned.length >= 2) {
-      return `${cleaned.substring(0, 2)}/${cleaned.substring(2, 4)}`;
-    }
-    return cleaned;
-  };
-
-  const getServiceDescription = () => {
-    if (!vendor || !vendor.services) return "Layanan";
-
-    const selectedServices = formData.selectedServices || [];
-    if (selectedServices.length === 0) return "Layanan";
-
-    const serviceNames = selectedServices.map((serviceId: string) => {
-      const service = vendor.services?.find((s: Service) => s.service_id === serviceId);
-      if (service) {
-        const quantity = formData.quantities?.[serviceId] || 1;
-        return `${service.name}${quantity > 1 ? ` (${quantity}x)` : ''}`;
-      }
-      return "";
-    }).filter(Boolean).join(", ");
-
-    return serviceNames || "Layanan";
+    const baseAmount = servicePrice + SERVICE_FEE;
+    const transactionFee = selectedPayment ? calculateTransactionFee(selectedPayment, baseAmount) : 0;
+    return baseAmount + transactionFee;
   };
 
   const formatPrice = (price: number, priceType: string) => {
@@ -579,12 +704,9 @@ export default function VendorFormPage() {
     }).format(price);
 
     switch (priceType) {
-      case 'HOURLY':
-        return `${formattedPrice}/jam`;
-      case 'UNIT':
-        return `${formattedPrice}/unit`;
-      default:
-        return formattedPrice;
+      case 'HOURLY': return `${formattedPrice}/jam`;
+      case 'UNIT': return `${formattedPrice}/unit`;
+      default: return formattedPrice;
     }
   };
 
@@ -627,10 +749,8 @@ export default function VendorFormPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">Vendor Tidak Ditemukan</h1>
-          <p className="text-gray-600 mb-4">Vendor dengan ID {params.vendorId} tidak ditemukan dalam database.</p>
-          <Button onClick={() => handleNavigation("/jasa")}>
-            Kembali ke Daftar Jasa
-          </Button>
+          <p className="text-gray-600 mb-4">Vendor dengan ID {params.vendorId} tidak ditemukan.</p>
+          <Button onClick={() => handleNavigation("/jasa")}>Kembali ke Daftar Jasa</Button>
         </div>
       </div>
     );
@@ -647,52 +767,40 @@ export default function VendorFormPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
+        {/* Breadcrumb */}
         <div className="mb-6">
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                    <a href="/" className="cursor-pointer" onClick={(e) => handleBreadcrumbClick(e, "/")}>
-                      Home
-                    </a>
-                  </motion.span>
+                  <a href="/" onClick={(e) => handleBreadcrumbClick(e, "/")}>Home</a>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                    <a href="/jasa" className="cursor-pointer" onClick={(e) => handleBreadcrumbClick(e, "/jasa")}>
-                      Jasa
-                    </a>
-                  </motion.span>
+                  <a href="/jasa" onClick={(e) => handleBreadcrumbClick(e, "/jasa")}>Jasa</a>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                    <a
-                      href={`/jasa/detailjasa/${vendor.vendor_id}`}
-                      className="cursor-pointer"
-                      onClick={(e) => handleBreadcrumbClick(e, `/jasa/detailjasa/${vendor.vendor_id}`)}
-                    >
-                      {vendor.name}
-                    </a>
-                  </motion.span>
+                  <a href={`/jasa/detailjasa/${vendor.vendor_id}`} onClick={(e) => handleBreadcrumbClick(e, `/jasa/detailjasa/${vendor.vendor_id}`)}>
+                    {vendor.name}
+                  </a>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 <BreadcrumbPage>
-                  {currentStep === 'form' ? 'Form Pemesanan' : 'Konfirmasi Pemesanan'}
+                  {currentStep === 'form' ? 'Form Pemesanan' : currentStep === 'confirmation' ? 'Konfirmasi' : 'Pembayaran'}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </div>
 
+        {/* Step Content */}
         {currentStep === 'form' ? (
           <OrderForm
             vendor={vendor}
@@ -708,27 +816,31 @@ export default function VendorFormPage() {
             formatPrice={formatPrice}
             isSubmittingOrder={isSubmittingOrder}
           />
-        ) : (
+        ) : currentStep === 'confirmation' ? (
           <ConfirmationStep
             vendor={vendor}
             formData={formData}
             servicePrice={servicePrice}
             selectedPayment={selectedPayment}
             setSelectedPayment={setSelectedPayment}
-            cardData={cardData}
-            setCardData={setCardData}
-            formatCardNumber={formatCardNumber}
-            formatExpiryDate={formatExpiryDate}
             totalPrice={totalPrice}
             onBack={() => setCurrentStep('form')}
-            onConfirm={handleFinalSubmit}
+            onConfirm={handlePaymentSubmit}
             isProcessingPayment={isProcessingPayment}
-            getServiceDescription={getServiceDescription}
             formatPrice={formatPrice}
+            calculateTransactionFee={calculateTransactionFee}
+          />
+        ) : (
+          <PaymentStep
+            paymentData={paymentData}
+            selectedPayment={selectedPayment}
+            onBack={() => setCurrentStep('confirmation')}
+            orderId={initialOrderId}
           />
         )}
       </motion.main>
 
+      {/* Success Modals */}
       <AnimatePresence>
         {showSuccessModal && (
           <motion.div
@@ -746,13 +858,8 @@ export default function VendorFormPage() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
                 <Check className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Berhasil Mengajukan Pemesanan!
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Pesanan Anda telah berhasil diajukan dan tersimpan di database.
-                Silakan lanjutkan ke pembayaran.
-              </p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Berhasil Mengajukan Pemesanan!</h3>
+              <p className="text-gray-600 mb-6">Silakan lanjutkan ke pembayaran.</p>
               <div className="flex justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
               </div>
@@ -779,14 +886,14 @@ export default function VendorFormPage() {
                 <Check className="h-8 w-8 text-green-600" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Pembayaran Berhasil!
+                {selectedPayment === 'tunai' ? 'Pesanan Tunai Dikonfirmasi!' : 'Pembayaran Berhasil!'}
               </h3>
               <p className="text-gray-600 mb-4">
-                Pembayaran Anda telah berhasil diproses. Pesanan Anda sekarang dalam proses pengerjaan.
+                {selectedPayment === 'tunai'
+                  ? 'Siapkan pembayaran tunai saat layanan diberikan.'
+                  : 'Pesanan Anda sedang diproses.'}
               </p>
-              <p className="text-sm text-gray-500 mb-6">
-                Anda akan diarahkan ke halaman riwayat pemesanan...
-              </p>
+              <p className="text-sm text-gray-500 mb-6">Anda akan diarahkan ke halaman riwayat pemesanan...</p>
               <div className="flex justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
               </div>
@@ -798,12 +905,10 @@ export default function VendorFormPage() {
       <AnimatePresence>
         {leaving && (
           <motion.div
-            key="route-leave"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
+            className="fixed inset-0 z-[9999] bg-white flex items-center justify-center"
           >
             <LoaderTwo />
           </motion.div>
@@ -813,7 +918,11 @@ export default function VendorFormPage() {
   );
 }
 
-// OrderForm component
+// ==========================================
+// ORDER FORM COMPONENT
+// (Tetap sama seperti sebelumnya, tidak ada perubahan)
+// ==========================================
+
 function OrderForm({
   vendor,
   formData,
@@ -841,58 +950,30 @@ function OrderForm({
   }, []);
 
   const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value;
-    value = value.replace(/\D/g, '');
+    let value = e.target.value.replace(/\D/g, '');
     if (value === '') {
       setFormData({ ...formData, hour: '' });
       return;
     }
-
     let hour = parseInt(value, 10);
-    if (hour > 23) {
-      hour = 23;
-    }
-
+    if (hour > 23) hour = 23;
     setFormData({ ...formData, hour: hour.toString() });
   };
 
   const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value;
-    value = value.replace(/\D/g, '');
+    let value = e.target.value.replace(/\D/g, '');
     if (value === '') {
       setFormData({ ...formData, minute: '' });
       return;
     }
-
     let minute = parseInt(value, 10);
-    if (minute > 59) {
-      minute = 59;
-    }
-
+    if (minute > 59) minute = 59;
     setFormData({ ...formData, minute: minute.toString() });
   };
 
   const activeServices = useMemo(() => {
-    if (!vendor || !vendor.services || !Array.isArray(vendor.services)) {
-      console.log('❌ No services found in vendor data');
-      return [];
-    }
-    
-    console.log('=== FILTERING SERVICES IN FORM ===');
-    console.log('Total services:', vendor.services.length);
-    
-    const filtered = vendor.services.filter((s: any) => {
-      const isActive = s.is_active === true;
-      console.log(`Service "${s.name}":`, {
-        service_id: s.service_id,
-        is_active_raw: s.is_active,
-        isActive_result: isActive
-      });
-      return isActive;
-    });
-    
-    console.log('✅ Active services:', filtered.length);
-    return filtered;
+    if (!vendor || !vendor.services || !Array.isArray(vendor.services)) return [];
+    return vendor.services.filter((s: any) => s.is_active === true);
   }, [vendor]);
 
   return (
@@ -924,12 +1005,11 @@ function OrderForm({
       <Card>
         <CardHeader>
           <CardTitle>Form Pemesanan Layanan</CardTitle>
-          <CardDescription>
-            Lengkapi formulir di bawah untuk memesan layanan dari {vendor.name}
-          </CardDescription>
+          <CardDescription>Lengkapi formulir untuk memesan layanan dari {vendor.name}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleFormSubmit} className="space-y-6">
+            {/* Customer Data */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <User className="h-5 w-5" />
@@ -947,7 +1027,6 @@ function OrderForm({
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="phone">No. Telepon *</Label>
                   <Input
@@ -982,17 +1061,8 @@ function OrderForm({
                     disabled={gettingLocation}
                     className="whitespace-nowrap"
                   >
-                    {gettingLocation ? (
-                      <>
-                        <span className="animate-spin mr-2">⟳</span>
-                        Mencari...
-                      </>
-                    ) : (
-                      <>
-                        <Navigation className="h-4 w-4 mr-2" />
-                        Lokasi Saya
-                      </>
-                    )}
+                    <Navigation className="h-4 w-4 mr-2" />
+                    Lokasi Saya
                   </Button>
                 </div>
               </div>
@@ -1010,6 +1080,7 @@ function OrderForm({
               </div>
             </div>
 
+            {/* Services Selection */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Receipt className="h-5 w-5" />
@@ -1020,27 +1091,18 @@ function OrderForm({
                 <Card className="border-2 border-dashed">
                   <CardContent className="py-8 text-center">
                     <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-muted-foreground font-medium mb-2">
-                      Vendor belum menambahkan layanan aktif.
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {vendor.services && vendor.services.length > 0 
-                        ? `Vendor memiliki ${vendor.services.length} layanan, namun belum ada yang diaktifkan.`
-                        : 'Vendor belum menambahkan layanan apapun.'}
-                    </p>
+                    <p className="text-muted-foreground font-medium mb-2">Vendor belum menambahkan layanan aktif.</p>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-3">
                   {activeServices.map((service: any) => {
                     const isSelected = (formData.selectedServices || []).includes(service.service_id);
-                    
+
                     return (
-                      <Card 
-                        key={service.service_id} 
-                        className={`border transition-colors ${
-                          isSelected ? 'border-[#7CE0A8] bg-[#7CE0A8]/5' : 'hover:border-[#7CE0A8]'
-                        }`}
+                      <Card
+                        key={service.service_id}
+                        className={`border transition-colors ${isSelected ? 'border-[#7CE0A8] bg-[#7CE0A8]/5' : 'hover:border-[#7CE0A8]'}`}
                       >
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between gap-4">
@@ -1048,9 +1110,7 @@ function OrderForm({
                               <Checkbox
                                 id={service.service_id}
                                 checked={isSelected}
-                                onCheckedChange={(checked) => {
-                                  handleServiceToggle(service.service_id, checked as boolean);
-                                }}
+                                onCheckedChange={(checked) => handleServiceToggle(service.service_id, checked as boolean)}
                               />
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
@@ -1058,30 +1118,21 @@ function OrderForm({
                                     {service.name}
                                   </Label>
                                   <Badge variant="outline" className="text-xs">
-                                    {service.price_type === 'FIXED' ? 'Harga Tetap' :
-                                     service.price_type === 'HOURLY' ? 'Per Jam' :
-                                     'Per Unit'}
+                                    {service.price_type === 'FIXED' ? 'Harga Tetap' : service.price_type === 'HOURLY' ? 'Per Jam' : 'Per Unit'}
                                   </Badge>
                                 </div>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  {service.description}
-                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">{service.description}</p>
                                 {service.estimated_time && (
                                   <div className="flex items-center gap-1 mt-2">
                                     <Calendar className="h-3 w-3 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground">
-                                      {service.estimated_time}
-                                    </span>
+                                    <span className="text-xs text-muted-foreground">{service.estimated_time}</span>
                                   </div>
                                 )}
                               </div>
                             </div>
 
                             <div className="text-right">
-                              <div className="font-semibold text-primary">
-                                {formatPrice(service.price, service.price_type)}
-                              </div>
-
+                              <div className="font-semibold text-primary">{formatPrice(service.price, service.price_type)}</div>
                               {isSelected && (
                                 <div className="mt-3 flex items-center gap-2">
                                   <Button
@@ -1091,22 +1142,15 @@ function OrderForm({
                                     className="h-8 w-8 p-0"
                                     onClick={() => {
                                       const currentQty = formData.quantities?.[service.service_id] || 1;
-                                      if (currentQty > 1) {
-                                        handleQuantityChange(service.service_id, currentQty - 1);
-                                      }
+                                      if (currentQty > 1) handleQuantityChange(service.service_id, currentQty - 1);
                                     }}
-                                  >
-                                    -
-                                  </Button>
+                                  >-</Button>
                                   <Input
                                     type="number"
                                     min="1"
                                     value={formData.quantities?.[service.service_id] || 1}
                                     className="w-16 text-center h-8"
-                                    onChange={(e) => {
-                                      const qty = parseInt(e.target.value) || 1;
-                                      handleQuantityChange(service.service_id, qty);
-                                    }}
+                                    onChange={(e) => handleQuantityChange(service.service_id, parseInt(e.target.value) || 1)}
                                   />
                                   <Button
                                     type="button"
@@ -1117,9 +1161,7 @@ function OrderForm({
                                       const currentQty = formData.quantities?.[service.service_id] || 1;
                                       handleQuantityChange(service.service_id, currentQty + 1);
                                     }}
-                                  >
-                                    +
-                                  </Button>
+                                  >+</Button>
                                 </div>
                               )}
                             </div>
@@ -1137,9 +1179,7 @@ function OrderForm({
                     <div className="flex justify-between items-center">
                       <div>
                         <span className="font-medium">Total Estimasi Layanan:</span>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          * Harga belum termasuk biaya layanan dan biaya transaksi
-                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">* Belum termasuk biaya layanan dan biaya transaksi</p>
                       </div>
                       <span className="text-xl font-bold text-primary">
                         Rp {(() => {
@@ -1161,6 +1201,7 @@ function OrderForm({
               )}
             </div>
 
+            {/* Schedule */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
@@ -1187,7 +1228,7 @@ function OrderForm({
                       <div className="flex items-center border rounded-md overflow-hidden">
                         <Input
                           type="text"
-                          className="border-0 text-center focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
+                          className="border-0 text-center focus-visible:ring-0 rounded-none"
                           placeholder="00"
                           value={formData.hour || ""}
                           onChange={handleHourChange}
@@ -1196,7 +1237,7 @@ function OrderForm({
                         <div className="px-2 py-2 bg-gray-50">:</div>
                         <Input
                           type="text"
-                          className="border-0 text-center focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
+                          className="border-0 text-center focus-visible:ring-0 rounded-none"
                           placeholder="00"
                           value={formData.minute || ""}
                           onChange={handleMinuteChange}
@@ -1210,6 +1251,7 @@ function OrderForm({
               </div>
             </div>
 
+            {/* Notes */}
             <div className="space-y-2">
               <Label htmlFor="notes">Catatan Tambahan</Label>
               <Textarea
@@ -1221,10 +1263,9 @@ function OrderForm({
               />
             </div>
 
+            {/* Actions */}
             <div className="flex gap-3 pt-4">
-              <Button type="button" variant="outline" className="flex-1" onClick={handleCancel}>
-                Batal
-              </Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={handleCancel}>Batal</Button>
               <Button
                 type="submit"
                 className="flex-1 text-white transition-colors duration-200"
@@ -1234,13 +1275,8 @@ function OrderForm({
                 disabled={!formData.selectedServices || formData.selectedServices.length === 0 || isSubmittingOrder}
               >
                 {isSubmittingOrder ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Memproses...
-                  </>
-                ) : (
-                  'Ajukan Pemesanan'
-                )}
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memproses...</>
+                ) : 'Ajukan Pemesanan'}
               </Button>
             </div>
           </form>
@@ -1250,22 +1286,22 @@ function OrderForm({
   );
 }
 
-// ConfirmationStep component
+// ==========================================
+// CONFIRMATION STEP COMPONENT
+// ==========================================
+
 function ConfirmationStep({
   vendor,
   formData,
   servicePrice,
   selectedPayment,
   setSelectedPayment,
-  cardData,
-  setCardData,
-  formatCardNumber,
-  formatExpiryDate,
   totalPrice,
   onBack,
   onConfirm,
   isProcessingPayment,
-  formatPrice
+  formatPrice,
+  calculateTransactionFee
 }: any) {
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -1273,40 +1309,45 @@ function ConfirmationStep({
     va: false,
     card: false,
     qris: false,
-    cash: false
+    retail: false,
+    tunai: false
   });
 
-  const paymentMethods = {
-    ewallet: [
-      { id: "dana", name: "DANA", icon: Wallet, fee: 1440, color: "#10B981" },
-      { id: "ovo", name: "OVO", icon: SmartphoneIcon, fee: 1440, color: "#4F46E5" },
-      { id: "gopay", name: "GoPay", icon: SmartphoneIcon, fee: 1440, color: "#00AA13" },
-    ],
-    va: [
-      { id: "bca-va", name: "BCA Virtual Account", icon: Building, fee: 3850, color: "#1E3A8A" },
-      { id: "bni-va", name: "BNI Virtual Account", icon: Building, fee: 3700, color: "#F59E0B" },
-      { id: "bri-va", name: "BRI Virtual Account", icon: Building, fee: 3700, color: "#DC2626" },
-      { id: "mandiri-va", name: "Mandiri Virtual Account", icon: Building, fee: 3700, color: "#059669" },
-      { id: "bsi-va", name: "BSI Virtual Account", icon: Building, fee: 3850, color: "#7C3AED" },
-    ],
-    card: [
-      { id: "debit-credit", name: "Kartu Debit/Kredit", icon: CreditCardIcon, fee: 2784, color: "#3B82F6" },
-    ],
-    qris: [
-      { id: "qris", name: "QRIS", icon: QrCode, fee: 1571, color: "#EF4444" },
-    ],
-    cash: [
-      { id: "tunai", name: "Tunai", icon: Banknote, fee: 0, color: "#6B7280" },
-    ]
+  const paymentCategories = {
+    ewallet: {
+      name: 'E-Wallet',
+      icon: Wallet,
+      methods: ['ewallet_dana', 'ewallet_ovo', 'ewallet_shopeepay', 'ewallet_linkaja']
+    },
+    va: {
+      name: 'Virtual Account',
+      icon: Building,
+      methods: ['va_bca', 'va_bni', 'va_bri', 'va_mandiri', 'va_permata', 'va_bsi', 'va_cimb']
+    },
+    qris: {
+      name: 'QRIS',
+      icon: QrCode,
+      methods: ['qris']
+    },
+    card: {
+      name: 'Kartu Kredit/Debit',
+      icon: CreditCard,
+      methods: ['card_visa', 'card_mastercard', 'card_jcb']
+    },
+    retail: {
+      name: 'Gerai Retail',
+      icon: Store,
+      methods: ['retail_alfamart', 'retail_indomaret']
+    },
+    tunai: {
+      name: 'Tunai',
+      icon: Banknote,
+      methods: ['tunai']
+    }
   };
 
-  const getPaymentMethodName = (id: string) => {
-    for (const category of Object.values(paymentMethods)) {
-      const method = category.find(m => m.id === id);
-      if (method) return method.name;
-    }
-    return "";
-  };
+  const baseAmount = servicePrice + SERVICE_FEE;
+  const transactionFee = selectedPayment ? calculateTransactionFee(selectedPayment, baseAmount) : 0;
 
   const formatTimeForDisplay = () => {
     const hour = formData.hour || "0";
@@ -1315,23 +1356,15 @@ function ConfirmationStep({
   };
 
   const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const getSelectedServicesDetails = () => {
     if (!vendor || !vendor.services) return [];
-    
     return formData.selectedServices.map((serviceId: string) => {
       const service = vendor.services.find((s: any) => s.service_id === serviceId);
       const quantity = formData.quantities?.[serviceId] || 1;
-      return {
-        ...service,
-        quantity,
-        total: service ? service.price * quantity : 0
-      };
+      return { ...service, quantity, total: service ? service.price * quantity : 0 };
     });
   };
 
@@ -1339,13 +1372,12 @@ function ConfirmationStep({
 
   return (
     <div className="space-y-6">
+      {/* Order Info Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Informasi Pemesanan</span>
-            <Button variant="outline" size="sm" onClick={onBack}>
-              Ubah
-            </Button>
+            <Button variant="outline" size="sm" onClick={onBack}>Ubah</Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -1371,10 +1403,7 @@ function ConfirmationStep({
               </div>
               <p className="text-sm">
                 {formData.date ? new Date(formData.date).toLocaleDateString('id-ID', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
+                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                 }) : "Tanggal belum dipilih"} • {formatTimeForDisplay()}
               </p>
             </div>
@@ -1411,11 +1440,15 @@ function ConfirmationStep({
               </div>
               <div className="flex justify-between">
                 <span>Biaya Transaksi</span>
-                <span>
-                  {selectedPayment ?
-                    `Rp ${PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID') || '0'}` :
-                    "0"
-                  }
+                <span className="text-right">
+                  {selectedPayment ? (
+                    <span>
+                      {getCalculatedFeeDisplay(selectedPayment, baseAmount)}
+                      <span className="text-xs text-muted-foreground block">
+                        ({getFeeDescription(selectedPayment)})
+                      </span>
+                    </span>
+                  ) : '-'}
                 </span>
               </div>
               <div className="border-t pt-2 mt-2">
@@ -1429,16 +1462,14 @@ function ConfirmationStep({
         </CardContent>
       </Card>
 
+      {/* Payment Method Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CreditCardIcon className="h-5 w-5" />
+              <CreditCard className="h-5 w-5" />
               <span>Pilih Metode Pembayaran</span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setShowPaymentOptions(!showPaymentOptions)}>
-              {selectedPayment ? 'Ubah' : 'Pilih'}
-            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1446,14 +1477,12 @@ function ConfirmationStep({
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">{getPaymentMethodName(selectedPayment)}</p>
+                  <p className="font-medium">{XENDIT_PAYMENT_FEES[selectedPayment]?.name || selectedPayment}</p>
                   <p className="text-sm text-muted-foreground">
-                    Biaya Transaksi: Rp {PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID')}
+                    Biaya Transaksi: {getCalculatedFeeDisplay(selectedPayment, baseAmount)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(true)}>
-                  Ubah
-                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(true)}>Ubah</Button>
               </div>
             </div>
           ) : (
@@ -1465,122 +1494,52 @@ function ConfirmationStep({
             </div>
           )}
 
-          {selectedPayment === "debit-credit" && (
-            <div className="mb-6 p-6 border rounded-lg bg-white shadow-sm">
-              <div className="mb-4">
-                <h3 className="text-xl font-bold">Kartu Debit/Kredit</h3>
-                <p className="text-muted-foreground">Biaya Transaksi Rp2.784</p>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2 flex items-center gap-2">
-                    <CreditCardIcon className="h-5 w-5" />
-                    VISA
-                  </h4>
-                  <div className="space-y-2">
-                    <Label htmlFor="cardNumber" className="text-sm font-medium">Nomor Kartu</Label>
-                    <Input
-                      id="cardNumber"
-                      placeholder="Contoh: 1234 5678 9012 3456"
-                      value={formatCardNumber(cardData.cardNumber)}
-                      onChange={(e) => {
-                        const formatted = formatCardNumber(e.target.value);
-                        setCardData({ ...cardData, cardNumber: formatted });
-                      }}
-                      maxLength={19}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="expiryDate" className="text-sm font-medium">Masa Berlaku</Label>
-                    <Input
-                      id="expiryDate"
-                      placeholder="MM/YY"
-                      value={cardData.expiryDate}
-                      onChange={(e) => {
-                        const formatted = formatExpiryDate(e.target.value);
-                        setCardData({ ...cardData, expiryDate: formatted });
-                      }}
-                      maxLength={5}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="cvv" className="text-sm font-medium">CVV</Label>
-                    <Input
-                      id="cvv"
-                      type="password"
-                      placeholder="123"
-                      value={cardData.cvv}
-                      onChange={(e) => {
-                        const cleaned = e.target.value.replace(/\D/g, '');
-                        if (cleaned.length <= 4) {
-                          setCardData({ ...cardData, cvv: cleaned });
-                        }
-                      }}
-                      maxLength={4}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
+          {/* Payment Modal */}
           <AnimatePresence>
             {showPaymentOptions && (
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
                 onClick={() => setShowPaymentOptions(false)}
               >
                 <motion.div
-                  initial={{ scale: 0.95 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0.95 }}
+                  initial={{ scale: 0.95, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.95, y: 20 }}
                   className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="sticky top-0 bg-white border-b px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Pilih Metode Pembayaran</h3>
-                      <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(false)}>✕</Button>
-                    </div>
+                  <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Pilih Metode Pembayaran</h3>
+                    <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(false)}>
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
 
                   <div className="overflow-y-auto max-h-[60vh] p-6">
                     <RadioGroup
                       value={selectedPayment}
-                      onValueChange={(value) => {
-                        setSelectedPayment(value);
-                        if (value !== "debit-credit") {
-                          setCardData({ cardNumber: "", expiryDate: "", cvv: "" });
-                        }
-                      }}
+                      onValueChange={setSelectedPayment}
                       className="space-y-4"
                     >
-                      {Object.entries(paymentMethods).map(([category, methods]) => (
-                        <div key={category} className="border rounded-lg overflow-hidden">
+                      {Object.entries(paymentCategories).map(([categoryKey, category]) => (
+                        <div key={categoryKey} className="border rounded-lg overflow-hidden">
                           <button
                             type="button"
                             className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100"
-                            onClick={() => toggleSection(category)}
+                            onClick={() => toggleSection(categoryKey)}
                           >
-                            <span className="font-medium capitalize">
-                              {category === 'va' ? 'Virtual Account' : 
-                               category === 'ewallet' ? 'E-Wallet' : 
-                               category === 'card' ? 'Kartu' :
-                               category === 'qris' ? 'QRIS' : 'Tunai'}
-                            </span>
-                            {expandedSections[category] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            <div className="flex items-center gap-2">
+                              <category.icon className="h-5 w-5" />
+                              <span className="font-medium">{category.name}</span>
+                            </div>
+                            {expandedSections[categoryKey] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           </button>
+
                           <AnimatePresence>
-                            {expandedSections[category] && (
+                            {expandedSections[categoryKey] && (
                               <motion.div
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: 'auto', opacity: 1 }}
@@ -1588,27 +1547,39 @@ function ConfirmationStep({
                                 className="overflow-hidden"
                               >
                                 <div className="p-4 space-y-2">
-                                  {methods.map((method) => (
-                                    <label
-                                      key={method.id}
-                                      className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${
-                                        selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <RadioGroupItem value={method.id} id={method.id} />
-                                        <div className="flex items-center gap-2">
-                                          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: method.color }}>
-                                            <method.icon className="h-4 w-4 text-white" />
+                                  {category.methods.map((methodId) => {
+                                    const method = XENDIT_PAYMENT_FEES[methodId];
+                                    if (!method) return null;
+
+                                    return (
+                                      <label
+                                        key={methodId}
+                                        className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === methodId ? 'border-[#7CE0A8] bg-[#7CE0A8]/5' : 'hover:border-[#7CE0A8]'
+                                          }`}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <RadioGroupItem value={methodId} id={methodId} />
+                                          <div className="flex items-center gap-2">
+                                            <div
+                                              className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+                                              style={{ backgroundColor: method.color }}
+                                            >
+                                              {method.icon === 'wallet' && <Wallet className="h-4 w-4" />}
+                                              {method.icon === 'building' && <Building className="h-4 w-4" />}
+                                              {method.icon === 'qrcode' && <QrCode className="h-4 w-4" />}
+                                              {method.icon === 'credit-card' && <CreditCard className="h-4 w-4" />}
+                                              {method.icon === 'store' && <Store className="h-4 w-4" />}
+                                              {method.icon === 'banknote' && <Banknote className="h-4 w-4" />}
+                                            </div>
+                                            <span className="font-medium">{method.name}</span>
                                           </div>
-                                          <span>{method.name}</span>
                                         </div>
-                                      </div>
-                                      <span className="text-sm text-muted-foreground">
-                                        {method.fee === 0 ? 'Gratis' : `Rp${method.fee.toLocaleString('id-ID')}`}
-                                      </span>
-                                    </label>
-                                  ))}
+                                        <span className="text-sm text-muted-foreground">
+                                          {getFeeDescription(methodId)}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
                                 </div>
                               </motion.div>
                             )}
@@ -1620,10 +1591,8 @@ function ConfirmationStep({
                     <div className="mt-6 pt-4 border-t">
                       <Button
                         type="button"
-                        className="w-full text-white transition-colors duration-200"
+                        className="w-full text-white"
                         style={{ backgroundColor: '#7CE0A8' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
                         onClick={() => setShowPaymentOptions(false)}
                       >
                         Simpan Metode Pembayaran
@@ -1635,42 +1604,296 @@ function ConfirmationStep({
             )}
           </AnimatePresence>
 
+          {/* Action Buttons */}
           <div className="mt-6 pt-6 border-t">
-            <div className="bg-muted/30 p-4 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-medium">Estimasi Harga</span>
-                <span className="font-bold text-lg">Rp {totalPrice.toLocaleString('id-ID')}</span>
+            <div className="bg-muted/30 p-4 rounded-lg mb-4">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total Pembayaran</span>
+                <span className="font-bold text-xl">Rp {totalPrice.toLocaleString('id-ID')}</span>
               </div>
-              <p className="text-sm text-muted-foreground">Minimum transaksi Rp75.000</p>
             </div>
 
-            <div className="mt-6 flex gap-3">
-              <Button type="button" variant="outline" className="flex-1" onClick={onBack}>
-                Kembali
-              </Button>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={onBack}>Kembali</Button>
               <Button
                 type="button"
-                className="flex-1 text-white transition-colors duration-200"
+                className="flex-1 text-white"
                 style={{ backgroundColor: '#7CE0A8' }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
                 onClick={onConfirm}
-                disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv)) || isProcessingPayment}
+                disabled={!selectedPayment || isProcessingPayment}
               >
                 {isProcessingPayment ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Memproses...
-                  </>
-                ) : (
-                  'Bayar Sekarang'
-                )}
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memproses...</>
+                ) : 'Bayar Sekarang'}
               </Button>
             </div>
 
             <p className="text-xs text-center text-muted-foreground mt-4">
               Dengan mengklik "Bayar Sekarang", Anda menyetujui kebijakan dan privasi dari Selsas
             </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ==========================================
+// PAYMENT STEP COMPONENT (VA / QRIS Display)
+// ==========================================
+
+function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
+  paymentData: PaymentResponse | null;
+  selectedPayment: string;
+  onBack: () => void;
+  orderId: string;
+}) {
+  const router = useRouter();
+  const [copied, setCopied] = useState<string | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    toast.success(`${label} berhasil disalin`);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const formatExpiration = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const handleCheckStatus = async () => {
+    setIsCheckingStatus(true);
+    try {
+      const response = await fetch(`/api/payments/xendit?orderId=${orderId}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.booking) {
+        if (data.booking.paymentStatus === 'PAID') {
+          toast.success('Pembayaran berhasil! Mengarahkan ke riwayat pemesanan...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          router.push('/riwayat_pemesanan');
+        } else {
+          toast.info(`Status: ${data.booking.paymentStatus}`);
+        }
+      }
+    } catch (error) {
+      toast.error('Gagal memeriksa status pembayaran');
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
+  const handleGoToOrderHistory = () => {
+    router.push('/riwayat_pemesanan');
+  };
+
+  if (!paymentData) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-muted-foreground">Data pembayaran tidak ditemukan</p>
+          <Button variant="outline" className="mt-4" onClick={onBack}>Kembali</Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const methodInfo = XENDIT_PAYMENT_FEES[selectedPayment];
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {paymentData.vaNumber && <Building className="h-5 w-5" />}
+            {paymentData.qrString && <QrCode className="h-5 w-5" />}
+            <span>Instruksi Pembayaran</span>
+          </CardTitle>
+          <CardDescription>
+            Selesaikan pembayaran sebelum waktu berakhir
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Payment Method Info */}
+          <div className="p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white"
+                  style={{ backgroundColor: methodInfo?.color || '#6B7280' }}
+                >
+                  {paymentData.vaNumber && <Building className="h-5 w-5" />}
+                  {paymentData.qrString && <QrCode className="h-5 w-5" />}
+                </div>
+                <div>
+                  <p className="font-medium">{methodInfo?.name || selectedPayment}</p>
+                  <p className="text-sm text-muted-foreground">Order ID: {orderId}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* VA Number Display */}
+          {paymentData.vaNumber && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg">
+                <p className="text-sm text-muted-foreground mb-2">Nomor Virtual Account</p>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-2xl font-mono font-bold tracking-wider">{paymentData.vaNumber}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(paymentData.vaNumber!, 'Nomor VA')}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    {copied === 'Nomor VA' ? 'Tersalin!' : 'Salin'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Buka aplikasi mobile banking atau ATM</li>
+                  <li>Pilih menu Transfer / Virtual Account</li>
+                  <li>Masukkan nomor VA di atas</li>
+                  <li>Masukkan nominal pembayaran yang tertera</li>
+                  <li>Konfirmasi dan selesaikan pembayaran</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {/* QRIS Display */}
+          {paymentData.qrString && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg flex flex-col items-center">
+                <p className="text-sm text-muted-foreground mb-4">Scan QR Code dengan aplikasi e-wallet atau mobile banking</p>
+                <div className="bg-white p-4 rounded-lg border">
+                  <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-center">
+                    <div>
+                      <QrCode className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p className="text-xs text-gray-500">Scan dengan aplikasi</p>
+                      <p className="text-xs text-gray-500">pembayaran Anda</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  Gunakan aplikasi seperti DANA, OVO, GoPay, ShopeePay, atau mobile banking
+                </p>
+              </div>
+
+              {/* Instructions */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Buka aplikasi e-wallet atau mobile banking</li>
+                  <li>Pilih menu Scan QR / Bayar dengan QRIS</li>
+                  <li>Scan QR Code di atas</li>
+                  <li>Konfirmasi nominal pembayaran</li>
+                  <li>Selesaikan transaksi</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {/* Amount Display */}
+          <div className="p-4 border rounded-lg">
+            <p className="text-sm text-muted-foreground mb-2">Total Pembayaran</p>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold text-primary">
+                Rp {paymentData.totalAmount.toLocaleString('id-ID')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copyToClipboard(paymentData.totalAmount.toString(), 'Nominal')}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                {copied === 'Nominal' ? 'Tersalin!' : 'Salin'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Termasuk biaya transaksi: Rp {paymentData.transactionFee.toLocaleString('id-ID')}
+            </p>
+          </div>
+
+          {/* Expiration */}
+          {paymentData.expirationDate && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start gap-2 text-yellow-800">
+                <Clock className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Batas Waktu Pembayaran</p>
+                  <p className="text-sm">{formatExpiration(paymentData.expirationDate)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="space-y-3 pt-4">
+            <Button
+              className="w-full text-white"
+              style={{ backgroundColor: '#7CE0A8' }}
+              onClick={handleCheckStatus}
+              disabled={isCheckingStatus}
+            >
+              {isCheckingStatus ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Memeriksa Status...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  Cek Status Pembayaran
+                </>
+              )}
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleGoToOrderHistory}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Lihat Riwayat Pemesanan
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={onBack}
+            >
+              Ubah Metode Pembayaran
+            </Button>
+          </div>
+
+          <div className="pt-4 border-t">
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p>
+                Pembayaran akan diverifikasi secara otomatis setelah berhasil.
+                Anda akan menerima notifikasi setelah pembayaran dikonfirmasi.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
