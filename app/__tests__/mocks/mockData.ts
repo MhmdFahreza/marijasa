@@ -1,0 +1,216 @@
+// __tests__/mocks/mockData.ts
+
+export const mockVendor = {
+  vendor_id: 'test-vendor-123',
+  name: 'Test Vendor Service',
+  email: 'vendor@test.com',
+  phone: '081234567890',
+  avatar: 'https://example.com/avatar.jpg',
+  description: 'Test vendor description',
+  verified: true,
+  status: 'active',
+  rating: 4.5,
+  review_count: 100,
+  service_areas: ['Jakarta', 'Bandung'],
+  specialties: ['Cleaning', 'Repair'],
+  tags: ['Professional', 'Trusted'],
+  category: 'Home Service',
+  join_date: '2024-01-01',
+  services: [
+    {
+      service_id: 'service-001',
+      name: 'Basic Cleaning',
+      description: 'Standard cleaning service',
+      price: 150000,
+      price_type: 'FIXED',
+      estimated_time: '2-3 hours',
+      is_active: true,
+    },
+    {
+      service_id: 'service-002',
+      name: 'Deep Cleaning',
+      description: 'Comprehensive deep cleaning',
+      price: 75000,
+      price_type: 'HOURLY',
+      estimated_time: '4-6 hours',
+      is_active: true,
+    },
+    {
+      service_id: 'service-003',
+      name: 'Window Cleaning',
+      description: 'Window cleaning per unit',
+      price: 25000,
+      price_type: 'UNIT',
+      estimated_time: '30 mins per unit',
+      is_active: true,
+    },
+    {
+      service_id: 'service-004',
+      name: 'Inactive Service',
+      description: 'This service is not active',
+      price: 100000,
+      price_type: 'FIXED',
+      estimated_time: '1 hour',
+      is_active: false,
+    },
+  ],
+  gallery: [],
+};
+
+export const mockUserProfile = {
+  user_id: 'user-test-123',
+  name: 'Test User',
+  email: 'user@test.com',
+  phone: '089876543210',
+  address: 'Jl. Test No. 123, Jakarta',
+  gps_link: 'https://maps.google.com/test-location',
+  avatar: 'https://example.com/user-avatar.jpg',
+};
+
+export const mockFormData = {
+  name: 'Test Customer',
+  email: 'customer@test.com',
+  phone: '081111222333',
+  address: 'Jl. Customer No. 456, Bandung',
+  gpsLink: 'https://maps.google.com/customer-location',
+  date: '2025-02-01',
+  hour: '10',
+  minute: '30',
+  selectedServices: ['service-001', 'service-002'],
+  quantities: {
+    'service-001': 1,
+    'service-002': 2,
+  },
+  notes: 'Please bring extra supplies',
+};
+
+export const mockOrderData = {
+  orderId: 'ORD-123456',
+  customerName: 'Test Customer',
+  customerEmail: 'customer@test.com',
+  customerPhone: '081111222333',
+  customerAddress: 'Jl. Customer No. 456, Bandung',
+  gpsLink: 'https://maps.google.com/customer-location',
+  vendorId: 'test-vendor-123',
+  serviceCategory: 'Home Service',
+  serviceDetails: {
+    selectedServices: ['service-001', 'service-002'],
+    quantities: {
+      'service-001': 1,
+      'service-002': 2,
+    },
+    notes: 'Please bring extra supplies',
+  },
+  workDate: '2025-02-01',
+  workTime: '10:30',
+  additionalNotes: 'Please bring extra supplies',
+  status: 'pending' as const,
+  orderDate: '2025-01-20',
+  paymentStatus: 'pending' as const,
+  subtotal: 300000,
+  serviceFee: 10000,
+  totalAmount: 310000,
+};
+
+export const mockBooking = {
+  booking_id: 'booking-123',
+  booking_number: 'ORD-123456',
+  user_id: 'user-test-123',
+  vendor_id: 'test-vendor-123',
+  scheduled_date: new Date('2025-02-01T10:30:00'),
+  scheduled_time: '10:30',
+  location: 'Jl. Customer No. 456, Bandung\nGPS: https://maps.google.com/customer-location',
+  notes: 'Please bring extra supplies',
+  status: 'PENDING',
+  payment_status: 'PENDING',
+  payment_method: null,
+  subtotal: 300000,
+  service_fee: 10000,
+  transaction_fee: 0,
+  total: 310000,
+  created_at: new Date(),
+  updated_at: new Date(),
+  vendor: {
+    name: 'Test Vendor Service',
+    phone: '081234567890',
+  },
+  items: [
+    {
+      item_id: 'item-001',
+      booking_id: 'booking-123',
+      service_id: 'service-001',
+      quantity: 1,
+      price: 150000,
+      subtotal: 150000,
+      service: {
+        service_id: 'service-001',
+        name: 'Basic Cleaning',
+        description: 'Standard cleaning service',
+        price: 150000,
+        price_type: 'FIXED',
+      },
+    },
+    {
+      item_id: 'item-002',
+      booking_id: 'booking-123',
+      service_id: 'service-002',
+      quantity: 2,
+      price: 75000,
+      subtotal: 150000,
+      service: {
+        service_id: 'service-002',
+        name: 'Deep Cleaning',
+        description: 'Comprehensive deep cleaning',
+        price: 75000,
+        price_type: 'HOURLY',
+      },
+    },
+  ],
+};
+
+export const mockPaymentResponse = {
+  success: true,
+  paymentType: 'va_bca',
+  orderId: 'ORD-123456',
+  amount: 310000,
+  transactionFee: 4500,
+  totalAmount: 314500,
+  vaNumber: '1234567890123456',
+  expirationDate: '2025-01-21T10:30:00.000Z',
+  xenditId: 'xendit-123',
+  message: 'Payment created successfully',
+};
+
+export const mockPaymentResponseQRIS = {
+  success: true,
+  paymentType: 'qris',
+  orderId: 'ORD-123456',
+  amount: 310000,
+  transactionFee: 2170,
+  totalAmount: 312170,
+  qrString: 'QRIS-STRING-DATA-HERE',
+  expirationDate: '2025-01-20T11:30:00.000Z',
+  xenditId: 'xendit-456',
+  message: 'QRIS payment created successfully',
+};
+
+export const mockPaymentResponseTunai = {
+  success: true,
+  paymentType: 'tunai',
+  orderId: 'ORD-123456',
+  amount: 310000,
+  transactionFee: 0,
+  totalAmount: 310000,
+  message: 'Cash payment confirmed',
+};
+
+export const mockXenditPaymentFees = {
+  ewallet_dana: { type: 'percentage', rate: 1.5, min: 1500, name: 'DANA', category: 'ewallet', icon: 'wallet', color: '#10B981' },
+  ewallet_ovo: { type: 'percentage', rate: 1.5, min: 1500, name: 'OVO', category: 'ewallet', icon: 'wallet', color: '#4F46E5' },
+  va_bca: { type: 'fixed', amount: 4500, name: 'BCA Virtual Account', category: 'va', icon: 'building', color: '#1E3A8A' },
+  va_bni: { type: 'fixed', amount: 4000, name: 'BNI Virtual Account', category: 'va', icon: 'building', color: '#F59E0B' },
+  qris: { type: 'percentage', rate: 0.7, min: 0, name: 'QRIS', category: 'qris', icon: 'qrcode', color: '#EF4444' },
+  card_visa: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu Visa', category: 'card', icon: 'credit-card', color: '#1A1F71' },
+  retail_alfamart: { type: 'fixed', amount: 5000, name: 'Alfamart', category: 'retail', icon: 'store', color: '#DC2626' },
+  tunai: { type: 'fixed', amount: 0, name: 'Tunai', category: 'tunai', icon: 'banknote', color: '#6B7280' },
+};
