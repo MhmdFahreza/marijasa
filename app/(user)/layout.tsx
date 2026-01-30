@@ -141,16 +141,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   }, [setLanguage]);
 
-  // Simple navigation - NO loading state for regular page transitions
-  const handleSimpleNavigation = useCallback((path: string) => {
-    if (pathname === path) {
-      setIsMobileMenuOpen(false);
-      return;
-    }
-    setIsMobileMenuOpen(false);
-    router.push(path);
-  }, [pathname, router]);
-
   const handleLogoClick = useCallback(() => {
     setIsMobileMenuOpen(false);
     if (pathname !== "/") {
@@ -410,53 +400,66 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56 mt-2">
-                    <DropdownMenuItem
-                      onClick={() => handleSimpleNavigation("/profile")}
-                      className="flex items-center gap-2 cursor-pointer py-2.5"
-                      disabled={pathname === "/profile"}
-                    >
-                      <User className="w-4 h-4" />
-                      <span
-                        className={
-                          pathname === "/profile"
-                            ? "font-semibold text-[#7CE0A8]"
-                            : ""
-                        }
+                    {/* Use Link for instant navigation */}
+                    <DropdownMenuItem asChild disabled={pathname === "/profile"}>
+                      <Link
+                        href="/profile"
+                        prefetch={true}
+                        className={`flex items-center gap-2 cursor-pointer py-2.5 w-full ${
+                          pathname === "/profile" ? "pointer-events-none opacity-50" : ""
+                        }`}
                       >
-                        Profil Saya
-                      </span>
+                        <User className="w-4 h-4" />
+                        <span
+                          className={
+                            pathname === "/profile"
+                              ? "font-semibold text-[#7CE0A8]"
+                              : ""
+                          }
+                        >
+                          Profil Saya
+                        </span>
+                      </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleSimpleNavigation("/riwayat_pemesanan")}
-                      className="flex items-center gap-2 cursor-pointer py-2.5"
-                      disabled={pathname === "/riwayat_pemesanan"}
-                    >
-                      <Package className="w-4 h-4" />
-                      <span
-                        className={
-                          pathname === "/riwayat_pemesanan"
-                            ? "font-semibold text-[#7CE0A8]"
-                            : ""
-                        }
+                    <DropdownMenuItem asChild disabled={pathname === "/riwayat_pemesanan"}>
+                      <Link
+                        href="/riwayat_pemesanan"
+                        prefetch={true}
+                        className={`flex items-center gap-2 cursor-pointer py-2.5 w-full ${
+                          pathname === "/riwayat_pemesanan" ? "pointer-events-none opacity-50" : ""
+                        }`}
                       >
-                        Riwayat Pesanan
-                      </span>
+                        <Package className="w-4 h-4" />
+                        <span
+                          className={
+                            pathname === "/riwayat_pemesanan"
+                              ? "font-semibold text-[#7CE0A8]"
+                              : ""
+                          }
+                        >
+                          Riwayat Pesanan
+                        </span>
+                      </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleSimpleNavigation("/vendor_favorit")}
-                      className="flex items-center gap-2 cursor-pointer py-2.5"
-                      disabled={pathname === "/vendor_favorit"}
-                    >
-                      <Heart className="w-4 h-4" />
-                      <span
-                        className={
-                          pathname === "/vendor_favorit"
-                            ? "font-semibold text-[#7CE0A8]"
-                            : ""
-                        }
+                    <DropdownMenuItem asChild disabled={pathname === "/vendor_favorit"}>
+                      <Link
+                        href="/vendor_favorit"
+                        prefetch={true}
+                        className={`flex items-center gap-2 cursor-pointer py-2.5 w-full ${
+                          pathname === "/vendor_favorit" ? "pointer-events-none opacity-50" : ""
+                        }`}
                       >
-                        Vendor Favorit
-                      </span>
+                        <Heart className="w-4 h-4" />
+                        <span
+                          className={
+                            pathname === "/vendor_favorit"
+                              ? "font-semibold text-[#7CE0A8]"
+                              : ""
+                          }
+                        >
+                          Vendor Favorit
+                        </span>
+                      </Link>
                     </DropdownMenuItem>
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-1"></div>
                     <DropdownMenuItem
@@ -564,42 +567,46 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   </div>
 
                   <div className="space-y-2">
-                    <button
-                      onClick={() => handleSimpleNavigation("/profile")}
-                      disabled={pathname === "/profile"}
+                    {/* Use Link for mobile menu items */}
+                    <Link
+                      href="/profile"
+                      prefetch={true}
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
                         pathname === "/profile"
-                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold pointer-events-none"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
                       }`}
                     >
                       <User className="w-5 h-5" />
                       <span>Profil Saya</span>
-                    </button>
-                    <button
-                      onClick={() => handleSimpleNavigation("/riwayat_pemesanan")}
-                      disabled={pathname === "/riwayat_pemesanan"}
+                    </Link>
+                    <Link
+                      href="/riwayat_pemesanan"
+                      prefetch={true}
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
                         pathname === "/riwayat_pemesanan"
-                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold pointer-events-none"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
                       }`}
                     >
                       <Package className="w-5 h-5" />
                       <span>Riwayat Pesanan</span>
-                    </button>
-                    <button
-                      onClick={() => handleSimpleNavigation("/vendor_favorit")}
-                      disabled={pathname === "/vendor_favorit"}
+                    </Link>
+                    <Link
+                      href="/vendor_favorit"
+                      prefetch={true}
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
                         pathname === "/vendor_favorit"
-                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold"
+                          ? "bg-[#7CE0A8]/10 text-[#7CE0A8] font-semibold pointer-events-none"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800"
                       }`}
                     >
                       <Heart className="w-5 h-5" />
                       <span>Vendor Favorit</span>
-                    </button>
+                    </Link>
                     <div className="border-t border-gray-200 dark:border-neutral-700 my-2"></div>
                     <button
                       onClick={handleLogout}

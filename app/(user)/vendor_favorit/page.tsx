@@ -1,10 +1,10 @@
-// app/vendor_favorit/page.tsx
+// app/(user)/vendor_favorit/page.tsx
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,7 +18,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar"
 import { Button } from "@/app/components/ui/button";
 import { Heart, Star, ArrowRight, Sparkles, Package } from "lucide-react";
 import SiteFooter from "@/app/(footer)/footer";
-import { LoaderTwo } from "@/app/components/transition/loader";
 import { useAuth } from "@/app/components/contexts/AuthContext";
 
 type FavoriteVendor = {
@@ -32,27 +31,43 @@ type FavoriteVendor = {
   addedAt?: string;
 };
 
+// Skeleton component for loading state
+const VendorSkeleton = () => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+    {[1, 2, 3, 4].map((i) => (
+      <Card key={i} className="p-5 animate-pulse">
+        <div className="flex justify-center mb-4">
+          <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-200" />
+        </div>
+        <div className="text-center space-y-2">
+          <div className="h-5 bg-gray-200 rounded w-3/4 mx-auto" />
+          <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto" />
+          <div className="flex justify-center gap-1">
+            <div className="h-6 w-16 bg-gray-200 rounded-full" />
+            <div className="h-6 w-16 bg-gray-200 rounded-full" />
+          </div>
+          <div className="h-10 bg-gray-200 rounded-xl mt-4" />
+        </div>
+      </Card>
+    ))}
+  </div>
+);
+
 export default function VendorFavoritPage() {
   const router = useRouter();
-  const prefersReduced = useReducedMotion();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   
   const [favorites, setFavorites] = useState<FavoriteVendor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [leaving, setLeaving] = useState(false);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
-  const [navigationInProgress, setNavigationInProgress] = useState(false);
 
-  // Load favorites dari API dengan async handling
+  // Load favorites dari API
   const loadFavoritesFromAPI = useCallback(async () => {
     if (!isAuthenticated || !user) {
       setFavorites([]);
       setIsLoading(false);
       return;
     }
-
-    console.log("[VendorFavorit] Loading favorites from API...");
-    const startTime = Date.now();
 
     try {
       setIsLoading(true);
@@ -63,10 +78,8 @@ export default function VendorFavoritPage() {
       if (response.ok) {
         const data = await response.json();
         setFavorites(data.favorites || []);
-        const duration = Date.now() - startTime;
-        console.log(`[VendorFavorit] Favorites loaded in ${duration}ms`);
       } else {
-        console.error('[VendorFavorit] Error loading favorites:', await response.text());
+        console.error('[VendorFavorit] Error loading favorites');
         setFavorites([]);
       }
     } catch (error) {
@@ -78,60 +91,43 @@ export default function VendorFavoritPage() {
   }, [isAuthenticated, user]);
 
   useEffect(() => {
-    loadFavoritesFromAPI();
-  }, [loadFavoritesFromAPI]);
+    if (!authLoading) {
+      loadFavoritesFromAPI();
+    }
+  }, [loadFavoritesFromAPI, authLoading]);
 
   // Listen for favorites updates
   useEffect(() => {
     const handleFavoritesUpdate = () => {
-      console.log("[VendorFavorit] Favorites updated event received");
       loadFavoritesFromAPI();
     };
 
     window.addEventListener('favoritesUpdated', handleFavoritesUpdate);
-
-    return () => {
-      window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
-    };
+    return () => window.removeEventListener('favoritesUpdated', handleFavoritesUpdate);
   }, [loadFavoritesFromAPI]);
 
-  // Remove favorite handler dengan async
+  // Remove favorite handler
   const handleRemoveFavorite = useCallback(async (vendorId: string) => {
     if (!isAuthenticated || !user) return;
 
-    console.log(`[VendorFavorit] Removing favorite: ${vendorId}`);
-    const startTime = Date.now();
-
-    // Tandai sebagai removing
     setRemovingIds(prev => new Set(prev).add(vendorId));
-
-    // Hapus dari state langsung untuk UX yang lebih baik
     setFavorites(prev => prev.filter(v => v.id !== vendorId));
 
     try {
       const response = await fetch('/api/user/favorites/remove', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ vendorId }),
       });
 
       if (!response.ok) {
-        console.error('[VendorFavorit] Failed to remove favorite');
-        // Jika gagal, kembalikan ke state sebelumnya
         await loadFavoritesFromAPI();
-      } else {
-        const duration = Date.now() - startTime;
-        console.log(`[VendorFavorit] Favorite removed in ${duration}ms`);
       }
     } catch (error) {
       console.error('[VendorFavorit] Error removing favorite:', error);
-      // Jika error, kembalikan ke state sebelumnya
       await loadFavoritesFromAPI();
     } finally {
-      // Clear removing state setelah animasi
       setTimeout(() => {
         setRemovingIds(prev => {
           const next = new Set(prev);
@@ -142,88 +138,31 @@ export default function VendorFavoritPage() {
     }
   }, [isAuthenticated, user, loadFavoritesFromAPI]);
 
-  // Navigation handlers dengan async loading
-  const handleViewProfile = useCallback(async (vendorId: string) => {
-    console.log(`[VendorFavorit] Navigating to vendor profile: ${vendorId}`);
-    const startTime = Date.now();
-
-    setLeaving(true);
-    setNavigationInProgress(true);
-
-    try {
-      // Small delay untuk animasi
-      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 50 : 200));
-      
-      await router.push(`/jasa/detailjasa/${vendorId}`);
-      
-      const duration = Date.now() - startTime;
-      console.log(`[VendorFavorit] Navigation to profile initiated in ${duration}ms`);
-    } catch (error) {
-      console.error('[VendorFavorit] Navigation error:', error);
-      setLeaving(false);
-      setNavigationInProgress(false);
+  // Redirect ke login jika tidak authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
     }
-  }, [router, prefersReduced]);
+  }, [authLoading, isAuthenticated, router]);
 
-  const handleHomeClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    console.log("[VendorFavorit] Navigating to home");
-    const startTime = Date.now();
-
-    setLeaving(true);
-    setNavigationInProgress(true);
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 50 : 200));
-      
-      await router.push("/");
-      
-      const duration = Date.now() - startTime;
-      console.log(`[VendorFavorit] Navigation to home initiated in ${duration}ms`);
-    } catch (error) {
-      console.error('[VendorFavorit] Navigation error:', error);
-      setLeaving(false);
-      setNavigationInProgress(false);
-    }
-  }, [router, prefersReduced]);
-
-  const handleBrowseServices = useCallback(async () => {
-    console.log("[VendorFavorit] Navigating to services");
-    const startTime = Date.now();
-
-    setLeaving(true);
-    setNavigationInProgress(true);
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, prefersReduced ? 50 : 200));
-      
-      await router.push("/jasa");
-      
-      const duration = Date.now() - startTime;
-      console.log(`[VendorFavorit] Navigation to services initiated in ${duration}ms`);
-    } catch (error) {
-      console.error('[VendorFavorit] Navigation error:', error);
-      setLeaving(false);
-      setNavigationInProgress(false);
-    }
-  }, [router, prefersReduced]);
-
-  if (isLoading) {
+  // Show skeleton while auth is loading
+  if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoaderTwo />
-      </div>
+      <main className="min-h-[60vh] w-full max-w-7xl mx-auto px-4 py-6">
+        <div className="mb-6">
+          <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+        </div>
+        <div className="mb-8">
+          <div className="h-8 w-64 bg-gray-200 rounded animate-pulse mb-2" />
+          <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
+        </div>
+        <VendorSkeleton />
+      </main>
     );
   }
 
-  // Redirect ke login jika tidak authenticated
   if (!isAuthenticated) {
-    router.push('/login');
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoaderTwo />
-      </div>
-    );
+    return null; // Will redirect
   }
 
   return (
@@ -232,7 +171,7 @@ export default function VendorFavoritPage() {
         className="min-h-[60vh] w-full max-w-7xl mx-auto px-4 py-6"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: prefersReduced ? 0 : 0.25, ease: "easeOut" }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
       >
         {/* Breadcrumb */}
         <div className="mb-6">
@@ -240,9 +179,7 @@ export default function VendorFavoritPage() {
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <motion.span whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
-                    <Link href="/" onClick={handleHomeClick}>Home</Link>
-                  </motion.span>
+                  <Link href="/">Home</Link>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
@@ -269,14 +206,18 @@ export default function VendorFavoritPage() {
             </h1>
           </div>
           <p className="text-sm md:text-base text-muted-foreground ml-14 md:ml-16">
-            {favorites.length > 0
-              ? `Anda memiliki ${favorites.length} vendor favorit`
-              : "Belum ada vendor favorit yang tersimpan"}
+            {isLoading 
+              ? "Memuat vendor favorit..."
+              : favorites.length > 0
+                ? `Anda memiliki ${favorites.length} vendor favorit`
+                : "Belum ada vendor favorit yang tersimpan"}
           </p>
         </motion.div>
 
         {/* Content */}
-        {favorites.length === 0 ? (
+        {isLoading ? (
+          <VendorSkeleton />
+        ) : favorites.length === 0 ? (
           // Empty State
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -313,14 +254,13 @@ export default function VendorFavoritPage() {
               Mulai tambahkan vendor favorit Anda dengan mengklik ikon hati pada vendor yang Anda sukai
             </p>
 
-            <Button
-              onClick={handleBrowseServices}
-              className="bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] hover:from-[#6BCF97] hover:to-[#4A8D74] text-white px-8 py-6 rounded-xl text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2"
-            >
-              <Package className="w-5 h-5" />
-              Jelajahi Layanan
-              <ArrowRight className="w-5 h-5" />
-            </Button>
+            <Link href="/jasa" prefetch={true}>
+              <Button className="bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] hover:from-[#6BCF97] hover:to-[#4A8D74] text-white px-8 py-6 rounded-xl text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Jelajahi Layanan
+                <ArrowRight className="w-5 h-5" />
+              </Button>
+            </Link>
           </motion.div>
         ) : (
           // Vendor Grid
@@ -353,10 +293,7 @@ export default function VendorFavoritPage() {
                     scale: 0.8,
                     transition: { duration: 0.2 },
                   }}
-                  transition={{
-                    duration: prefersReduced ? 0 : 0.3,
-                    ease: "easeOut",
-                  }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
                 >
                   <Card className="group relative overflow-hidden rounded-2xl border-2 border-transparent hover:border-[#7CE0A8]/30 transition-all duration-300 hover:shadow-xl">
                     {/* Gradient Background on Hover */}
@@ -436,14 +373,13 @@ export default function VendorFavoritPage() {
                         </div>
                       </div>
 
-                      {/* View Profile Button */}
-                      <Button
-                        onClick={() => handleViewProfile(vendor.id)}
-                        className="w-full bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] hover:from-[#6BCF97] hover:to-[#4A8D74] text-white rounded-xl py-2.5 font-medium transition-all duration-300 flex items-center justify-center gap-2 group/btn"
-                      >
-                        Lihat Profil
-                        <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                      </Button>
+                      {/* View Profile Button - Use Link for instant navigation */}
+                      <Link href={`/jasa/detailjasa/${vendor.id}`} prefetch={true}>
+                        <Button className="w-full bg-gradient-to-r from-[#7CE0A8] to-[#5CA68A] hover:from-[#6BCF97] hover:to-[#4A8D74] text-white rounded-xl py-2.5 font-medium transition-all duration-300 flex items-center justify-center gap-2 group/btn">
+                          Lihat Profil
+                          <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                        </Button>
+                      </Link>
                     </div>
                   </Card>
                 </motion.div>
@@ -457,22 +393,6 @@ export default function VendorFavoritPage() {
           <SiteFooter />
         </div>
       </motion.main>
-
-      {/* Navigation Loader */}
-      <AnimatePresence>
-        {leaving && (
-          <motion.div
-            key="route-leave"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: prefersReduced ? 0 : 0.3 }}
-            className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-950 flex items-center justify-center"
-          >
-            <LoaderTwo />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }

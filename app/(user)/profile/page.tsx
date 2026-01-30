@@ -44,73 +44,63 @@ interface UserProfile {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+// Skeleton component for profile loading
+const ProfileSkeleton = () => (
+  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto">
+      <div className="animate-pulse">
+        <div className="h-10 bg-gray-200 rounded w-1/4 mb-2"></div>
+        <div className="h-6 bg-gray-200 rounded w-1/2 mb-8"></div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1">
+            <div className="h-96 bg-gray-200 rounded-lg"></div>
+          </div>
+          <div className="lg:col-span-2">
+            <div className="h-96 bg-gray-200 rounded-lg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading, refreshUser } = useAuth();
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>("/profile.svg");
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
-  // Refs for debouncing and preventing auto-reload
+  // Refs for debouncing
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
   const hasLoadedOnce = useRef(false);
-  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load user profile - ASYNC WITH DYNAMIC LOADING
+  // Load user profile
   useEffect(() => {
     const loadProfile = async () => {
-      if (hasLoadedOnce.current || authLoading) {
-        return;
-      }
+      if (hasLoadedOnce.current || authLoading) return;
 
       if (!isAuthenticated || !user) {
-        console.log("[Profile] ❌ User not authenticated, redirecting to login");
         toast.error("Anda harus login terlebih dahulu");
         router.push("/login");
         return;
       }
 
-      console.log("[Profile] 🚀 Starting profile load...");
-      const startTime = Date.now();
-      
       try {
-        setIsInitialLoading(true);
-        
-        // Set timeout sebagai fallback (max 10 detik)
-        loadTimeoutRef.current = setTimeout(() => {
-          console.warn("[Profile] ⏱️ Profile load timeout reached");
-          toast.error("Gagal memuat profil. Silakan refresh halaman.");
-          setIsInitialLoading(false);
-        }, 10000);
-
-        console.log("[Profile] 📊 Fetching profile from database...");
+        setIsLoadingProfile(true);
         
         const response = await fetch("/api/user/profile", {
           method: "GET",
           credentials: "include",
           cache: "no-store",
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
         });
-
-        // Clear timeout jika berhasil
-        if (loadTimeoutRef.current) {
-          clearTimeout(loadTimeoutRef.current);
-          loadTimeoutRef.current = null;
-        }
-
-        const duration = Date.now() - startTime;
-        console.log(`[Profile] ⏱️ Fetch completed in ${duration}ms`);
 
         if (!response.ok) {
           if (response.status === 401) {
-            console.log("[Profile] 🔒 Session expired");
             toast.error("Sesi Anda telah berakhir. Silakan login kembali.");
             router.push("/login");
             return;
@@ -121,63 +111,36 @@ export default function ProfilePage() {
         const data = await response.json();
         
         if (data.profile) {
-          console.log("[Profile] ✅ Profile loaded successfully:", {
-            name: data.profile.name,
-            email: data.profile.email,
-            hasAvatar: !!data.profile.avatar,
-            totalTime: Date.now() - startTime
-          });
-          
           setProfile(data.profile);
           setAvatarPreview(data.profile.avatar || "/profile.svg");
           hasLoadedOnce.current = true;
         }
       } catch (error) {
-        const duration = Date.now() - startTime;
-        console.error(`[Profile] ❌ Error loading profile after ${duration}ms:`, error);
+        console.error("[Profile] Error loading profile:", error);
         toast.error("Terjadi kesalahan saat memuat profil");
-        
-        // Clear timeout on error
-        if (loadTimeoutRef.current) {
-          clearTimeout(loadTimeoutRef.current);
-          loadTimeoutRef.current = null;
-        }
       } finally {
-        setIsInitialLoading(false);
+        setIsLoadingProfile(false);
         setTimeout(() => {
           isInitialMount.current = false;
-        }, 1000);
+        }, 500);
       }
     };
 
     if (!hasLoadedOnce.current) {
       loadProfile();
     }
-
-    return () => {
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-      }
-    };
   }, [isAuthenticated, user, authLoading, router]);
 
-  // Auto-save function - ASYNC
+  // Auto-save function
   const autoSaveProfile = useCallback(async (updatedProfile: UserProfile) => {
-    if (isInitialMount.current) {
-      console.log("[Profile] ⏭️ Skipping save during initial mount");
-      return;
-    }
+    if (isInitialMount.current) return;
     
     setSaveStatus("saving");
-    console.log("[Profile] 💾 Starting auto-save...");
-    const startTime = Date.now();
 
     try {
       const response = await fetch("/api/user/profile", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           name: updatedProfile.name,
@@ -186,70 +149,38 @@ export default function ProfilePage() {
         }),
       });
 
-      const duration = Date.now() - startTime;
-
-      if (!response.ok) {
-        throw new Error("Gagal menyimpan profil");
-      }
+      if (!response.ok) throw new Error("Gagal menyimpan profil");
 
       const data = await response.json();
-      
-      console.log(`[Profile] ✅ Profile saved successfully in ${duration}ms`);
-      
-      // Update local state with server response
       setProfile(data.profile);
-      
-      // Refresh auth context to update navbar
-      console.log("[Profile] 🔄 Refreshing auth context...");
       await refreshUser();
       
       setSaveStatus("saved");
-      
-      setTimeout(() => {
-        setSaveStatus("idle");
-      }, 2000);
+      setTimeout(() => setSaveStatus("idle"), 2000);
     } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error(`[Profile] ❌ Error saving profile after ${duration}ms:`, error);
+      console.error("[Profile] Error saving profile:", error);
       setSaveStatus("error");
       toast.error("Gagal menyimpan perubahan");
-      
-      setTimeout(() => {
-        setSaveStatus("idle");
-      }, 3000);
+      setTimeout(() => setSaveStatus("idle"), 3000);
     }
   }, [refreshUser]);
 
   // Debounced save
   const debouncedSave = useCallback((updatedProfile: UserProfile) => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    saveTimeoutRef.current = setTimeout(() => {
-      autoSaveProfile(updatedProfile);
-    }, 1500);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => autoSaveProfile(updatedProfile), 1500);
   }, [autoSaveProfile]);
 
-  // Handle avatar change - ASYNC with base64 save to database
+  // Handle avatar change
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !profile) return;
 
-    console.log("[Profile] 📸 Starting avatar upload:", {
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type
-    });
-    const startTime = Date.now();
-
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Ukuran file maksimal 5MB");
       return;
     }
 
-    // Validate file type
     const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
     if (!allowedTypes.includes(file.type)) {
       toast.error("Format file tidak didukung. Gunakan JPG, PNG, WEBP, atau GIF");
@@ -260,141 +191,67 @@ export default function ProfilePage() {
       setIsUploadingAvatar(true);
       setSaveStatus("saving");
 
-      // Show preview immediately (optimistic update)
+      // Show preview immediately
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
-          const base64Preview = event.target.result as string;
-          setAvatarPreview(base64Preview);
-          console.log("[Profile] 👁️ Preview set (base64)");
+          setAvatarPreview(event.target.result as string);
         }
       };
       reader.readAsDataURL(file);
 
-      // Upload avatar to server (will be saved as base64 in DB)
+      // Upload avatar
       const formData = new FormData();
       formData.append("avatar", file);
 
-      console.log("[Profile] ⬆️ Uploading to server...");
-      const uploadStartTime = Date.now();
-      
       const uploadResponse = await fetch("/api/user/upload-avatar", {
         method: "POST",
         credentials: "include",
         body: formData,
       });
 
-      const uploadDuration = Date.now() - uploadStartTime;
-      console.log(`[Profile] ⏱️ Upload request completed in ${uploadDuration}ms`);
-
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json();
-        console.error("[Profile] ❌ Upload failed:", errorData);
         throw new Error(errorData.message || "Gagal mengupload avatar");
       }
 
       const uploadData = await uploadResponse.json();
-      console.log("[Profile] ✅ Upload successful:", {
-        hasAvatar: !!uploadData.avatarUrl,
-        avatarLength: uploadData.avatarUrl?.length || 0,
-        isBase64: uploadData.avatarUrl?.startsWith('data:image') || false,
-        totalTime: Date.now() - startTime
-      });
 
-      // Update local state with base64 from server
-      const updatedProfile = {
-        ...profile,
-        avatar: uploadData.avatarUrl,
-      };
-      setProfile(updatedProfile);
+      setProfile({ ...profile, avatar: uploadData.avatarUrl });
       setAvatarPreview(uploadData.avatarUrl);
-
-      console.log("[Profile] 🔄 Refreshing auth context...");
-      const refreshStartTime = Date.now();
       await refreshUser();
-      console.log(`[Profile] ✅ Auth context refreshed in ${Date.now() - refreshStartTime}ms`);
 
       setSaveStatus("saved");
       toast.success("Avatar berhasil diupdate!");
-
-      // Verify by fetching fresh data
-      console.log("[Profile] 🔍 Verifying avatar in database...");
-      const verifyStartTime = Date.now();
-      
-      const verifyResponse = await fetch("/api/user/profile", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
-
-      if (verifyResponse.ok) {
-        const verifyData = await verifyResponse.json();
-        const verifyDuration = Date.now() - verifyStartTime;
-        console.log(`[Profile] ✅ Verification completed in ${verifyDuration}ms - Avatar in DB:`, {
-          exists: !!verifyData.profile.avatar,
-          length: verifyData.profile.avatar?.length || 0,
-          matches: verifyData.profile.avatar === uploadData.avatarUrl
-        });
-      }
-
-      const totalDuration = Date.now() - startTime;
-      console.log(`[Profile] 🎉 Total avatar upload process: ${totalDuration}ms`);
-
-      setTimeout(() => {
-        setSaveStatus("idle");
-      }, 2000);
+      setTimeout(() => setSaveStatus("idle"), 2000);
 
     } catch (error) {
-      const totalDuration = Date.now() - startTime;
-      console.error(`[Profile] ❌ Avatar upload error after ${totalDuration}ms:`, error);
+      console.error("[Profile] Avatar upload error:", error);
       setSaveStatus("error");
       toast.error(error instanceof Error ? error.message : "Gagal mengupload avatar");
-      
-      // Revert preview on error
       setAvatarPreview(profile.avatar || "/profile.svg");
-      
-      setTimeout(() => {
-        setSaveStatus("idle");
-      }, 3000);
+      setTimeout(() => setSaveStatus("idle"), 3000);
     } finally {
       setIsUploadingAvatar(false);
     }
   };
 
-  // Handle input changes with debounced save
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
+  // Handle input changes
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     
     setProfile((prev) => {
       if (!prev) return prev;
-      
-      const updatedProfile = {
-        ...prev,
-        [name]: value,
-      };
-      
-      // Trigger debounced save
+      const updatedProfile = { ...prev, [name]: value };
       debouncedSave(updatedProfile);
-      
       return updatedProfile;
     });
   };
 
-  // Cleanup timeout on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-      }
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, []);
 
@@ -436,26 +293,9 @@ export default function ProfilePage() {
     }
   };
 
-  // Loading state
-  if (isInitialLoading || authLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-10 bg-gray-200 rounded w-1/4 mb-2"></div>
-            <div className="h-6 bg-gray-200 rounded w-1/2 mb-8"></div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-1">
-                <div className="h-96 bg-gray-200 rounded-lg"></div>
-              </div>
-              <div className="lg:col-span-2">
-                <div className="h-96 bg-gray-200 rounded-lg"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  // Show skeleton while loading
+  if (authLoading || isLoadingProfile) {
+    return <ProfileSkeleton />;
   }
 
   if (!profile) {
@@ -473,7 +313,7 @@ export default function ProfilePage() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.3 }}
         className="max-w-7xl mx-auto"
       >
         {/* Header with Save Status */}
@@ -571,7 +411,7 @@ export default function ProfilePage() {
                       Auto-Save Aktif
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Semua perubahan akan disimpan secara otomatis setelah 1.5 detik. Avatar disimpan langsung ke database.
+                      Semua perubahan akan disimpan secara otomatis setelah 1.5 detik.
                     </p>
                   </div>
                 </div>
@@ -590,7 +430,7 @@ export default function ProfilePage() {
                       Tips Link Google Maps
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Simpan link Google Maps lokasi rumah Anda. Saat memesan jasa, Anda bisa langsung menggunakan lokasi ini.
+                      Simpan link Google Maps lokasi rumah Anda untuk mempermudah pemesanan.
                     </p>
                   </div>
                 </div>
@@ -688,7 +528,7 @@ export default function ProfilePage() {
                     onChange={handleInputChange}
                     disabled={saveStatus === "saving"}
                     className="min-h-[120px] py-4 text-base border-gray-300 focus:border-emerald-500 focus:ring-emerald-500"
-                    placeholder="Masukkan alamat lengkap (jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota)"
+                    placeholder="Masukkan alamat lengkap"
                   />
                 </div>
 
@@ -720,8 +560,7 @@ export default function ProfilePage() {
                         💡 Tips: Simpan link lokasi rumah Anda
                       </p>
                       <p className="text-sm text-emerald-700">
-                        Saat memesan jasa, Anda bisa langsung menggunakan
-                        lokasi ini tanpa perlu membuka Google Maps lagi
+                        Saat memesan jasa, Anda bisa langsung menggunakan lokasi ini
                       </p>
                     </div>
                   </div>
@@ -731,7 +570,6 @@ export default function ProfilePage() {
 
             {/* Informasi Tambahan */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-              {/* Card Keamanan */}
               <Card className="shadow-md border-0">
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-3">
@@ -755,15 +593,13 @@ export default function ProfilePage() {
                         Keamanan Akun
                       </h3>
                       <p className="text-sm text-gray-600">
-                        Akun Anda dilindungi dengan verifikasi email dan sistem
-                        keamanan terbaik.
+                        Akun Anda dilindungi dengan verifikasi email dan sistem keamanan terbaik.
                       </p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Card Notifikasi */}
               <Card className="shadow-md border-0">
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-3">
@@ -787,8 +623,7 @@ export default function ProfilePage() {
                         Notifikasi
                       </h3>
                       <p className="text-sm text-gray-600">
-                        Anda akan menerima notifikasi untuk pemesanan,
-                        pembayaran, dan update jasa.
+                        Anda akan menerima notifikasi untuk pemesanan, pembayaran, dan update jasa.
                       </p>
                     </div>
                   </div>
