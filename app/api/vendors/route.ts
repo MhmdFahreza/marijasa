@@ -1,5 +1,6 @@
-// app/api/vendors/route.ts (FIXED - Consistent Review Count)
+// app/api/vendors/route.ts - FIXED WITH isFavorite STATUS
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import prisma from "@/app/components/lib/prisma";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ const CATEGORY_DB_MAPPING: Record<string, string[]> = {
   'pembersihanrumah': ['cleaning', 'pembersihan'],
 };
 
-// Keywords untuk matching - LEBIH SPESIFIK dan terstruktur
+// Keywords untuk matching
 const CATEGORY_KEYWORDS: Record<string, {
   primary: string[];
   secondary: string[];
@@ -91,7 +92,7 @@ function normalizeString(str: string): string {
     .replace(/[^\w\s]/g, '');
 }
 
-// Check if text contains keyword with exact/partial matching
+// Check if text contains keyword
 function containsKeyword(text: string, keyword: string, exact: boolean = false): boolean {
   const normalizedText = normalizeString(text);
   const normalizedKeyword = normalizeString(keyword);
@@ -120,17 +121,12 @@ function extractSearchKeywords(query: string): string[] {
 function calculateSearchScore(vendor: any, searchQuery: string): number {
   let score = 0;
   const keywords = extractSearchKeywords(searchQuery);
-  
-  console.log(`\n[Search] Scoring "${vendor.name}" for query: "${searchQuery}"`);
-  console.log(`[Search] Keywords extracted:`, keywords);
 
   for (const keyword of keywords) {
     if (vendor.name && containsKeyword(vendor.name, keyword, true)) {
       score += 100;
-      console.log(`✅ [+100] Exact match in vendor name`);
     } else if (vendor.name && containsKeyword(vendor.name, keyword, false)) {
       score += 50;
-      console.log(`✅ [+50] Partial match in vendor name`);
     }
 
     if (vendor.tags && Array.isArray(vendor.tags)) {
@@ -138,10 +134,8 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
         if (typeof tag === 'string' && tag.trim()) {
           if (containsKeyword(tag, keyword, true)) {
             score += 80;
-            console.log(`✅ [+80] Exact match in tag: "${tag}"`);
           } else if (containsKeyword(tag, keyword, false)) {
             score += 40;
-            console.log(`✅ [+40] Partial match in tag: "${tag}"`);
           }
         }
       }
@@ -152,10 +146,8 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
         if (typeof specialty === 'string' && specialty.trim()) {
           if (containsKeyword(specialty, keyword, true)) {
             score += 70;
-            console.log(`✅ [+70] Exact match in specialty: "${specialty}"`);
           } else if (containsKeyword(specialty, keyword, false)) {
             score += 35;
-            console.log(`✅ [+35] Partial match in specialty: "${specialty}"`);
           }
         }
       }
@@ -166,10 +158,8 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
         if (typeof area === 'string' && area.trim()) {
           if (containsKeyword(area, keyword, true)) {
             score += 60;
-            console.log(`✅ [+60] Exact match in service area: "${area}"`);
           } else if (containsKeyword(area, keyword, false)) {
             score += 30;
-            console.log(`✅ [+30] Partial match in service area: "${area}"`);
           }
         }
       }
@@ -180,10 +170,8 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
         if (service.name) {
           if (containsKeyword(service.name, keyword, true)) {
             score += 50;
-            console.log(`✅ [+50] Exact match in service name: "${service.name}"`);
           } else if (containsKeyword(service.name, keyword, false)) {
             score += 25;
-            console.log(`✅ [+25] Partial match in service name: "${service.name}"`);
           }
         }
       }
@@ -192,10 +180,8 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
     if (vendor.description) {
       if (containsKeyword(vendor.description, keyword, true)) {
         score += 20;
-        console.log(`✅ [+20] Exact match in description`);
       } else if (containsKeyword(vendor.description, keyword, false)) {
         score += 10;
-        console.log(`✅ [+10] Partial match in description`);
       }
     }
 
@@ -203,13 +189,11 @@ function calculateSearchScore(vendor: any, searchQuery: string): number {
       for (const service of vendor.services) {
         if (service.description && containsKeyword(service.description, keyword, false)) {
           score += 15;
-          console.log(`✅ [+15] Match in service description`);
         }
       }
     }
   }
 
-  console.log(`[Search] Final score for "${vendor.name}": ${score}`);
   return score;
 }
 
@@ -220,7 +204,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
   const dbCategories = CATEGORY_DB_MAPPING[categorySlug] || [categorySlug];
   
   if (!keywords) {
-    console.log(`⚠️ No keywords defined for category: ${categorySlug}`);
     return 0;
   }
 
@@ -234,7 +217,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
 
   for (const excludeKeyword of keywords.exclude) {
     if (containsKeyword(allText, excludeKeyword, true)) {
-      console.log(`❌ [Exclude] "${vendor.name}" - contains excluded keyword: "${excludeKeyword}"`);
       return -1000;
     }
   }
@@ -243,7 +225,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     normalizeString(vendor.category) === normalizeString(dbCat)
   )) {
     score += 100;
-    console.log(`✅ [+100] "${vendor.name}" - exact category match: ${vendor.category}`);
   }
 
   if (vendor.tags && Array.isArray(vendor.tags)) {
@@ -252,7 +233,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
         for (const keyword of keywords.primary) {
           if (containsKeyword(tag, keyword, true)) {
             score += 50;
-            console.log(`✅ [+50] "${vendor.name}" - primary keyword in tag: "${tag}"`);
           }
         }
       }
@@ -265,7 +245,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
         for (const keyword of keywords.primary) {
           if (containsKeyword(specialty, keyword, true)) {
             score += 40;
-            console.log(`✅ [+40] "${vendor.name}" - primary keyword in specialty: "${specialty}"`);
           }
         }
       }
@@ -276,7 +255,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     for (const keyword of keywords.primary) {
       if (containsKeyword(vendor.name, keyword, true)) {
         score += 30;
-        console.log(`✅ [+30] "${vendor.name}" - primary keyword in name`);
       }
     }
   }
@@ -287,7 +265,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
         for (const keyword of keywords.primary) {
           if (containsKeyword(service.name, keyword, true)) {
             score += 25;
-            console.log(`✅ [+25] "${vendor.name}" - primary keyword in service: "${service.name}"`);
           }
         }
       }
@@ -300,7 +277,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
         for (const keyword of keywords.secondary) {
           if (containsKeyword(tag, keyword, false)) {
             score += 15;
-            console.log(`✅ [+15] "${vendor.name}" - secondary keyword in tag: "${tag}"`);
           }
         }
       }
@@ -313,7 +289,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
         for (const keyword of keywords.secondary) {
           if (containsKeyword(specialty, keyword, false)) {
             score += 12;
-            console.log(`✅ [+12] "${vendor.name}" - secondary keyword in specialty: "${specialty}"`);
           }
         }
       }
@@ -324,7 +299,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     for (const keyword of keywords.primary) {
       if (containsKeyword(vendor.description, keyword, false)) {
         score += 10;
-        console.log(`✅ [+10] "${vendor.name}" - primary keyword in description`);
         break;
       }
     }
@@ -334,7 +308,6 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
     for (const keyword of keywords.secondary) {
       if (containsKeyword(vendor.description, keyword, false)) {
         score += 5;
-        console.log(`✅ [+5] "${vendor.name}" - secondary keyword in description`);
         break;
       }
     }
@@ -346,6 +319,46 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
 const MINIMUM_CATEGORY_SCORE = 25;
 const MINIMUM_SEARCH_SCORE = 20;
 
+// ✅ Helper function to get current user ID
+async function getCurrentUserId(request: NextRequest): Promise<string | null> {
+  // Try NextAuth session first
+  const session = await getServerSession();
+  
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { user_id: true }
+    });
+    if (user) {
+      console.log('[Vendors API] User authenticated via NextAuth:', user.user_id);
+      return user.user_id;
+    }
+  }
+  
+  // Fallback: try custom session/token
+  const sessionId = request.cookies.get("session_id")?.value;
+  const accessToken = request.cookies.get("access_token")?.value;
+
+  if (sessionId && accessToken) {
+    try {
+      const { getSession, verifyToken } = await import("@/app/components/lib/token-service");
+      
+      const customSession = await getSession(sessionId);
+      if (customSession) {
+        const tokenPayload = verifyToken(accessToken);
+        if (tokenPayload && tokenPayload.sessionId === sessionId) {
+          console.log('[Vendors API] User authenticated via custom token:', customSession.userId);
+          return customSession.userId;
+        }
+      }
+    } catch (error) {
+      console.log('[Vendors API] Custom token verification failed');
+    }
+  }
+  
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -355,6 +368,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
 
     console.log('[Vendors API] Query params:', { category, city, rating, search });
+
+    // ✅ Get current user ID for favorites check
+    const currentUserId = await getCurrentUserId(request);
+    console.log('[Vendors API] Current user ID:', currentUserId || 'Guest');
 
     const where: any = {
       status: 'ACTIVE',
@@ -379,7 +396,6 @@ export async function GET(request: NextRequest) {
 
     console.log('[Vendors API] Fetching vendors from database...');
 
-    // ✅ CRITICAL FIX: Include reviews relasi untuk count yang konsisten
     const vendors = await prisma.vendor.findMany({
       where,
       include: {
@@ -394,10 +410,9 @@ export async function GET(request: NextRequest) {
             created_at: 'asc',
           },
         },
-        // ✅ TAMBAHKAN: Include reviews untuk count yang akurat
         reviews: {
           select: {
-            review_id: true, // Minimal select untuk efisiensi
+            review_id: true,
           },
         },
       },
@@ -408,10 +423,27 @@ export async function GET(request: NextRequest) {
 
     console.log('[Vendors API] Total vendors from database:', vendors.length);
 
+    // ✅ Get user's favorite vendor IDs if logged in
+    let userFavoriteIds: Set<string> = new Set();
+    
+    if (currentUserId) {
+      const favorites = await prisma.userFavorite.findMany({
+        where: {
+          user_id: currentUserId
+        },
+        select: {
+          vendor_id: true
+        }
+      });
+      
+      userFavoriteIds = new Set(favorites.map(f => f.vendor_id));
+      console.log('[Vendors API] User favorites count:', userFavoriteIds.size);
+    }
+
     let filteredVendors = vendors;
 
     if (search && search.trim()) {
-      console.log(`\n[Vendors API] 🔍 Applying search filter for: "${search}"`);
+      console.log(`[Vendors API] Applying search filter for: "${search}"`);
       
       const vendorsWithSearchScores = vendors.map(vendor => ({
         vendor,
@@ -421,16 +453,13 @@ export async function GET(request: NextRequest) {
       filteredVendors = vendorsWithSearchScores
         .filter(({ searchScore }) => searchScore >= MINIMUM_SEARCH_SCORE)
         .sort((a, b) => b.searchScore - a.searchScore)
-        .map(({ vendor, searchScore }) => {
-          console.log(`✅ [SEARCH MATCH] "${vendor.name}" - Search Score: ${searchScore}`);
-          return vendor;
-        });
+        .map(({ vendor }) => vendor);
       
-      console.log(`[Vendors API] ✨ Search filter result: ${filteredVendors.length} of ${vendors.length} vendors matched`);
+      console.log(`[Vendors API] Search filter result: ${filteredVendors.length} vendors`);
     }
 
     if (category) {
-      console.log(`\n[Vendors API] 🎯 Applying category filter: "${category}"`);
+      console.log(`[Vendors API] Applying category filter: "${category}"`);
       
       const vendorsWithCategoryScores = filteredVendors.map(vendor => ({
         vendor,
@@ -440,19 +469,14 @@ export async function GET(request: NextRequest) {
       filteredVendors = vendorsWithCategoryScores
         .filter(({ categoryScore }) => categoryScore >= MINIMUM_CATEGORY_SCORE)
         .sort((a, b) => b.categoryScore - a.categoryScore)
-        .map(({ vendor, categoryScore }) => {
-          console.log(`✅ [CATEGORY MATCH] "${vendor.name}" - Category Score: ${categoryScore}`);
-          return vendor;
-        });
+        .map(({ vendor }) => vendor);
       
-      console.log(`[Vendors API] ✨ Category filter result: ${filteredVendors.length} vendors matched`);
+      console.log(`[Vendors API] Category filter result: ${filteredVendors.length} vendors`);
     }
 
+    // ✅ Format vendors with isFavorite status
     const formattedVendors = filteredVendors.map(vendor => {
       const activeServicesCount = vendor.services.filter(s => s.is_active === true).length;
-
-      // ✅ CRITICAL FIX: Gunakan reviews.length dari relasi, BUKAN review_count dari database
-      // Ini memastikan konsistensi dengan detail page
       const actualReviewCount = vendor.reviews?.length || 0;
 
       return {
@@ -466,7 +490,6 @@ export async function GET(request: NextRequest) {
         verified: vendor.verified,
         status: vendor.status,
         rating: vendor.rating,
-        // ✅ GUNAKAN: actualReviewCount dari relasi
         reviewCount: actualReviewCount,
         review_count: actualReviewCount,
         serviceAreas: vendor.service_areas,
@@ -495,10 +518,12 @@ export async function GET(request: NextRequest) {
         serviceCount: activeServicesCount,
         joinDate: vendor.join_date,
         join_date: vendor.join_date,
+        // ✅ CRITICAL: Include isFavorite status based on current user
+        isFavorite: userFavoriteIds.has(vendor.vendor_id)
       };
     });
 
-    console.log('[Vendors API] 🎉 Returning', formattedVendors.length, 'vendors\n');
+    console.log('[Vendors API] Returning', formattedVendors.length, 'vendors');
 
     return NextResponse.json(
       {
@@ -509,7 +534,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("[Vendors API] ❌ Error:", error);
+    console.error("[Vendors API] Error:", error);
     return NextResponse.json(
       { error: "Internal server error", message: "Internal server error" },
       { status: 500 }
