@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useRef, type ReactNode, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import {
   Navbar,
   NavBody,
@@ -63,12 +64,9 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [navigationInProgress, setNavigationInProgress] = useState(false);
   
   const notificationRef = useRef<HTMLDivElement>(null);
   const mobileNotificationRef = useRef<HTMLDivElement>(null);
-  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loadingStartTimeRef = useRef<number>(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -82,7 +80,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const isAuthenticated = authContext.isAuthenticated;
   const authLoading = authContext.isLoading;
   const logout = authContext.logout;
-  const refreshUser = authContext.refreshUser;
   
   // Notifications
   const notifications = notificationContext.notifications;
@@ -97,28 +94,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const setLanguage = languageContext.setLanguage;
 
   // ============================================
-  // EFFECTS - Optimized
+  // EFFECTS
   // ============================================
-
-  // Reset loading on pathname change
-  useEffect(() => {
-    if (navigationInProgress) {
-      const duration = Date.now() - loadingStartTimeRef.current;
-      console.log(`[Layout] Navigation completed in ${duration}ms`);
-      
-      setIsLoading(false);
-      setNavigationInProgress(false);
-      
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-        navigationTimeoutRef.current = null;
-      }
-    }
-  }, [pathname, navigationInProgress]);
-
-  // REMOVED: Fetch notifications on mount (handled by NotificationContext)
-
-  // REMOVED: Refresh user on mount (handled by AuthContext)
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -147,78 +124,42 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     };
   }, [isNotificationOpen]);
 
-  // Cleanup on unmount
+  // Close mobile menu on route change
   useEffect(() => {
-    return () => {
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-      }
-    };
-  }, []);
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
 
   // ============================================
-  // HANDLERS - Optimized
+  // HANDLERS
   // ============================================
 
-  const handleSelectLanguage = async (language: string) => {
+  const handleSelectLanguage = useCallback(async (language: string) => {
     try {
-      setIsLoading(true);
       await setLanguage(language);
     } catch (error) {
       console.error("[Layout] Language change error:", error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [setLanguage]);
 
-  const handleNavigation = useCallback(async (path: string) => {
+  // Simple navigation - NO loading state for regular page transitions
+  const handleSimpleNavigation = useCallback((path: string) => {
     if (pathname === path) {
       setIsMobileMenuOpen(false);
       return;
     }
-
-    const startTime = Date.now();
-    loadingStartTimeRef.current = startTime;
-
     setIsMobileMenuOpen(false);
-    setIsLoading(true);
-    setNavigationInProgress(true);
-
-    try {
-      navigationTimeoutRef.current = setTimeout(() => {
-        setIsLoading(false);
-        setNavigationInProgress(false);
-      }, 15000);
-
-      await router.push(path);
-    } catch (error) {
-      console.error("[Layout] Navigation error:", error);
-      setIsLoading(false);
-      setNavigationInProgress(false);
-      
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-        navigationTimeoutRef.current = null;
-      }
-    }
+    router.push(path);
   }, [pathname, router]);
-
-  const handleLoginClick = () => handleNavigation("/login");
-  const handleRegisterClick = () => handleNavigation("/register");
 
   const handleLogoClick = useCallback(() => {
-    if (pathname === "/") {
-      setIsMobileMenuOpen(false);
-      return;
-    }
-
     setIsMobileMenuOpen(false);
-    router.push("/");
+    if (pathname !== "/") {
+      router.push("/");
+    }
   }, [pathname, router]);
 
+  // Logout needs loading state because it's an async operation
   const handleLogout = useCallback(async () => {
-    const startTime = Date.now();
-    
     setIsMobileMenuOpen(false);
     setIsNotificationOpen(false);
     setIsLoading(true);
@@ -229,20 +170,11 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("[Layout] Logout error:", error);
     } finally {
-      const elapsed = Date.now() - startTime;
-      const remainingTime = Math.max(500 - elapsed, 0);
-      
-      setTimeout(() => {
-        setIsLoading(false);
-      }, remainingTime);
+      setIsLoading(false);
     }
   }, [logout, notificationContext]);
 
-  const handleProfileClick = () => handleNavigation("/profile");
-  const handleOrderHistoryClick = () => handleNavigation("/riwayat_pemesanan");
-  const handleFavoriteVendorsClick = () => handleNavigation("/vendor_favorit");
-
-  const toggleNotification = async () => {
+  const toggleNotification = useCallback(async () => {
     const newState = !isNotificationOpen;
     setIsNotificationOpen(newState);
     
@@ -253,7 +185,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
         console.error("[Layout] Mark all read error:", error);
       }
     }
-  };
+  }, [isNotificationOpen, markAllAsRead]);
 
   const getNotificationIcon = (type: Notification["type"]) => {
     switch (type) {
@@ -276,18 +208,18 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleNotificationClick = async (notification: Notification) => {
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
     try {
       await markAsRead(notification.id);
 
       if (notification.orderId) {
         setIsNotificationOpen(false);
-        await handleNavigation("/riwayat_pemesanan");
+        router.push("/riwayat_pemesanan");
       }
     } catch (error) {
       console.error("[Layout] Notification click error:", error);
     }
-  };
+  }, [markAsRead, router]);
 
   const defaultAvatar = "/profile.svg";
   const userName = user?.name || "User";
@@ -307,6 +239,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative w-full min-h-screen">
+      {/* Only show loader for actual async operations like logout */}
       {isLoading && (
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
           <LoaderTwo />
@@ -478,7 +411,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56 mt-2">
                     <DropdownMenuItem
-                      onClick={handleProfileClick}
+                      onClick={() => handleSimpleNavigation("/profile")}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
                       disabled={pathname === "/profile"}
                     >
@@ -494,7 +427,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={handleOrderHistoryClick}
+                      onClick={() => handleSimpleNavigation("/riwayat_pemesanan")}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
                       disabled={pathname === "/riwayat_pemesanan"}
                     >
@@ -510,7 +443,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={handleFavoriteVendorsClick}
+                      onClick={() => handleSimpleNavigation("/vendor_favorit")}
                       className="flex items-center gap-2 cursor-pointer py-2.5"
                       disabled={pathname === "/vendor_favorit"}
                     >
@@ -538,21 +471,26 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               </div>
             ) : (
               <div className="flex items-center gap-4">
-                <NavbarButton
-                  variant="outline"
-                  onClick={handleLoginClick}
-                  className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
-                >
-                  Masuk
-                </NavbarButton>
+                {/* Use Link for instant navigation without flash */}
+                <Link href="/login" prefetch={true}>
+                  <NavbarButton
+                    as="span"
+                    variant="outline"
+                    className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
+                  >
+                    Masuk
+                  </NavbarButton>
+                </Link>
 
-                <NavbarButton
-                  variant="primary"
-                  onClick={handleRegisterClick}
-                  className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
-                >
-                  Daftar
-                </NavbarButton>
+                <Link href="/register" prefetch={true}>
+                  <NavbarButton
+                    as="span"
+                    variant="primary"
+                    className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
+                  >
+                    Daftar
+                  </NavbarButton>
+                </Link>
 
                 <LanguageSelector
                   selectedLanguage={selectedLanguage}
@@ -627,7 +565,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
                   <div className="space-y-2">
                     <button
-                      onClick={handleProfileClick}
+                      onClick={() => handleSimpleNavigation("/profile")}
                       disabled={pathname === "/profile"}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
                         pathname === "/profile"
@@ -639,7 +577,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       <span>Profil Saya</span>
                     </button>
                     <button
-                      onClick={handleOrderHistoryClick}
+                      onClick={() => handleSimpleNavigation("/riwayat_pemesanan")}
                       disabled={pathname === "/riwayat_pemesanan"}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
                         pathname === "/riwayat_pemesanan"
@@ -651,7 +589,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                       <span>Riwayat Pesanan</span>
                     </button>
                     <button
-                      onClick={handleFavoriteVendorsClick}
+                      onClick={() => handleSimpleNavigation("/vendor_favorit")}
                       disabled={pathname === "/vendor_favorit"}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors ${
                         pathname === "/vendor_favorit"
@@ -684,18 +622,23 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               ) : (
                 <div className="space-y-6">
                   <div className="space-y-3">
-                    <button
-                      onClick={handleRegisterClick}
-                      className="w-full px-4 py-3 text-center font-medium text-white bg-[#7CE0A8] rounded-lg hover:bg-[#6bd097] transition-colors"
+                    {/* Use Link for mobile too */}
+                    <Link 
+                      href="/register" 
+                      prefetch={true}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block w-full px-4 py-3 text-center font-medium text-white bg-[#7CE0A8] rounded-lg hover:bg-[#6bd097] transition-colors"
                     >
                       Daftar
-                    </button>
-                    <button
-                      onClick={handleLoginClick}
-                      className="w-full px-4 py-3 text-center font-medium text-[#7CE0A8] border border-[#7CE0A8] rounded-lg hover:bg-[#7CE0A8] hover:text-white transition-colors"
+                    </Link>
+                    <Link 
+                      href="/login" 
+                      prefetch={true}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block w-full px-4 py-3 text-center font-medium text-[#7CE0A8] border border-[#7CE0A8] rounded-lg hover:bg-[#7CE0A8] hover:text-white transition-colors"
                     >
                       Masuk
-                    </button>
+                    </Link>
                   </div>
 
                   <div className="pt-4 border-t border-gray-200 dark:border-neutral-700">
