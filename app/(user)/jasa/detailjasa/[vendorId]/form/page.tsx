@@ -22,7 +22,9 @@ import {
   Calendar, User, Receipt, MapPin, Navigation, CreditCard, Wallet,
   QrCode, Banknote, ChevronDown, ChevronUp, Building, Check, Loader2,
   Tag, AlertCircle, Copy, Clock, Store, ExternalLink, X, Smartphone,
-  CheckCircle, RefreshCw
+  CheckCircle, RefreshCw,
+  Download,
+  Info
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { useParams, useRouter } from "next/navigation";
@@ -206,16 +208,22 @@ interface PaymentResponse {
   amount: number;
   transactionFee: number;
   totalAmount: number;
-  paymentUrl?: string;
+  // Xendit specific fields
+  xenditId?: string;
+  qrId?: string;
+  qrString?: string;
+  qrCodeUrl?: string;
+  qrCodeData?: string;
+  invoiceUrl?: string;
+  expiresAt?: string;
   vaNumber?: string;
   bankCode?: string;
-  qrString?: string;
   ewalletType?: string;
   cardType?: string;
   paymentCode?: string;
   retailOutlet?: string;
   expirationDate?: string;
-  xenditId?: string;
+  isTestMode?: boolean;
   message?: string;
   error?: string;
   details?: any;
@@ -1592,6 +1600,14 @@ function ConfirmationStep({
 // PAYMENT STEP COMPONENT (Custom UI - No Xendit Redirect)
 // ==========================================
 
+// ==========================================
+// PAYMENT STEP COMPONENT (Custom UI - No Xendit Redirect)
+// ==========================================
+
+// ==========================================
+// PAYMENT STEP COMPONENT (Fixed - No proxy fetching)
+// ==========================================
+
 function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: {
   paymentData: PaymentResponse | null;
   selectedPayment: string;
@@ -1602,6 +1618,61 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
   const [copied, setCopied] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [qrRefreshTime, setQrRefreshTime] = useState<number>(300); // 5 minutes in seconds
+  const [isRefreshingQR, setIsRefreshingQR] = useState(false);
+  const [currentQrString, setCurrentQrString] = useState<string>('');
+
+  // Initialize QR string from payment data
+  useEffect(() => {
+    if (paymentData?.qrString) {
+      setCurrentQrString(paymentData.qrString);
+    }
+  }, [paymentData]);
+
+  // Start countdown timer for QR refresh
+  useEffect(() => {
+    if (selectedPayment === 'qris' && qrRefreshTime > 0) {
+      const interval = setInterval(() => {
+        setQrRefreshTime(prev => {
+          if (prev <= 1) {
+            refreshQRCode();
+            return 300; // Reset to 5 minutes
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [selectedPayment, qrRefreshTime]);
+
+  const refreshQRCode = async () => {
+    if (isRefreshingQR) return;
+    
+    setIsRefreshingQR(true);
+    try {
+      const response = await fetch(`/api/payments/xendit?orderId=${orderId}&refreshQR=true`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.booking?.refreshedQR) {
+        const refreshed = data.booking.refreshedQR;
+        if (refreshed.qrString) {
+          setCurrentQrString(refreshed.qrString);
+          toast.success('QR code berhasil diperbarui');
+          setQrRefreshTime(300); // Reset timer
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing QR code:', error);
+      toast.error('Gagal memperbarui QR code');
+    } finally {
+      setIsRefreshingQR(false);
+    }
+  };
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -1620,6 +1691,12 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleCheckStatus = async () => {
@@ -1679,6 +1756,40 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
     router.push('/riwayat_pemesanan');
   };
 
+  const handleDownloadQRCode = () => {
+    if (paymentData?.qrCodeUrl) {
+      // Download langsung dari Xendit URL
+      const link = document.createElement('a');
+      link.href = paymentData.qrCodeUrl;
+      link.download = `qris-${orderId}-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('QR code berhasil diunduh');
+    } else if (currentQrString) {
+      // Generate download dari QR string (opsional)
+      toast.info('Fitur download dari QR string sedang dikembangkan');
+    }
+  };
+
+  // Generate QR code dari string menggunakan qrcode.react
+  const generateQRCodeFromString = () => {
+    if (!currentQrString) return null;
+    
+    return (
+      <div className="w-64 h-64 mx-auto">
+        <QRCodeSVG 
+          value={currentQrString} 
+          size={256}
+          level="H"
+          includeMargin={true}
+          bgColor="#FFFFFF"
+          fgColor="#000000"
+        />
+      </div>
+    );
+  };
+
   if (!paymentData) {
     return (
       <Card>
@@ -1692,6 +1803,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
   }
 
   const methodInfo = XENDIT_PAYMENT_FEES[selectedPayment];
+  const isQRIS = selectedPayment === 'qris';
 
   return (
     <div className="space-y-6">
@@ -1699,7 +1811,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {paymentData.vaNumber && <Building className="h-5 w-5" />}
-            {paymentData.qrString && <QrCode className="h-5 w-5" />}
+            {isQRIS && <QrCode className="h-5 w-5" />}
             {paymentData.ewalletType && <Wallet className="h-5 w-5" />}
             {paymentData.cardType && <CreditCard className="h-5 w-5" />}
             {paymentData.paymentCode && <Store className="h-5 w-5" />}
@@ -1728,15 +1840,126 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
                 <div>
                   <p className="font-medium">{paymentData.paymentMethodName || methodInfo?.name || selectedPayment}</p>
                   <p className="text-sm text-muted-foreground">Order ID: {orderId}</p>
+                  {isQRIS && paymentData.xenditId && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Xendit ID: {paymentData.xenditId?.slice(-8) || 'N/A'}
+                    </p>
+                  )}
                 </div>
               </div>
+              {isQRIS && (
+                <Badge variant="outline" className={qrRefreshTime <= 60 ? 'text-red-600' : ''}>
+                  <Clock className="h-3 w-3 mr-1" />
+                  QR Berubah: {formatTime(qrRefreshTime)}
+                </Badge>
+              )}
             </div>
           </div>
 
           {/* ==========================================
+              QRIS DISPLAY - FIXED (No proxy fetching)
+              ========================================== */}
+          {isQRIS && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg flex flex-col items-center">
+                <p className="text-sm text-muted-foreground mb-4 text-center">
+                  Scan QR Code dengan aplikasi e-wallet atau mobile banking<br />
+                  <span className="text-xs">QR code akan otomatis diperbarui setiap 5 menit untuk keamanan</span>
+                </p>
+                
+                {/* QR Code Display - Fixed */}
+                <div className="bg-white p-6 rounded-lg border-2 border-dashed border-gray-300 shadow-sm">
+                  {currentQrString ? (
+                    generateQRCodeFromString()
+                  ) : (
+                    <div className="w-64 h-64 flex items-center justify-center">
+                      <Loader2 className="h-12 w-12 text-gray-400 animate-spin" />
+                      <span className="ml-2 text-sm">Memuat QR code...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* QR String Info (for debugging) */}
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg w-full">
+                  <p className="text-xs text-gray-500 text-center">
+                    QR String: {currentQrString ? `${currentQrString.substring(0, 50)}...` : 'Tidak tersedia'}
+                  </p>
+                </div>
+
+                {/* Download QR Code Button */}
+                <div className="mt-6 flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadQRCode}
+                    disabled={!paymentData?.qrCodeUrl}
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    {paymentData?.qrCodeUrl ? 'Download QR Code' : 'Download Tidak Tersedia'}
+                  </Button>
+                  
+                  <Button
+                    variant="ghost"
+                    onClick={refreshQRCode}
+                    disabled={isRefreshingQR}
+                    className="flex items-center gap-2"
+                  >
+                    {isRefreshingQR ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Perbarui QR Code
+                  </Button>
+                </div>
+
+                {/* QRIS Info */}
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg w-full">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-blue-900 mb-1">Informasi QRIS:</h4>
+                      <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                        <li>Scan dengan aplikasi DANA, OVO, GoPay, ShopeePay, LinkAja, atau mobile banking</li>
+                        <li>QR code otomatis berubah setiap 5 menit untuk keamanan</li>
+                        <li>Berlaku hingga: {paymentData.expirationDate ? formatExpiration(paymentData.expirationDate) : '24 jam'}</li>
+                        {paymentData.isTestMode && (
+                          <li className="font-semibold text-yellow-700">⚠️ Mode Testing - QR code ini untuk pengujian</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alternative Payment URL */}
+              {paymentData.invoiceUrl && (
+                <div className="p-4 bg-gray-50 border rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-2">Atau gunakan link pembayaran:</p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={paymentData.invoiceUrl}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(paymentData.invoiceUrl, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-1" />
+                      Buka
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ==========================================
               VIRTUAL ACCOUNT DISPLAY
               ========================================== */}
-          {paymentData.vaNumber && (
+          {paymentData.vaNumber && !isQRIS && (
             <div className="space-y-4">
               <div className="p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground mb-2">Nomor Virtual Account</p>
@@ -1762,40 +1985,6 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
                   <li>Masukkan nomor VA: <strong>{paymentData.vaNumber}</strong></li>
                   <li>Masukkan nominal: <strong>Rp {paymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
                   <li>Konfirmasi dan selesaikan pembayaran</li>
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {/* ==========================================
-              QRIS DISPLAY WITH QR CODE
-              ========================================== */}
-          {paymentData.qrString && (
-            <div className="space-y-4">
-              <div className="p-4 border rounded-lg flex flex-col items-center">
-                <p className="text-sm text-muted-foreground mb-4">Scan QR Code dengan aplikasi e-wallet atau mobile banking</p>
-                <div className="bg-white p-4 rounded-lg border shadow-sm">
-                  <QRCodeSVG 
-                    value={paymentData.qrString} 
-                    size={200}
-                    level="H"
-                    includeMargin={true}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Gunakan aplikasi seperti DANA, OVO, GoPay, ShopeePay, atau mobile banking
-                </p>
-              </div>
-
-              {/* QRIS Instructions */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
-                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Buka aplikasi e-wallet atau mobile banking</li>
-                  <li>Pilih menu Scan QR / Bayar dengan QRIS</li>
-                  <li>Scan QR Code di atas</li>
-                  <li>Konfirmasi nominal: <strong>Rp {paymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
-                  <li>Selesaikan transaksi</li>
                 </ol>
               </div>
             </div>
@@ -1921,6 +2110,11 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
                 <div>
                   <p className="font-medium">Batas Waktu Pembayaran</p>
                   <p className="text-sm">{formatExpiration(paymentData.expirationDate)}</p>
+                  {isQRIS && (
+                    <p className="text-xs mt-1">
+                      QR code akan berubah otomatis setiap 5 menit hingga waktu habis
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1992,6 +2186,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
               <p>
                 Pembayaran akan diverifikasi secara otomatis setelah berhasil.
                 Anda akan menerima notifikasi setelah pembayaran dikonfirmasi.
+                {isQRIS && ' QR code akan otomatis diperbarui setiap 5 menit untuk keamanan.'}
               </p>
             </div>
           </div>

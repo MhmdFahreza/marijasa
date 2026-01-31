@@ -520,6 +520,9 @@ model Booking {
   transaction_fee Float @default(0)
   total           Float
 
+  // Payment metadata for Xendit
+  payment_metadata Json? // ✅ TAMBAHKAN FIELD INI
+
   // Rating fields
   rating         Int?
   rating_comment String? @db.Text

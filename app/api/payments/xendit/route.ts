@@ -7,7 +7,8 @@ import {
   XENDIT_PAYMENT_FEES,
   PaymentMethodId,
   isXenditConfigured,
-  getSecretKeyInfo,
+  createQRISPayment,
+  getQRCodeDetails,
 } from '@/app/components/lib/xendit';
 
 // ==========================================
@@ -30,15 +31,8 @@ function generateVANumber(bankCode: string): string {
   return basePrefix + randomPart.slice(0, 14 - basePrefix.length);
 }
 
-// Generate QRIS string for testing
-function generateQRISString(orderId: string, amount: number): string {
-  // Format QRIS sederhana untuk testing
-  const timestamp = Date.now();
-  return `00020101021226580011ID.CO.SELSAS01189360091800000000000215${orderId}5303360540${amount}5802ID5913SELSAS VENDOR6007JAKARTA61051234062070503***6304${timestamp.toString(16).toUpperCase().slice(-4)}`;
-}
-
 // ==========================================
-// POST - Create Payment (Without Xendit Redirect)
+// POST - Create Payment (With Xendit Integration)
 // ==========================================
 
 export async function POST(request: NextRequest) {
@@ -46,7 +40,7 @@ export async function POST(request: NextRequest) {
   
   console.log('\n');
   console.log('╔══════════════════════════════════════════════════════════════════╗');
-  console.log('║           PAYMENT API - REQUEST RECEIVED (NO REDIRECT)           ║');
+  console.log('║           PAYMENT API - REQUEST RECEIVED (XENDIT INTEGRATION)    ║');
   console.log('║ Timestamp:', new Date().toISOString());
   console.log('╚══════════════════════════════════════════════════════════════════╝');
 
@@ -201,6 +195,134 @@ export async function POST(request: NextRequest) {
       responseData.transactionFee = 0;
       responseData.totalAmount = amount;
 
+    } else if (feeConfig.category === 'qris') {
+      // QRIS - Create Xendit QR Code
+      console.log('\n[Processing] QRIS payment via Xendit...');
+      
+      // Check if Xendit is configured
+      if (!isXenditConfigured()) {
+        console.error('[Xendit] API key not configured');
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Configuration Error', 
+            message: 'Sistem pembayaran belum dikonfigurasi. Mohon hubungi administrator.' 
+          },
+          { status: 500 }
+        );
+      }
+
+      try {
+        // Create QR Code via Xendit API
+        const qrParams = {
+          externalId: orderId,
+          amount: totalAmount,
+          customerName: customerName || 'Customer',
+          customerPhone: customerPhone || '',
+          customerEmail: customerEmail || '',
+          description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+          expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 jam
+        };
+
+        console.log('[Xendit] Creating QR Code with params:', qrParams);
+        
+        const qrResponse = await createQRISPayment(qrParams);
+        
+        console.log('[Xendit] QR Code created:', {
+          id: qrResponse.id,
+          qrString: qrResponse.qr_string,
+          amount: qrResponse.amount,
+          status: qrResponse.status
+        });
+
+        // Save QR code data to database using payment_metadata
+        const paymentMetadata = {
+          xendit_qr_id: qrResponse.id,
+          xendit_qr_string: qrResponse.qr_string,
+          xendit_expires_at: qrResponse.expires_at,
+          xendit_status: qrResponse.status,
+          qr_code_url: qrResponse.qr_code_url || null,
+          invoice_url: qrResponse.invoice_url || null,
+        };
+
+        await prisma.booking.update({
+          where: { booking_id: booking.booking_id },
+          data: {
+            payment_method: paymentMethod,
+            payment_status: 'PENDING',
+            transaction_fee: transactionFee,
+            total: totalAmount,
+            payment_metadata: paymentMetadata // ✅ Now valid with updated schema
+          }
+        });
+
+        // Create notification
+        await prisma.userNotification.create({
+          data: {
+            user_id: userId,
+            title: '📱 QRIS Dibuat via Xendit',
+            message: `Pembayaran #${orderId} via QRIS berhasil dibuat. Total: Rp ${totalAmount.toLocaleString('id-ID')}. QR code berlaku 24 jam.`,
+            type: 'payment',
+            order_id: booking.booking_id,
+          }
+        });
+
+        // Add to booking history
+        await prisma.bookingHistory.create({
+          data: {
+            booking_id: booking.booking_id,
+            status: 'Menunggu Pembayaran - QRIS',
+            reason: `QR Code ID: ${qrResponse.id.slice(-8)}`
+          }
+        });
+
+        // Prepare response with Xendit QR data
+        responseData = {
+          ...responseData,
+          xenditId: qrResponse.id,
+          qrId: qrResponse.id,
+          qrString: qrResponse.qr_string,
+          qrCodeUrl: qrResponse.qr_code_url,
+          invoiceUrl: qrResponse.invoice_url,
+          expiresAt: qrResponse.expires_at,
+          qrCodeData: qrResponse.qr_code_url ? await fetchQRCodeImage(qrResponse.qr_code_url) : null,
+        };
+
+        console.log('[Xendit] QRIS payment created successfully');
+
+      } catch (xenditError: any) {
+        console.error('[Xendit] Error creating QR code:', xenditError);
+        
+        // Fallback to dummy QR code for testing
+        console.log('[Xendit] Falling back to dummy QR code for testing');
+        
+        const dummyQRString = `00020101021226650014ID.CO.QRIS.WWW011893600914220617${orderId}5204571253033605406${totalAmount}5802ID5913SELSAS VENDOR6005DEPOK61051234562140123DANA${Date.now()}${Math.random().toString(36).substr(2, 9)}6304`;
+        
+        const dummyPaymentMetadata = {
+          is_test_mode: true,
+          qr_string: dummyQRString,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        };
+
+        await prisma.booking.update({
+          where: { booking_id: booking.booking_id },
+          data: {
+            payment_method: paymentMethod,
+            payment_status: 'PENDING',
+            transaction_fee: transactionFee,
+            total: totalAmount,
+            payment_metadata: dummyPaymentMetadata // ✅ Now valid
+          }
+        });
+
+        responseData = {
+          ...responseData,
+          isTestMode: true,
+          qrString: dummyQRString,
+          message: 'QRIS berhasil dibuat (Mode Testing)',
+        };
+      }
+
     } else if (feeConfig.category === 'va') {
       // VIRTUAL ACCOUNT
       console.log('\n[Processing] Virtual Account payment...');
@@ -214,6 +336,10 @@ export async function POST(request: NextRequest) {
           payment_status: 'PENDING',
           transaction_fee: transactionFee,
           total: totalAmount,
+          payment_metadata: {
+            va_number: vaNumber,
+            bank_code: paymentMethod.replace('va_', '').toUpperCase(),
+          }
         }
       });
 
@@ -238,42 +364,6 @@ export async function POST(request: NextRequest) {
       responseData.vaNumber = vaNumber;
       responseData.bankCode = paymentMethod.replace('va_', '').toUpperCase();
 
-    } else if (feeConfig.category === 'qris') {
-      // QRIS
-      console.log('\n[Processing] QRIS payment...');
-      
-      const qrString = generateQRISString(orderId, totalAmount);
-      
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_method: paymentMethod,
-          payment_status: 'PENDING',
-          transaction_fee: transactionFee,
-          total: totalAmount,
-        }
-      });
-
-      await prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          title: '📱 QRIS Dibuat',
-          message: `Pembayaran #${orderId} via QRIS. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Scan QR untuk membayar.`,
-          type: 'payment',
-          order_id: booking.booking_id,
-        }
-      });
-
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: 'Menunggu Pembayaran - QRIS',
-          reason: 'Scan QR Code untuk membayar'
-        }
-      });
-
-      responseData.qrString = qrString;
-
     } else if (feeConfig.category === 'ewallet') {
       // E-WALLET (DANA, OVO, ShopeePay, LinkAja)
       console.log('\n[Processing] E-Wallet payment...');
@@ -285,6 +375,9 @@ export async function POST(request: NextRequest) {
           payment_status: 'PENDING',
           transaction_fee: transactionFee,
           total: totalAmount,
+          payment_metadata: {
+            ewallet_type: paymentMethod.replace('ewallet_', '').toUpperCase(),
+          }
         }
       });
 
@@ -306,7 +399,6 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // For e-wallet, we'll show a simulated deep link or instruction
       responseData.ewalletType = paymentMethod.replace('ewallet_', '').toUpperCase();
 
     } else if (feeConfig.category === 'card') {
@@ -320,6 +412,9 @@ export async function POST(request: NextRequest) {
           payment_status: 'PENDING',
           transaction_fee: transactionFee,
           total: totalAmount,
+          payment_metadata: {
+            card_type: paymentMethod.replace('card_', '').toUpperCase(),
+          }
         }
       });
 
@@ -356,6 +451,10 @@ export async function POST(request: NextRequest) {
           payment_status: 'PENDING',
           transaction_fee: transactionFee,
           total: totalAmount,
+          payment_metadata: {
+            payment_code: paymentCode,
+            retail_outlet: paymentMethod.replace('retail_', '').toUpperCase(),
+          }
         }
       });
 
@@ -398,12 +497,36 @@ export async function POST(request: NextRequest) {
 }
 
 // ==========================================
+// HELPER: Fetch QR Code Image from URL
+// ==========================================
+
+async function fetchQRCodeImage(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('[QR Code] Failed to fetch image from URL:', url);
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const contentType = response.headers.get('content-type') || 'image/png';
+    
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error('[QR Code] Error fetching image:', error);
+    return null;
+  }
+}
+
+// ==========================================
 // GET - Check Payment Status
 // ==========================================
 
 export async function GET(request: NextRequest) {
   try {
     const orderId = request.nextUrl.searchParams.get('orderId');
+    const refreshQR = request.nextUrl.searchParams.get('refreshQR') === 'true';
 
     if (!orderId) {
       return NextResponse.json(
@@ -421,6 +544,7 @@ export async function GET(request: NextRequest) {
         total: true,
         transaction_fee: true,
         status: true,
+        payment_metadata: true,
       }
     });
 
@@ -429,6 +553,39 @@ export async function GET(request: NextRequest) {
         { success: false, error: 'Not Found', message: 'Pemesanan tidak ditemukan' },
         { status: 404 }
       );
+    }
+
+    // If QR code and we need to refresh it
+    let refreshedQRData = null;
+    if (refreshQR && booking.payment_method === 'qris' && booking.payment_metadata) {
+      try {
+        const metadata = booking.payment_metadata as any;
+        if (metadata.xendit_qr_id) {
+          const qrId = metadata.xendit_qr_id;
+          const qrDetails = await getQRCodeDetails(qrId);
+          
+          refreshedQRData = {
+            qrString: qrDetails.qr_string,
+            qrCodeUrl: qrDetails.qr_code_url,
+            status: qrDetails.status,
+            expiresAt: qrDetails.expires_at,
+            qrCodeData: qrDetails.qr_code_url ? await fetchQRCodeImage(qrDetails.qr_code_url) : null,
+          };
+          
+          // Update metadata with refreshed data
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_metadata: {
+                ...metadata,
+                ...refreshedQRData,
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('[Refresh QR] Error:', error);
+      }
     }
 
     return NextResponse.json({
@@ -440,6 +597,8 @@ export async function GET(request: NextRequest) {
         total: booking.total,
         transactionFee: booking.transaction_fee,
         status: booking.status,
+        metadata: booking.payment_metadata,
+        refreshedQR: refreshedQRData,
       },
     });
 
