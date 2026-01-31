@@ -1,4 +1,4 @@
-// middleware.ts
+// middleware.ts - VERSI DIPERBARUI
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -15,6 +15,13 @@ export const config = {
     "/admin/:path*",
   ],
 };
+
+// Route yang TIDAK memerlukan autentikasi (PUBLIC)
+const publicRoutes = [
+  "/api/payments/xendit/webhook",        // ⬅️ WEBHOOK XENDIT
+  "/api/payments/xendit/simulate",       // Simulasi pembayaran
+  "/api/payments/xendit/webhook/route",  // Alternatif path
+];
 
 // Protected routes that require authentication
 const protectedRoutes = ["/profile", "/riwayat_pemesanan", "/vendor_favorit"];
@@ -48,6 +55,15 @@ function createLoadingRedirect(targetUrl: string, request: NextRequest, message:
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // =============== PUBLIC ROUTES ===============
+  // Allow access to public routes WITHOUT authentication
+  for (const route of publicRoutes) {
+    if (pathname.startsWith(route)) {
+      console.log(`[Middleware] Allowing public access to: ${pathname}`);
+      return NextResponse.next();
+    }
+  }
 
   // =============== ADMIN ROUTES ===============
   if (pathname.startsWith('/admin/')) {

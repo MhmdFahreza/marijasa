@@ -7,40 +7,35 @@ import {
   XENDIT_PAYMENT_FEES,
   PaymentMethodId,
   isXenditConfigured,
+  // QRIS
   createQRISPayment,
   getQRCodeDetails,
+  // E-Wallet
+  createEWalletPayment,
+  getEWalletChargeStatus,
+  // Virtual Account
+  createVirtualAccount,
+  getVirtualAccountDetails,
+  // Retail Outlet
+  createRetailPayment,
+  getRetailPaymentDetails,
+  // Card (via Invoice)
+  createCardPayment,
+  getInvoiceDetails,
 } from '@/app/components/lib/xendit';
 
-// ==========================================
-// HELPER FUNCTIONS
-// ==========================================
-
-// Generate dummy VA number for testing
-function generateVANumber(bankCode: string): string {
-  const prefix: Record<string, string> = {
-    'va_bca': '1234567890',
-    'va_bni': '8810',
-    'va_bri': '2621',
-    'va_mandiri': '8908',
-    'va_permata': '8214',
-    'va_bsi': '7181',
-    'va_cimb': '8039',
-  };
-  const basePrefix = prefix[bankCode] || '9999';
-  const randomPart = Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
-  return basePrefix + randomPart.slice(0, 14 - basePrefix.length);
-}
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 // ==========================================
-// POST - Create Payment (With Xendit Integration)
+// POST - Create Payment (Full Xendit Integration)
 // ==========================================
 
 export async function POST(request: NextRequest) {
   let requestBody: any = null;
-  
+
   console.log('\n');
   console.log('╔══════════════════════════════════════════════════════════════════╗');
-  console.log('║           PAYMENT API - REQUEST RECEIVED (XENDIT INTEGRATION)    ║');
+  console.log('║       XENDIT PAYMENT API - FULL INTEGRATION                      ║');
   console.log('║ Timestamp:', new Date().toISOString());
   console.log('╚══════════════════════════════════════════════════════════════════╝');
 
@@ -97,6 +92,7 @@ export async function POST(request: NextRequest) {
     console.log('  - Order ID:', orderId);
     console.log('  - Method:', paymentMethod);
     console.log('  - Amount:', amount);
+    console.log('  - Customer:', customerName, customerEmail, customerPhone);
 
     // Validate
     if (!orderId || !paymentMethod || !amount || amount <= 0) {
@@ -139,8 +135,21 @@ export async function POST(request: NextRequest) {
 
     // Get payment method config
     const feeConfig = XENDIT_PAYMENT_FEES[paymentMethod as PaymentMethodId];
-    
-    // Prepare response based on payment method category
+
+    // Check if Xendit is configured (except for tunai)
+    if (feeConfig.category !== 'tunai' && !isXenditConfigured()) {
+      console.error('[Xendit] API key not configured');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Configuration Error',
+          message: 'Sistem pembayaran belum dikonfigurasi. Mohon hubungi administrator.'
+        },
+        { status: 500 }
+      );
+    }
+
+    // Prepare base response
     let responseData: any = {
       success: true,
       message: 'Pembayaran berhasil dibuat',
@@ -151,371 +160,478 @@ export async function POST(request: NextRequest) {
       amount,
       transactionFee,
       totalAmount,
-      expirationDate: new Date(Date.now() + 86400000).toISOString(), // 24 hours
+      expirationDate: new Date(Date.now() + 86400000).toISOString(),
     };
 
     // ==========================================
-    // HANDLE DIFFERENT PAYMENT TYPES
+    // PROCESS PAYMENT BY TYPE
     // ==========================================
 
-    if (feeConfig.category === 'tunai') {
-      // TUNAI - Cash payment
-      console.log('\n[Processing] Cash payment...');
-      
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_method: paymentMethod,
-          payment_status: 'PENDING',
-          transaction_fee: 0,
-          total: amount,
-          status: 'CONFIRMED',
+    try {
+      switch (feeConfig.category) {
+        // ==========================================
+        // TUNAI (Cash) - No Xendit needed
+        // ==========================================
+        case 'tunai': {
+          console.log('\n[Processing] Cash payment...');
+
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_method: paymentMethod,
+              payment_status: 'PENDING',
+              transaction_fee: 0,
+              total: amount,
+              status: 'CONFIRMED',
+              payment_metadata: {
+                payment_type: 'tunai',
+                created_at: new Date().toISOString(),
+              }
+            }
+          });
+
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: '💵 Pembayaran Tunai Dikonfirmasi',
+              message: `Pesanan #${orderId} dikonfirmasi dengan pembayaran tunai. Siapkan pembayaran saat layanan diberikan.`,
+              type: 'payment',
+              order_id: booking.booking_id,
+            }
+          });
+
+          await prisma.bookingHistory.create({
+            data: {
+              booking_id: booking.booking_id,
+              status: 'Pembayaran Tunai - Menunggu Layanan',
+              reason: 'Pembayaran tunai saat layanan diberikan'
+            }
+          });
+
+          responseData.message = 'Pembayaran Tunai berhasil dikonfirmasi';
+          responseData.transactionFee = 0;
+          responseData.totalAmount = amount;
+          break;
         }
-      });
 
-      await prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          title: '💵 Pembayaran Tunai Dikonfirmasi',
-          message: `Pesanan #${orderId} dikonfirmasi dengan pembayaran tunai. Siapkan pembayaran saat layanan diberikan.`,
-          type: 'payment',
-          order_id: booking.booking_id,
+        // ==========================================
+        // QRIS - Create QR Code
+        // ==========================================
+        case 'qris': {
+          console.log('\n[Processing] QRIS payment via Xendit...');
+
+          const qrResponse = await createQRISPayment({
+            externalId: orderId,
+            amount: totalAmount,
+            customerName: customerName || 'Customer',
+            customerPhone: customerPhone || '',
+            customerEmail: customerEmail || '',
+            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          });
+
+          console.log('[Xendit QRIS] Response:', JSON.stringify(qrResponse, null, 2));
+
+          const paymentMetadata = {
+            payment_type: 'qris',
+            xendit_id: qrResponse.id,
+            xendit_qr_id: qrResponse.id,
+            xendit_qr_string: qrResponse.qr_string,
+            qr_code_url: qrResponse.qr_code_url || null,
+            invoice_url: qrResponse.invoice_url || null,
+            xendit_status: qrResponse.status,
+            xendit_expires_at: qrResponse.expires_at,
+            created_at: qrResponse.created,
+          };
+
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_method: paymentMethod,
+              payment_status: 'PENDING',
+              transaction_fee: transactionFee,
+              total: totalAmount,
+              payment_metadata: paymentMetadata
+            }
+          });
+
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: '📱 QRIS Dibuat',
+              message: `Pembayaran #${orderId} via QRIS berhasil dibuat. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Scan QR code untuk membayar.`,
+              type: 'payment',
+              order_id: booking.booking_id,
+            }
+          });
+
+          await prisma.bookingHistory.create({
+            data: {
+              booking_id: booking.booking_id,
+              status: 'Menunggu Pembayaran - QRIS',
+              reason: `Xendit QR ID: ${qrResponse.id}`
+            }
+          });
+
+          responseData = {
+            ...responseData,
+            xenditId: qrResponse.id,
+            qrId: qrResponse.id,
+            qrString: qrResponse.qr_string,
+            qrCodeUrl: qrResponse.qr_code_url,
+            invoiceUrl: qrResponse.invoice_url,
+            expiresAt: qrResponse.expires_at,
+          };
+          break;
         }
-      });
 
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: 'Pembayaran Tunai - Menunggu Layanan',
-          reason: 'Pembayaran tunai saat layanan diberikan'
+        // ==========================================
+        // E-WALLET (DANA, OVO, ShopeePay, LinkAja)
+        // ==========================================
+        case 'ewallet': {
+          console.log('\n[Processing] E-Wallet payment via Xendit...');
+
+          const channelCode = (feeConfig as any).channelCode;
+          console.log('[E-Wallet] Channel Code:', channelCode);
+
+          const ewalletResponse = await createEWalletPayment({
+            externalId: orderId,
+            amount: totalAmount,
+            channelCode: channelCode,
+            customerPhone: customerPhone || '',
+            customerName: customerName || 'Customer',
+            customerEmail: customerEmail || '',
+            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            successRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=success`,
+            failureRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=failed`,
+          });
+
+          console.log('[Xendit E-Wallet] Response:', JSON.stringify(ewalletResponse, null, 2));
+
+          const paymentMetadata = {
+            payment_type: 'ewallet',
+            xendit_id: ewalletResponse.id,
+            xendit_reference_id: ewalletResponse.reference_id,
+            channel_code: ewalletResponse.channel_code,
+            xendit_status: ewalletResponse.status,
+            is_redirect_required: ewalletResponse.is_redirect_required,
+            actions: ewalletResponse.actions,
+            checkout_url: ewalletResponse.actions?.mobile_web_checkout_url ||
+              ewalletResponse.actions?.desktop_web_checkout_url ||
+              null,
+            deeplink_url: ewalletResponse.actions?.mobile_deeplink_checkout_url || null,
+            qr_string: ewalletResponse.actions?.qr_checkout_string || null,
+            created_at: ewalletResponse.created,
+          };
+
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_method: paymentMethod,
+              payment_status: 'PENDING',
+              transaction_fee: transactionFee,
+              total: totalAmount,
+              payment_metadata: paymentMetadata
+            }
+          });
+
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: `📱 Pembayaran ${feeConfig.name} Dibuat`,
+              message: `Pembayaran #${orderId} via ${feeConfig.name} berhasil dibuat. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`,
+              type: 'payment',
+              order_id: booking.booking_id,
+            }
+          });
+
+          await prisma.bookingHistory.create({
+            data: {
+              booking_id: booking.booking_id,
+              status: `Menunggu Pembayaran - ${feeConfig.name}`,
+              reason: `Xendit Charge ID: ${ewalletResponse.id}`
+            }
+          });
+
+          responseData = {
+            ...responseData,
+            xenditId: ewalletResponse.id,
+            ewalletType: channelCode.replace('ID_', ''),
+            isRedirectRequired: ewalletResponse.is_redirect_required,
+            checkoutUrl: paymentMetadata.checkout_url,
+            deeplinkUrl: paymentMetadata.deeplink_url,
+            qrString: paymentMetadata.qr_string,
+            actions: ewalletResponse.actions,
+          };
+          break;
         }
-      });
 
-      responseData.message = 'Pembayaran Tunai berhasil dikonfirmasi';
-      responseData.transactionFee = 0;
-      responseData.totalAmount = amount;
+        // ==========================================
+        // VIRTUAL ACCOUNT (BCA, BNI, BRI, Mandiri, etc.)
+        // ==========================================
+        case 'va': {
+          console.log('\n[Processing] Virtual Account payment via Xendit...');
 
-    } else if (feeConfig.category === 'qris') {
-      // QRIS - Create Xendit QR Code
-      console.log('\n[Processing] QRIS payment via Xendit...');
-      
-      // Check if Xendit is configured
-      if (!isXenditConfigured()) {
-        console.error('[Xendit] API key not configured');
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Configuration Error', 
-            message: 'Sistem pembayaran belum dikonfigurasi. Mohon hubungi administrator.' 
-          },
-          { status: 500 }
-        );
+          const bankCode = (feeConfig as any).bankCode;
+          console.log('[VA] Bank Code:', bankCode);
+
+          const vaResponse = await createVirtualAccount({
+            externalId: orderId,
+            bankCode: bankCode,
+            amount: totalAmount,
+            customerName: customerName || 'SELSAS Customer',
+            customerPhone: customerPhone || '',
+            customerEmail: customerEmail || '',
+            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            isSingleUse: true,
+            isClosed: true,
+          });
+
+          console.log('[Xendit VA] Response:', JSON.stringify(vaResponse, null, 2));
+
+          const paymentMetadata = {
+            payment_type: 'va',
+            xendit_id: vaResponse.id,
+            bank_code: vaResponse.bank_code,
+            merchant_code: vaResponse.merchant_code,
+            account_number: vaResponse.account_number,
+            va_number: vaResponse.account_number,
+            xendit_status: vaResponse.status,
+            expected_amount: vaResponse.expected_amount,
+            expiration_date: vaResponse.expiration_date,
+            is_closed: vaResponse.is_closed,
+            is_single_use: vaResponse.is_single_use,
+          };
+
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_method: paymentMethod,
+              payment_status: 'PENDING',
+              transaction_fee: transactionFee,
+              total: totalAmount,
+              payment_metadata: paymentMetadata
+            }
+          });
+
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: `🏦 Virtual Account ${bankCode} Dibuat`,
+              message: `Pembayaran #${orderId} via ${feeConfig.name}. VA: ${vaResponse.account_number}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
+              type: 'payment',
+              order_id: booking.booking_id,
+            }
+          });
+
+          await prisma.bookingHistory.create({
+            data: {
+              booking_id: booking.booking_id,
+              status: `Menunggu Pembayaran - ${feeConfig.name}`,
+              reason: `VA Number: ${vaResponse.account_number}`
+            }
+          });
+
+          responseData = {
+            ...responseData,
+            xenditId: vaResponse.id,
+            vaNumber: vaResponse.account_number,
+            bankCode: vaResponse.bank_code,
+            merchantCode: vaResponse.merchant_code,
+            expirationDate: vaResponse.expiration_date,
+          };
+          break;
+        }
+
+        // ==========================================
+        // RETAIL OUTLETS (Alfamart, Indomaret)
+        // ==========================================
+        case 'retail': {
+          console.log('\n[Processing] Retail Outlet payment via Xendit...');
+
+          const retailCode = (feeConfig as any).retailCode;
+          console.log('[Retail] Outlet:', retailCode);
+
+          const retailResponse = await createRetailPayment({
+            externalId: orderId,
+            retailOutletName: retailCode,
+            amount: totalAmount,
+            customerName: customerName || 'SELSAS Customer',
+            customerPhone: customerPhone || '',
+            customerEmail: customerEmail || '',
+            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            isSingleUse: true,
+          });
+
+          console.log('[Xendit Retail] Response:', JSON.stringify(retailResponse, null, 2));
+
+          const paymentMetadata = {
+            payment_type: 'retail',
+            xendit_id: retailResponse.id,
+            retail_outlet_name: retailResponse.retail_outlet_name,
+            payment_code: retailResponse.payment_code,
+            prefix: retailResponse.prefix,
+            xendit_status: retailResponse.status,
+            expected_amount: retailResponse.expected_amount,
+            expiration_date: retailResponse.expiration_date,
+            is_single_use: retailResponse.is_single_use,
+          };
+
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_method: paymentMethod,
+              payment_status: 'PENDING',
+              transaction_fee: transactionFee,
+              total: totalAmount,
+              payment_metadata: paymentMetadata
+            }
+          });
+
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: `🏪 Kode Pembayaran ${retailCode} Dibuat`,
+              message: `Pembayaran #${orderId} via ${feeConfig.name}. Kode: ${retailResponse.payment_code}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
+              type: 'payment',
+              order_id: booking.booking_id,
+            }
+          });
+
+          await prisma.bookingHistory.create({
+            data: {
+              booking_id: booking.booking_id,
+              status: `Menunggu Pembayaran - ${feeConfig.name}`,
+              reason: `Payment Code: ${retailResponse.payment_code}`
+            }
+          });
+
+          responseData = {
+            ...responseData,
+            xenditId: retailResponse.id,
+            paymentCode: retailResponse.payment_code,
+            retailOutlet: retailResponse.retail_outlet_name,
+            expirationDate: retailResponse.expiration_date,
+          };
+          break;
+        }
+
+        // ==========================================
+        // CARD (Credit/Debit Card via Invoice)
+        // ==========================================
+        case 'card': {
+          console.log('\n[Processing] Card payment via Xendit Invoice...');
+
+          if (!customerEmail) {
+            return NextResponse.json(
+              { success: false, error: 'Validation Error', message: 'Email diperlukan untuk pembayaran kartu' },
+              { status: 400 }
+            );
+          }
+
+          const cardResponse = await createCardPayment({
+            externalId: orderId,
+            amount: totalAmount,
+            payerEmail: customerEmail,
+            customerName: customerName || 'Customer',
+            customerPhone: customerPhone || '',
+            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            successRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=success`,
+            failureRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=failed`,
+            invoiceDuration: 86400,
+          });
+
+          console.log('[Xendit Card] Response:', JSON.stringify(cardResponse, null, 2));
+
+          const paymentMetadata = {
+            payment_type: 'card',
+            xendit_id: cardResponse.id,
+            xendit_invoice_id: cardResponse.id,
+            invoice_url: cardResponse.invoice_url,
+            xendit_status: cardResponse.status,
+            expiry_date: cardResponse.expiry_date,
+            merchant_name: cardResponse.merchant_name,
+          };
+
+          await prisma.booking.update({
+            where: { booking_id: booking.booking_id },
+            data: {
+              payment_method: paymentMethod,
+              payment_status: 'PENDING',
+              transaction_fee: transactionFee,
+              total: totalAmount,
+              payment_metadata: paymentMetadata
+            }
+          });
+
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: `💳 Pembayaran Kartu Dibuat`,
+              message: `Pembayaran #${orderId} via ${feeConfig.name}. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`,
+              type: 'payment',
+              order_id: booking.booking_id,
+            }
+          });
+
+          await prisma.bookingHistory.create({
+            data: {
+              booking_id: booking.booking_id,
+              status: `Menunggu Pembayaran - ${feeConfig.name}`,
+              reason: `Invoice ID: ${cardResponse.id}`
+            }
+          });
+
+          responseData = {
+            ...responseData,
+            xenditId: cardResponse.id,
+            invoiceId: cardResponse.id,
+            invoiceUrl: cardResponse.invoice_url,
+            cardType: paymentMethod.replace('card_', '').toUpperCase(),
+            expirationDate: cardResponse.expiry_date,
+          };
+          break;
+        }
+
+        default:
+          return NextResponse.json(
+            { success: false, error: 'Invalid Payment Type', message: 'Tipe pembayaran tidak didukung' },
+            { status: 400 }
+          );
       }
 
-      try {
-        // Create QR Code via Xendit API
-        const qrParams = {
-          externalId: orderId,
-          amount: totalAmount,
-          customerName: customerName || 'Customer',
-          customerPhone: customerPhone || '',
-          customerEmail: customerEmail || '',
-          description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
-          expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 jam
-        };
+      console.log('\n╔══════════════════════════════════════════════════════════════════╗');
+      console.log('║                 PAYMENT CREATED SUCCESSFULLY                     ║');
+      console.log('║ Type:', feeConfig.category.toUpperCase().padEnd(55), '║');
+      console.log('║ Xendit ID:', (responseData.xenditId || 'N/A').substring(0, 48).padEnd(51), '║');
+      console.log('╚══════════════════════════════════════════════════════════════════╝\n');
 
-        console.log('[Xendit] Creating QR Code with params:', qrParams);
-        
-        const qrResponse = await createQRISPayment(qrParams);
-        
-        console.log('[Xendit] QR Code created:', {
-          id: qrResponse.id,
-          qrString: qrResponse.qr_string,
-          amount: qrResponse.amount,
-          status: qrResponse.status
-        });
+      return NextResponse.json(responseData);
 
-        // Save QR code data to database using payment_metadata
-        const paymentMetadata = {
-          xendit_qr_id: qrResponse.id,
-          xendit_qr_string: qrResponse.qr_string,
-          xendit_expires_at: qrResponse.expires_at,
-          xendit_status: qrResponse.status,
-          qr_code_url: qrResponse.qr_code_url || null,
-          invoice_url: qrResponse.invoice_url || null,
-        };
+    } catch (xenditError: any) {
+      console.error('\n[Xendit API Error]', xenditError.message);
 
-        await prisma.booking.update({
-          where: { booking_id: booking.booking_id },
-          data: {
-            payment_method: paymentMethod,
-            payment_status: 'PENDING',
-            transaction_fee: transactionFee,
-            total: totalAmount,
-            payment_metadata: paymentMetadata // ✅ Now valid with updated schema
-          }
-        });
-
-        // Create notification
-        await prisma.userNotification.create({
-          data: {
-            user_id: userId,
-            title: '📱 QRIS Dibuat via Xendit',
-            message: `Pembayaran #${orderId} via QRIS berhasil dibuat. Total: Rp ${totalAmount.toLocaleString('id-ID')}. QR code berlaku 24 jam.`,
-            type: 'payment',
-            order_id: booking.booking_id,
-          }
-        });
-
-        // Add to booking history
-        await prisma.bookingHistory.create({
-          data: {
-            booking_id: booking.booking_id,
-            status: 'Menunggu Pembayaran - QRIS',
-            reason: `QR Code ID: ${qrResponse.id.slice(-8)}`
-          }
-        });
-
-        // Prepare response with Xendit QR data
-        responseData = {
-          ...responseData,
-          xenditId: qrResponse.id,
-          qrId: qrResponse.id,
-          qrString: qrResponse.qr_string,
-          qrCodeUrl: qrResponse.qr_code_url,
-          invoiceUrl: qrResponse.invoice_url,
-          expiresAt: qrResponse.expires_at,
-          qrCodeData: qrResponse.qr_code_url ? await fetchQRCodeImage(qrResponse.qr_code_url) : null,
-        };
-
-        console.log('[Xendit] QRIS payment created successfully');
-
-      } catch (xenditError: any) {
-        console.error('[Xendit] Error creating QR code:', xenditError);
-        
-        // Fallback to dummy QR code for testing
-        console.log('[Xendit] Falling back to dummy QR code for testing');
-        
-        const dummyQRString = `00020101021226650014ID.CO.QRIS.WWW011893600914220617${orderId}5204571253033605406${totalAmount}5802ID5913SELSAS VENDOR6005DEPOK61051234562140123DANA${Date.now()}${Math.random().toString(36).substr(2, 9)}6304`;
-        
-        const dummyPaymentMetadata = {
-          is_test_mode: true,
-          qr_string: dummyQRString,
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        };
-
-        await prisma.booking.update({
-          where: { booking_id: booking.booking_id },
-          data: {
-            payment_method: paymentMethod,
-            payment_status: 'PENDING',
-            transaction_fee: transactionFee,
-            total: totalAmount,
-            payment_metadata: dummyPaymentMetadata // ✅ Now valid
-          }
-        });
-
-        responseData = {
-          ...responseData,
-          isTestMode: true,
-          qrString: dummyQRString,
-          message: 'QRIS berhasil dibuat (Mode Testing)',
-        };
-      }
-
-    } else if (feeConfig.category === 'va') {
-      // VIRTUAL ACCOUNT
-      console.log('\n[Processing] Virtual Account payment...');
-      
-      const vaNumber = generateVANumber(paymentMethod);
-      
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_method: paymentMethod,
-          payment_status: 'PENDING',
-          transaction_fee: transactionFee,
-          total: totalAmount,
-          payment_metadata: {
-            va_number: vaNumber,
-            bank_code: paymentMethod.replace('va_', '').toUpperCase(),
-          }
-        }
-      });
-
-      await prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          title: '🏦 Virtual Account Dibuat',
-          message: `Pembayaran #${orderId} via ${feeConfig.name}. VA: ${vaNumber}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
-          type: 'payment',
-          order_id: booking.booking_id,
-        }
-      });
-
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: `Menunggu Pembayaran - ${feeConfig.name}`,
-          reason: `VA Number: ${vaNumber}`
-        }
-      });
-
-      responseData.vaNumber = vaNumber;
-      responseData.bankCode = paymentMethod.replace('va_', '').toUpperCase();
-
-    } else if (feeConfig.category === 'ewallet') {
-      // E-WALLET (DANA, OVO, ShopeePay, LinkAja)
-      console.log('\n[Processing] E-Wallet payment...');
-      
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_method: paymentMethod,
-          payment_status: 'PENDING',
-          transaction_fee: transactionFee,
-          total: totalAmount,
-          payment_metadata: {
-            ewallet_type: paymentMethod.replace('ewallet_', '').toUpperCase(),
-          }
-        }
-      });
-
-      await prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          title: `📱 Pembayaran ${feeConfig.name} Dibuat`,
-          message: `Pembayaran #${orderId} via ${feeConfig.name}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
-          type: 'payment',
-          order_id: booking.booking_id,
-        }
-      });
-
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: `Menunggu Pembayaran - ${feeConfig.name}`,
-          reason: `Pembayaran via ${feeConfig.name}`
-        }
-      });
-
-      responseData.ewalletType = paymentMethod.replace('ewallet_', '').toUpperCase();
-
-    } else if (feeConfig.category === 'card') {
-      // CREDIT/DEBIT CARD
-      console.log('\n[Processing] Card payment...');
-      
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_method: paymentMethod,
-          payment_status: 'PENDING',
-          transaction_fee: transactionFee,
-          total: totalAmount,
-          payment_metadata: {
-            card_type: paymentMethod.replace('card_', '').toUpperCase(),
-          }
-        }
-      });
-
-      await prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          title: '💳 Pembayaran Kartu Dibuat',
-          message: `Pembayaran #${orderId} via ${feeConfig.name}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
-          type: 'payment',
-          order_id: booking.booking_id,
-        }
-      });
-
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: `Menunggu Pembayaran - ${feeConfig.name}`,
-          reason: `Pembayaran via kartu kredit/debit`
-        }
-      });
-
-      responseData.cardType = paymentMethod.replace('card_', '').toUpperCase();
-
-    } else if (feeConfig.category === 'retail') {
-      // RETAIL OUTLETS (Alfamart, Indomaret)
-      console.log('\n[Processing] Retail payment...');
-      
-      const paymentCode = `SELSAS${Math.floor(Math.random() * 1000000000).toString().padStart(9, '0')}`;
-      
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_method: paymentMethod,
-          payment_status: 'PENDING',
-          transaction_fee: transactionFee,
-          total: totalAmount,
-          payment_metadata: {
-            payment_code: paymentCode,
-            retail_outlet: paymentMethod.replace('retail_', '').toUpperCase(),
-          }
-        }
-      });
-
-      await prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          title: `🏪 Kode Pembayaran ${feeConfig.name} Dibuat`,
-          message: `Pembayaran #${orderId} via ${feeConfig.name}. Kode: ${paymentCode}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
-          type: 'payment',
-          order_id: booking.booking_id,
-        }
-      });
-
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: `Menunggu Pembayaran - ${feeConfig.name}`,
-          reason: `Kode Pembayaran: ${paymentCode}`
-        }
-      });
-
-      responseData.paymentCode = paymentCode;
-      responseData.retailOutlet = paymentMethod.replace('retail_', '').toUpperCase();
+      // Return error to frontend
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Payment Gateway Error',
+          message: `Gagal membuat pembayaran: ${xenditError.message}`,
+          details: xenditError.message
+        },
+        { status: 500 }
+      );
     }
-
-    console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-    console.log('║                    PAYMENT CREATED SUCCESSFULLY                  ║');
-    console.log('╚══════════════════════════════════════════════════════════════════╝\n');
-
-    return NextResponse.json(responseData);
 
   } catch (error: any) {
     console.error('\n[UNEXPECTED ERROR]', error.message);
-    
+
     return NextResponse.json(
       { success: false, error: 'Internal Server Error', message: error.message },
       { status: 500 }
     );
-  }
-}
-
-// ==========================================
-// HELPER: Fetch QR Code Image from URL
-// ==========================================
-
-async function fetchQRCodeImage(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error('[QR Code] Failed to fetch image from URL:', url);
-      return null;
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    const contentType = response.headers.get('content-type') || 'image/png';
-    
-    return `data:${contentType};base64,${base64}`;
-  } catch (error) {
-    console.error('[QR Code] Error fetching image:', error);
-    return null;
   }
 }
 
@@ -527,6 +643,9 @@ export async function GET(request: NextRequest) {
   try {
     const orderId = request.nextUrl.searchParams.get('orderId');
     const refreshQR = request.nextUrl.searchParams.get('refreshQR') === 'true';
+    const checkXendit = request.nextUrl.searchParams.get('checkXendit') === 'true';
+
+    console.log('\n[Payment Status] GET request for:', orderId);
 
     if (!orderId) {
       return NextResponse.json(
@@ -555,36 +674,66 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // If QR code and we need to refresh it
-    let refreshedQRData = null;
-    if (refreshQR && booking.payment_method === 'qris' && booking.payment_metadata) {
+    const metadata = booking.payment_metadata as any;
+    let xenditStatus = null;
+    let refreshedData = null;
+
+    // Check Xendit status if requested
+    if (checkXendit && metadata?.xendit_id) {
       try {
-        const metadata = booking.payment_metadata as any;
-        if (metadata.xendit_qr_id) {
-          const qrId = metadata.xendit_qr_id;
-          const qrDetails = await getQRCodeDetails(qrId);
-          
-          refreshedQRData = {
-            qrString: qrDetails.qr_string,
-            qrCodeUrl: qrDetails.qr_code_url,
-            status: qrDetails.status,
-            expiresAt: qrDetails.expires_at,
-            qrCodeData: qrDetails.qr_code_url ? await fetchQRCodeImage(qrDetails.qr_code_url) : null,
-          };
-          
-          // Update metadata with refreshed data
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_metadata: {
-                ...metadata,
-                ...refreshedQRData,
-              }
-            }
-          });
+        const paymentType = metadata.payment_type;
+
+        switch (paymentType) {
+          case 'qris':
+            xenditStatus = await getQRCodeDetails(metadata.xendit_id);
+            break;
+          case 'ewallet':
+            xenditStatus = await getEWalletChargeStatus(metadata.xendit_id);
+            break;
+          case 'va':
+            xenditStatus = await getVirtualAccountDetails(metadata.xendit_id);
+            break;
+          case 'retail':
+            xenditStatus = await getRetailPaymentDetails(metadata.xendit_id);
+            break;
+          case 'card':
+            xenditStatus = await getInvoiceDetails(metadata.xendit_id);
+            break;
         }
+
+        console.log('[Payment Status] Xendit status:', xenditStatus?.status);
+
       } catch (error) {
-        console.error('[Refresh QR] Error:', error);
+        console.error('[Payment Status] Error checking Xendit:', error);
+      }
+    }
+
+    // Refresh QR code if requested
+    if (refreshQR && metadata?.xendit_qr_id) {
+      try {
+        const qrDetails = await getQRCodeDetails(metadata.xendit_qr_id);
+        refreshedData = {
+          qrString: qrDetails.qr_string,
+          qrCodeUrl: qrDetails.qr_code_url,
+          status: qrDetails.status,
+          expiresAt: qrDetails.expires_at,
+        };
+
+        // Update metadata
+        await prisma.booking.update({
+          where: { booking_id: booking.booking_id },
+          data: {
+            payment_metadata: {
+              ...metadata,
+              xendit_qr_string: qrDetails.qr_string,
+              qr_code_url: qrDetails.qr_code_url,
+              xendit_status: qrDetails.status,
+            }
+          }
+        });
+
+      } catch (error) {
+        console.error('[Payment Status] Error refreshing QR:', error);
       }
     }
 
@@ -597,12 +746,14 @@ export async function GET(request: NextRequest) {
         total: booking.total,
         transactionFee: booking.transaction_fee,
         status: booking.status,
-        metadata: booking.payment_metadata,
-        refreshedQR: refreshedQRData,
+        metadata: metadata,
+        xenditStatus: xenditStatus,
+        refreshedQR: refreshedData,
       },
     });
 
   } catch (error: any) {
+    console.error('[Payment Status] Error:', error);
     return NextResponse.json(
       { success: false, error: 'Server Error', message: error.message },
       { status: 500 }
