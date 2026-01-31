@@ -93,9 +93,9 @@ export default function ReportSystem() {
     setErrorMessage('');
 
     try {
-      const serviceID = 'service_vaxl8bm';
-      const templateID = 'template_1kevmbd';
-      const publicKey = 'BEra75kWOlsquQaW7';
+      const serviceID = 'service_4e0l7oi';
+      const templateID = 'template_g22k46g';
+      const publicKey = 'PLONDESMsYWCNwo0Q';
 
       // Format pesan - konversi line breaks ke HTML
       let messageHtml = formData.message.replace(/\n/g, '<br/>');
@@ -195,7 +195,7 @@ export default function ReportSystem() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold text-gray-800 mb-1 text-sm md:text-base">Email</h3>
-                    <p className="text-xs md:text-sm text-gray-600 break-all">marijasa.helper@gmail.com</p>
+                    <p className="text-xs md:text-sm text-gray-600 break-all">muhammadfahreza0838@gmail.com</p>
                   </div>
                 </div>
               </div>
