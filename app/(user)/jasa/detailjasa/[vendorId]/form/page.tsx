@@ -1,7 +1,7 @@
 // app/jasa/detailjasa/[vendorId]/form/page.tsx
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Breadcrumb,
@@ -230,6 +230,52 @@ interface PaymentResponse {
 }
 
 // ==========================================
+// SESSION STORAGE KEYS
+// ==========================================
+const STORAGE_KEYS = {
+  FORM_STATE: `booking_form_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  CURRENT_STEP: `booking_step_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  PAYMENT_DATA: `booking_payment_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  ORDER_ID: `booking_order_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  SELECTED_PAYMENT: `booking_payment_method_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+};
+
+// ==========================================
+// HELPER FUNCTIONS FOR SESSION STORAGE
+// ==========================================
+
+const saveToSessionStorage = (key: string, data: any) => {
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving to sessionStorage:', error);
+    }
+  }
+};
+
+const getFromSessionStorage = (key: string) => {
+  if (typeof window !== 'undefined') {
+    try {
+      const data = sessionStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      console.error('Error reading from sessionStorage:', error);
+      return null;
+    }
+  }
+  return null;
+};
+
+const clearSessionStorage = () => {
+  if (typeof window !== 'undefined') {
+    Object.values(STORAGE_KEYS).forEach(key => {
+      sessionStorage.removeItem(key);
+    });
+  }
+};
+
+// ==========================================
 // MAIN COMPONENT
 // ==========================================
 
@@ -259,6 +305,80 @@ export default function VendorFormPage() {
   // Payment response data
   const [paymentData, setPaymentData] = useState<PaymentResponse | null>(null);
 
+  // ==========================================
+  // SESSION STORAGE MANAGEMENT
+  // ==========================================
+
+  // Save state to session storage
+  useEffect(() => {
+    if (mounted && vendor) {
+      saveToSessionStorage(STORAGE_KEYS.FORM_STATE, formData);
+    }
+  }, [formData, mounted, vendor]);
+
+  useEffect(() => {
+    if (mounted && vendor) {
+      saveToSessionStorage(STORAGE_KEYS.CURRENT_STEP, currentStep);
+    }
+  }, [currentStep, mounted, vendor]);
+
+  useEffect(() => {
+    if (mounted && vendor) {
+      saveToSessionStorage(STORAGE_KEYS.PAYMENT_DATA, paymentData);
+    }
+  }, [paymentData, mounted, vendor]);
+
+  useEffect(() => {
+    if (mounted && vendor) {
+      saveToSessionStorage(STORAGE_KEYS.ORDER_ID, initialOrderId);
+    }
+  }, [initialOrderId, mounted, vendor]);
+
+  useEffect(() => {
+    if (mounted && vendor) {
+      saveToSessionStorage(STORAGE_KEYS.SELECTED_PAYMENT, selectedPayment);
+    }
+  }, [selectedPayment, mounted, vendor]);
+
+  // Restore state from session storage
+  const restoreFromSessionStorage = useCallback(() => {
+    const savedFormData = getFromSessionStorage(STORAGE_KEYS.FORM_STATE);
+    const savedStep = getFromSessionStorage(STORAGE_KEYS.CURRENT_STEP);
+    const savedPaymentData = getFromSessionStorage(STORAGE_KEYS.PAYMENT_DATA);
+    const savedOrderId = getFromSessionStorage(STORAGE_KEYS.ORDER_ID);
+    const savedPaymentMethod = getFromSessionStorage(STORAGE_KEYS.SELECTED_PAYMENT);
+
+    if (savedFormData) {
+      console.log('[SessionStorage] Restoring form data');
+      setFormData(savedFormData);
+    }
+
+    if (savedStep && ['form', 'confirmation', 'payment'].includes(savedStep)) {
+      console.log('[SessionStorage] Restoring step:', savedStep);
+      setCurrentStep(savedStep);
+    }
+
+    if (savedPaymentData) {
+      console.log('[SessionStorage] Restoring payment data');
+      setPaymentData(savedPaymentData);
+    }
+
+    if (savedOrderId) {
+      console.log('[SessionStorage] Restoring order ID:', savedOrderId);
+      setInitialOrderId(savedOrderId);
+    }
+
+    if (savedPaymentMethod) {
+      console.log('[SessionStorage] Restoring payment method:', savedPaymentMethod);
+      setSelectedPayment(savedPaymentMethod);
+    }
+  }, []);
+
+  // Clear session storage when leaving
+  const handleClearStorage = () => {
+    clearSessionStorage();
+  };
+
   const fetchUserProfile = async () => {
     try {
       const response = await fetch('/api/user/profile', {
@@ -271,14 +391,18 @@ export default function VendorFormPage() {
         const data = await response.json();
         if (data.profile) {
           setUserProfile(data.profile);
-          setFormData((prev: any) => ({
-            ...prev,
-            name: data.profile.name || "",
-            email: data.profile.email || "",
-            phone: data.profile.phone || "",
-            address: data.profile.address || "",
-            gpsLink: data.profile.gps_link || ""
-          }));
+          // Only set form data if not already restored from session storage
+          const savedFormData = getFromSessionStorage(STORAGE_KEYS.FORM_STATE);
+          if (!savedFormData) {
+            setFormData((prev: any) => ({
+              ...prev,
+              name: data.profile.name || "",
+              email: data.profile.email || "",
+              phone: data.profile.phone || "",
+              address: data.profile.address || "",
+              gpsLink: data.profile.gps_link || ""
+            }));
+          }
         }
       }
     } catch (error) {
@@ -354,6 +478,9 @@ export default function VendorFormPage() {
           return;
         }
 
+        // Restore from session storage AFTER vendor is loaded
+        restoreFromSessionStorage();
+        
         setIsLoading(false);
       } catch (error) {
         console.error("Error checking auth:", error);
@@ -363,7 +490,21 @@ export default function VendorFormPage() {
     };
 
     checkAuthAndLoadData();
-  }, [params.vendorId, router]);
+
+    // Clear storage on page unload
+    const handleBeforeUnload = () => {
+      // Don't clear on refresh, only when navigating away
+      if (!performance.navigation.type || performance.navigation.type !== 1) {
+        handleClearStorage();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [params.vendorId, router, restoreFromSessionStorage]);
 
   const handleNavigation = async (url: string) => {
     setLeaving(true);
@@ -378,6 +519,7 @@ export default function VendorFormPage() {
   };
 
   const handleCancel = () => {
+    handleClearStorage();
     const vendorId = params.vendorId as string;
     handleNavigation(`/jasa/detailjasa/${vendorId}`);
   };
@@ -608,6 +750,7 @@ export default function VendorFormPage() {
 
         await new Promise(resolve => setTimeout(resolve, 2000));
         setShowPaymentSuccessModal(false);
+        handleClearStorage(); // Clear storage after successful payment
 
         console.log('[Payment Frontend] Redirecting to /riwayat_pemesanan');
         router.push('/riwayat_pemesanan');
@@ -795,6 +938,7 @@ export default function VendorFormPage() {
             onBack={() => setCurrentStep('confirmation')}
             orderId={initialOrderId}
             router={router}
+            handleClearStorage={handleClearStorage}
           />
         )}
       </motion.main>
@@ -1597,23 +1741,16 @@ function ConfirmationStep({
 }
 
 // ==========================================
-// PAYMENT STEP COMPONENT (Custom UI - No Xendit Redirect)
-// ==========================================
-
-// ==========================================
-// PAYMENT STEP COMPONENT (Custom UI - No Xendit Redirect)
-// ==========================================
-
-// ==========================================
 // PAYMENT STEP COMPONENT (Fixed - No proxy fetching)
 // ==========================================
 
-function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: {
+function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, handleClearStorage }: {
   paymentData: PaymentResponse | null;
   selectedPayment: string;
   onBack: () => void;
   orderId: string;
   router: any;
+  handleClearStorage: () => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -1711,6 +1848,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
 
       if (data.success && data.booking) {
         if (data.booking.paymentStatus === 'PAID') {
+          handleClearStorage(); // Clear storage before redirect
           toast.success('Pembayaran berhasil! Mengarahkan ke riwayat pemesanan...');
           await new Promise(resolve => setTimeout(resolve, 1000));
           router.push('/riwayat_pemesanan');
@@ -1739,6 +1877,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
       const data = await response.json();
 
       if (data.success) {
+        handleClearStorage(); // Clear storage before redirect
         toast.success('Pembayaran berhasil! Mengarahkan ke riwayat pemesanan...');
         await new Promise(resolve => setTimeout(resolve, 1500));
         router.push('/riwayat_pemesanan');
@@ -1753,6 +1892,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: 
   };
 
   const handleGoToOrderHistory = () => {
+    handleClearStorage(); // Clear storage before redirect
     router.push('/riwayat_pemesanan');
   };
 
