@@ -1,6 +1,7 @@
 // app/components/lib/xendit.ts
 // Xendit Payment Gateway - Full Integration (All Payment Methods)
 // Updated: January 2025
+// ✅ FIXED: Removed 'description' field from Virtual Account (not supported by BCA and some other banks)
 
 const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY || '';
 const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || '';
@@ -305,6 +306,7 @@ export async function getEWalletChargeStatus(chargeId: string): Promise<EWalletP
 
 // ==========================================
 // 3. VIRTUAL ACCOUNT PAYMENT (VA API)
+// ✅ FIXED: Removed 'description' field - not supported by BCA and some banks
 // ==========================================
 
 export interface CreateVirtualAccountParams {
@@ -314,7 +316,7 @@ export interface CreateVirtualAccountParams {
   customerName: string;
   customerPhone?: string;
   customerEmail?: string;
-  description?: string;
+  description?: string; // ⚠️ NOTE: This is kept in params but NOT sent to Xendit API
   expirationDate?: Date;
   isSingleUse?: boolean;
   isClosed?: boolean; // true = exact amount required
@@ -351,7 +353,10 @@ export async function createVirtualAccount(params: CreateVirtualAccountParams): 
     is_single_use: params.isSingleUse !== false, // Default: true
     expiration_date: params.expirationDate?.toISOString() ||
       new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    description: params.description || 'Pembayaran SELSAS',
+    // ⚠️ REMOVED: description field
+    // Reason: Not supported by BCA and some other banks
+    // Error: "description is not supported for the bank chosen: BCA"
+    // description: params.description || 'Pembayaran SELSAS',
   };
 
   return xenditRequest('/callback_virtual_accounts', 'POST', body);
