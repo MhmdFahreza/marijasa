@@ -247,6 +247,9 @@ const STORAGE_KEYS = {
   PAYMENT_DATA: `booking_payment_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
   ORDER_ID: `booking_order_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
   SELECTED_PAYMENT: `booking_payment_method_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  VENDOR_ID: `booking_vendor_id_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  USER_PROFILE: `booking_user_profile_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
+  RESTORE_TIME: `booking_restore_time_${typeof window !== 'undefined' ? window.location.pathname : ''}`,
 };
 
 // ==========================================
@@ -310,52 +313,84 @@ export default function VendorFormPage() {
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasRestored, setHasRestored] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
 
   // Payment response data
   const [paymentData, setPaymentData] = useState<PaymentResponse | null>(null);
 
   // ==========================================
-  // SESSION STORAGE MANAGEMENT
+  // SESSION STORAGE MANAGEMENT - UPDATED
   // ==========================================
 
   // Save state to session storage
   useEffect(() => {
-    if (mounted && vendor) {
+    if (mounted && vendor && hasRestored) {
       saveToSessionStorage(STORAGE_KEYS.FORM_STATE, formData);
     }
-  }, [formData, mounted, vendor]);
+  }, [formData, mounted, vendor, hasRestored]);
 
   useEffect(() => {
-    if (mounted && vendor) {
+    if (mounted && vendor && hasRestored) {
       saveToSessionStorage(STORAGE_KEYS.CURRENT_STEP, currentStep);
     }
-  }, [currentStep, mounted, vendor]);
+  }, [currentStep, mounted, vendor, hasRestored]);
 
   useEffect(() => {
-    if (mounted && vendor) {
+    if (mounted && vendor && hasRestored) {
       saveToSessionStorage(STORAGE_KEYS.PAYMENT_DATA, paymentData);
     }
-  }, [paymentData, mounted, vendor]);
+  }, [paymentData, mounted, vendor, hasRestored]);
 
   useEffect(() => {
-    if (mounted && vendor) {
+    if (mounted && vendor && hasRestored) {
       saveToSessionStorage(STORAGE_KEYS.ORDER_ID, initialOrderId);
     }
-  }, [initialOrderId, mounted, vendor]);
+  }, [initialOrderId, mounted, vendor, hasRestored]);
 
   useEffect(() => {
-    if (mounted && vendor) {
+    if (mounted && vendor && hasRestored) {
       saveToSessionStorage(STORAGE_KEYS.SELECTED_PAYMENT, selectedPayment);
     }
-  }, [selectedPayment, mounted, vendor]);
+  }, [selectedPayment, mounted, vendor, hasRestored]);
 
-  // Restore state from session storage
-  const restoreFromSessionStorage = useCallback(() => {
+  // Save vendor and user profile to session storage
+  useEffect(() => {
+    if (mounted && vendor && hasRestored) {
+      saveToSessionStorage(STORAGE_KEYS.VENDOR_ID, vendor.vendor_id);
+    }
+  }, [vendor, mounted, hasRestored]);
+
+  useEffect(() => {
+    if (mounted && userProfile && hasRestored) {
+      saveToSessionStorage(STORAGE_KEYS.USER_PROFILE, userProfile);
+    }
+  }, [userProfile, mounted, hasRestored]);
+
+  // Restore state from session storage - FIXED
+  const restoreFromSessionStorage = useCallback((vendorId: string) => {
+    console.log('[SessionStorage] Restoring from session storage...');
+    
     const savedFormData = getFromSessionStorage(STORAGE_KEYS.FORM_STATE);
     const savedStep = getFromSessionStorage(STORAGE_KEYS.CURRENT_STEP);
     const savedPaymentData = getFromSessionStorage(STORAGE_KEYS.PAYMENT_DATA);
     const savedOrderId = getFromSessionStorage(STORAGE_KEYS.ORDER_ID);
     const savedPaymentMethod = getFromSessionStorage(STORAGE_KEYS.SELECTED_PAYMENT);
+    const savedVendorId = getFromSessionStorage(STORAGE_KEYS.VENDOR_ID);
+    const savedUserProfile = getFromSessionStorage(STORAGE_KEYS.USER_PROFILE);
+    const lastRestoreTime = getFromSessionStorage(STORAGE_KEYS.RESTORE_TIME);
+
+    // Check if we should restore (only if same vendor and recent)
+    const currentTime = Date.now();
+    const shouldRestore = savedVendorId === vendorId && 
+                        (!lastRestoreTime || (currentTime - lastRestoreTime) < 5 * 60 * 1000); // 5 minutes
+    
+    if (!shouldRestore) {
+      console.log('[SessionStorage] Not restoring: different vendor or expired session');
+      setHasRestored(true);
+      setIsRestoring(false);
+      return;
+    }
 
     if (savedFormData) {
       console.log('[SessionStorage] Restoring form data');
@@ -365,6 +400,9 @@ export default function VendorFormPage() {
     if (savedStep && ['form', 'confirmation', 'payment'].includes(savedStep)) {
       console.log('[SessionStorage] Restoring step:', savedStep);
       setCurrentStep(savedStep);
+    } else {
+      console.log('[SessionStorage] No valid step found, defaulting to form');
+      setCurrentStep('form');
     }
 
     if (savedPaymentData) {
@@ -381,14 +419,26 @@ export default function VendorFormPage() {
       console.log('[SessionStorage] Restoring payment method:', savedPaymentMethod);
       setSelectedPayment(savedPaymentMethod);
     }
+
+    if (savedUserProfile) {
+      console.log('[SessionStorage] Restoring user profile');
+      setUserProfile(savedUserProfile);
+    }
+
+    // Save restore time
+    saveToSessionStorage(STORAGE_KEYS.RESTORE_TIME, currentTime);
+    
+    setHasRestored(true);
+    setIsRestoring(false);
   }, []);
 
   // Clear session storage when leaving
   const handleClearStorage = () => {
     clearSessionStorage();
+    setHasRestored(false);
   };
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = async (): Promise<UserProfile | null> => {
     try {
       const response = await fetch('/api/user/profile', {
         method: 'GET',
@@ -399,28 +449,18 @@ export default function VendorFormPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.profile) {
-          setUserProfile(data.profile);
-          // Only set form data if not already restored from session storage
-          const savedFormData = getFromSessionStorage(STORAGE_KEYS.FORM_STATE);
-          if (!savedFormData) {
-            setFormData((prev: any) => ({
-              ...prev,
-              name: data.profile.name || "",
-              email: data.profile.email || "",
-              phone: data.profile.phone || "",
-              address: data.profile.address || "",
-              gpsLink: data.profile.gps_link || ""
-            }));
-          }
+          return data.profile;
         }
       }
+      return null;
     } catch (error) {
       console.error("Error fetching user profile:", error);
       toast.error("Gagal memuat data profil");
+      return null;
     }
   };
 
-  const fetchVendor = async (vendorId: string) => {
+  const fetchVendor = async (vendorId: string): Promise<Vendor | null> => {
     try {
       const response = await fetch(`/api/vendors/${vendorId}`, {
         method: 'GET',
@@ -444,7 +484,6 @@ export default function VendorFormPage() {
               is_active: s.isActive !== undefined ? s.isActive : s.is_active
             })) || []
           };
-          setVendor(normalizedVendor);
           return normalizedVendor;
         }
       }
@@ -472,8 +511,6 @@ export default function VendorFormPage() {
           return;
         }
 
-        await fetchUserProfile();
-
         const vendorId = params.vendorId as string;
         if (!vendorId) {
           toast.error("ID vendor tidak valid");
@@ -481,14 +518,38 @@ export default function VendorFormPage() {
           return;
         }
 
-        const vendorData = await fetchVendor(vendorId);
+        // Load user profile and vendor in parallel
+        const [profileData, vendorData] = await Promise.all([
+          fetchUserProfile(),
+          fetchVendor(vendorId),
+        ]);
+
+        if (profileData) {
+          setUserProfile(profileData);
+          // Only set form data if not already restored from session storage
+          const savedFormData = getFromSessionStorage(STORAGE_KEYS.FORM_STATE);
+          if (!savedFormData) {
+            setFormData((prev: any) => ({
+              ...prev,
+              name: profileData.name || "",
+              email: profileData.email || "",
+              phone: profileData.phone || "",
+              address: profileData.address || "",
+              gpsLink: profileData.gps_link || ""
+            }));
+          }
+        }
+
         if (!vendorData) {
           setIsLoading(false);
+          setIsRestoring(false);
           return;
         }
 
-        // Restore from session storage AFTER vendor is loaded
-        restoreFromSessionStorage();
+        setVendor(vendorData);
+        
+        // Now restore from session storage
+        restoreFromSessionStorage(vendorId);
         
         setIsLoading(false);
       } catch (error) {
@@ -500,10 +561,13 @@ export default function VendorFormPage() {
 
     checkAuthAndLoadData();
 
-    // Clear storage on page unload
+    // Clear storage on page unload if user navigates away from the form
     const handleBeforeUnload = () => {
-      // Don't clear on refresh, only when navigating away
-      if (!performance.navigation.type || performance.navigation.type !== 1) {
+      const savedVendorId = getFromSessionStorage(STORAGE_KEYS.VENDOR_ID);
+      const vendorId = params.vendorId as string;
+      
+      // Only clear if user is leaving to a different vendor page
+      if (savedVendorId && savedVendorId !== vendorId) {
         handleClearStorage();
       }
     };
@@ -855,7 +919,7 @@ export default function VendorFormPage() {
     });
   };
 
-  if (!mounted || isLoading) {
+  if (!mounted || isLoading || isRestoring) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoaderTwo />
