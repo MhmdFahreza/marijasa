@@ -161,7 +161,7 @@ INFORMASI LENGKAP TENTANG LAYANAN MARIJASA:
    - Setelah selesai, berikan rating dan ulasan
 
 2. CARA DAFTAR AKUN USER/PELANGGAN:
-   - Kunjungi: https://marijasa.com/auth/register
+   - Kunjungi: https://com/auth/register
    - Isi form pendaftaran dengan data lengkap (nama, email, telepon, password)
    - Centang "Saya setuju dengan syarat dan ketentuan"
    - Klik tombol "Daftar"
@@ -235,9 +235,9 @@ INFORMASI LENGKAP TENTANG LAYANAN MARIJASA:
    - Proses pengembalian dana jika terjadi masalah serius
 
 9. KONTAK & SUPPORT:
-   - Email: support@marijasa.com
-   - Telepon: (021) 1234-5678
-   - WhatsApp: +62 812-3456-7890
+   - Email: muhammadfahreza0838@gmail.com
+   - Telepon: 021-1234-5678
+   - WhatsApp: 0812-3456-7890
    - Jam Operasional: Senin-Jumat, 08:00-17:00 WIB (Darurat 24/7)
    - Live Chat: Tersedia di website 24/7
    - Website: https://marijasa.com
