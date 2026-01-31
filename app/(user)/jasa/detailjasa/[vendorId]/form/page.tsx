@@ -227,6 +227,15 @@ interface PaymentResponse {
   message?: string;
   error?: string;
   details?: any;
+  // E-Wallet specific
+  checkoutUrl?: string;
+  deeplinkUrl?: string;
+  actions?: {
+    desktop_web_checkout_url?: string;
+    mobile_web_checkout_url?: string;
+    mobile_deeplink_checkout_url?: string;
+    qr_checkout_string?: string;
+  };
 }
 
 // ==========================================
@@ -773,6 +782,15 @@ export default function VendorFormPage() {
     }
   };
 
+  // Handler untuk payment success dari PaymentStep
+  const handlePaymentSuccess = async () => {
+    setShowPaymentSuccessModal(true);
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    setShowPaymentSuccessModal(false);
+    handleClearStorage();
+    router.push('/riwayat_pemesanan');
+  };
+
   const calculateServicePrice = () => {
     if (!vendor || !vendor.services) return 0;
 
@@ -939,6 +957,7 @@ export default function VendorFormPage() {
             orderId={initialOrderId}
             router={router}
             handleClearStorage={handleClearStorage}
+            onPaymentSuccess={handlePaymentSuccess}
           />
         )}
       </motion.main>
@@ -971,6 +990,7 @@ export default function VendorFormPage() {
         )}
       </AnimatePresence>
 
+      {/* Payment Success Modal - Shared */}
       <AnimatePresence>
         {showPaymentSuccessModal && (
           <motion.div
@@ -985,18 +1005,44 @@ export default function VendorFormPage() {
               exit={{ scale: 0.9, y: 20 }}
               className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center"
             >
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
-                <Check className="h-8 w-8 text-green-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                {selectedPayment === 'tunai' ? 'Pesanan Tunai Dikonfirmasi!' : 'Pembayaran Berhasil!'}
-              </h3>
-              <p className="text-gray-600 mb-4">
-                {selectedPayment === 'tunai'
-                  ? 'Siapkan pembayaran tunai saat layanan diberikan.'
-                  : 'Pesanan Anda sedang diproses.'}
-              </p>
-              <p className="text-sm text-gray-500 mb-6">Anda akan diarahkan ke halaman riwayat pemesanan...</p>
+              <motion.div 
+                className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
+              >
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.3 }}
+                >
+                  <CheckCircle className="h-10 w-10 text-green-600" />
+                </motion.div>
+              </motion.div>
+              <motion.h3 
+                className="text-xl font-semibold text-gray-900 mb-2"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+              >
+                Pembayaran Berhasil! 🎉
+              </motion.h3>
+              <motion.p 
+                className="text-gray-600 mb-2"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+              >
+                Pesanan Anda sedang diproses.
+              </motion.p>
+              <motion.p 
+                className="text-sm text-gray-500 mb-6"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+              >
+                Anda akan diarahkan ke halaman riwayat pemesanan...
+              </motion.p>
               <div className="flex justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
               </div>
@@ -1741,16 +1787,17 @@ function ConfirmationStep({
 }
 
 // ==========================================
-// PAYMENT STEP COMPONENT (Fixed - No proxy fetching)
+// PAYMENT STEP COMPONENT (UPDATED - with Success Modal)
 // ==========================================
 
-function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, handleClearStorage }: {
+function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, handleClearStorage, onPaymentSuccess }: {
   paymentData: PaymentResponse | null;
   selectedPayment: string;
   onBack: () => void;
   orderId: string;
   router: any;
   handleClearStorage: () => void;
+  onPaymentSuccess: () => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -1848,10 +1895,8 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
 
       if (data.success && data.booking) {
         if (data.booking.paymentStatus === 'PAID') {
-          handleClearStorage(); // Clear storage before redirect
-          toast.success('Pembayaran berhasil! Mengarahkan ke riwayat pemesanan...');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          router.push('/riwayat_pemesanan');
+          // Use the parent's success handler to show modal
+          onPaymentSuccess();
         } else {
           toast.info(`Status: ${data.booking.paymentStatus}`);
         }
@@ -1863,7 +1908,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
     }
   };
 
-  // Simulate payment for testing
+  // Simulate payment for testing - UPDATED to show modal
   const handleSimulatePayment = async () => {
     setIsSimulating(true);
     try {
@@ -1877,16 +1922,14 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
       const data = await response.json();
 
       if (data.success) {
-        handleClearStorage(); // Clear storage before redirect
-        toast.success('Pembayaran berhasil! Mengarahkan ke riwayat pemesanan...');
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        router.push('/riwayat_pemesanan');
+        // Use the parent's success handler to show modal
+        onPaymentSuccess();
       } else {
         toast.error(data.message || 'Gagal mensimulasikan pembayaran');
+        setIsSimulating(false);
       }
     } catch (error) {
       toast.error('Terjadi kesalahan saat mensimulasikan pembayaran');
-    } finally {
       setIsSimulating(false);
     }
   };
@@ -1944,6 +1987,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
 
   const methodInfo = XENDIT_PAYMENT_FEES[selectedPayment];
   const isQRIS = selectedPayment === 'qris';
+  const isEWallet = selectedPayment.startsWith('ewallet_');
 
   return (
     <div className="space-y-6">
@@ -1952,7 +1996,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
           <CardTitle className="flex items-center gap-2">
             {paymentData.vaNumber && <Building className="h-5 w-5" />}
             {isQRIS && <QrCode className="h-5 w-5" />}
-            {paymentData.ewalletType && <Wallet className="h-5 w-5" />}
+            {isEWallet && <Wallet className="h-5 w-5" />}
             {paymentData.cardType && <CreditCard className="h-5 w-5" />}
             {paymentData.paymentCode && <Store className="h-5 w-5" />}
             <span>Instruksi Pembayaran</span>
@@ -1980,7 +2024,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                 <div>
                   <p className="font-medium">{paymentData.paymentMethodName || methodInfo?.name || selectedPayment}</p>
                   <p className="text-sm text-muted-foreground">Order ID: {orderId}</p>
-                  {isQRIS && paymentData.xenditId && (
+                  {paymentData.xenditId && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Xendit ID: {paymentData.xenditId?.slice(-8) || 'N/A'}
                     </p>
@@ -1997,7 +2041,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
           </div>
 
           {/* ==========================================
-              QRIS DISPLAY - FIXED (No proxy fetching)
+              QRIS DISPLAY
               ========================================== */}
           {isQRIS && (
             <div className="space-y-4">
@@ -2007,7 +2051,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                   <span className="text-xs">QR code akan otomatis diperbarui setiap 5 menit untuk keamanan</span>
                 </p>
                 
-                {/* QR Code Display - Fixed */}
+                {/* QR Code Display */}
                 <div className="bg-white p-6 rounded-lg border-2 border-dashed border-gray-300 shadow-sm">
                   {currentQrString ? (
                     generateQRCodeFromString()
@@ -2017,13 +2061,6 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                       <span className="ml-2 text-sm">Memuat QR code...</span>
                     </div>
                   )}
-                </div>
-
-                {/* QR String Info (for debugging) */}
-                <div className="mt-4 p-3 bg-gray-50 rounded-lg w-full">
-                  <p className="text-xs text-gray-500 text-center">
-                    QR String: {currentQrString ? `${currentQrString.substring(0, 50)}...` : 'Tidak tersedia'}
-                  </p>
                 </div>
 
                 {/* Download QR Code Button */}
@@ -2063,36 +2100,77 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                         <li>Scan dengan aplikasi DANA, OVO, GoPay, ShopeePay, LinkAja, atau mobile banking</li>
                         <li>QR code otomatis berubah setiap 5 menit untuk keamanan</li>
                         <li>Berlaku hingga: {paymentData.expirationDate ? formatExpiration(paymentData.expirationDate) : '24 jam'}</li>
-                        {paymentData.isTestMode && (
-                          <li className="font-semibold text-yellow-700">⚠️ Mode Testing - QR code ini untuk pengujian</li>
-                        )}
                       </ul>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Alternative Payment URL */}
-              {paymentData.invoiceUrl && (
-                <div className="p-4 bg-gray-50 border rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-2">Atau gunakan link pembayaran:</p>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={paymentData.invoiceUrl}
-                      readOnly
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.open(paymentData.invoiceUrl, '_blank')}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-1" />
-                      Buka
-                    </Button>
+          {/* ==========================================
+              E-WALLET DISPLAY
+              ========================================== */}
+          {isEWallet && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <Smartphone className="h-8 w-8 text-primary" />
+                  <div>
+                    <p className="font-medium">Pembayaran {paymentData.paymentMethodName || methodInfo?.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {paymentData.checkoutUrl 
+                        ? 'Klik tombol di bawah untuk membuka halaman pembayaran'
+                        : 'Klik "Simulasi Pembayaran" untuk testing'}
+                    </p>
                   </div>
                 </div>
-              )}
+
+                {/* Checkout URL Button */}
+                {paymentData.checkoutUrl && (
+                  <Button
+                    className="w-full mb-4"
+                    onClick={() => window.open(paymentData.checkoutUrl, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Buka Halaman Pembayaran {paymentData.paymentMethodName || methodInfo?.name}
+                  </Button>
+                )}
+
+                {/* Deeplink for mobile */}
+                {paymentData.deeplinkUrl && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => window.location.href = paymentData.deeplinkUrl!}
+                  >
+                    <Smartphone className="h-4 w-4 mr-2" />
+                    Buka Aplikasi {paymentData.paymentMethodName || methodInfo?.name}
+                  </Button>
+                )}
+              </div>
+
+              {/* E-Wallet Instructions */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  {paymentData.checkoutUrl ? (
+                    <>
+                      <li>Klik tombol "Buka Halaman Pembayaran" di atas</li>
+                      <li>Anda akan diarahkan ke halaman pembayaran {paymentData.paymentMethodName || methodInfo?.name}</li>
+                      <li>Login ke akun {paymentData.paymentMethodName || methodInfo?.name} Anda</li>
+                      <li>Konfirmasi pembayaran dengan PIN atau biometrik</li>
+                      <li>Setelah berhasil, Anda akan diarahkan kembali</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah</li>
+                      <li>Status pembayaran akan berubah menjadi PAID</li>
+                      <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
+                    </>
+                  )}
+                </ol>
+              </div>
             </div>
           )}
 
@@ -2125,34 +2203,6 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                   <li>Masukkan nomor VA: <strong>{paymentData.vaNumber}</strong></li>
                   <li>Masukkan nominal: <strong>Rp {paymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
                   <li>Konfirmasi dan selesaikan pembayaran</li>
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {/* ==========================================
-              E-WALLET DISPLAY
-              ========================================== */}
-          {paymentData.ewalletType && (
-            <div className="space-y-4">
-              <div className="p-4 border rounded-lg">
-                <div className="flex items-center gap-3 mb-4">
-                  <Smartphone className="h-8 w-8 text-primary" />
-                  <div>
-                    <p className="font-medium">Pembayaran {paymentData.ewalletType}</p>
-                    <p className="text-sm text-muted-foreground">Buka aplikasi {paymentData.ewalletType} untuk menyelesaikan pembayaran</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* E-Wallet Instructions */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
-                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Buka aplikasi {paymentData.ewalletType} di smartphone Anda</li>
-                  <li>Cek notifikasi pembayaran masuk</li>
-                  <li>Atau klik tombol "Simulasi Pembayaran" di bawah untuk testing</li>
-                  <li>Konfirmasi pembayaran dengan PIN atau biometrik</li>
                 </ol>
               </div>
             </div>
