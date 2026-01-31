@@ -21,13 +21,15 @@ import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 import {
   Calendar, User, Receipt, MapPin, Navigation, CreditCard, Wallet,
   QrCode, Banknote, ChevronDown, ChevronUp, Building, Check, Loader2,
-  Tag, AlertCircle, Copy, Clock, Store, ExternalLink, X
+  Tag, AlertCircle, Copy, Clock, Store, ExternalLink, X, Smartphone,
+  CheckCircle, RefreshCw
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
+import { QRCodeSVG } from 'qrcode.react';
 
 // ==========================================
 // XENDIT PAYMENT FEES (Client-side)
@@ -198,13 +200,20 @@ interface UserProfile {
 interface PaymentResponse {
   success: boolean;
   paymentType: string;
+  paymentMethod?: string;
+  paymentMethodName?: string;
   orderId: string;
   amount: number;
   transactionFee: number;
   totalAmount: number;
   paymentUrl?: string;
   vaNumber?: string;
+  bankCode?: string;
   qrString?: string;
+  ewalletType?: string;
+  cardType?: string;
+  paymentCode?: string;
+  retailOutlet?: string;
   expirationDate?: string;
   xenditId?: string;
   message?: string;
@@ -512,165 +521,106 @@ export default function VendorFormPage() {
   };
 
   const handlePaymentSubmit = async () => {
-  if (!selectedPayment) {
-    toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
-    return;
-  }
-
-  setIsProcessingPayment(true);
-
-  const servicePrice = calculateServicePrice();
-  const baseAmount = servicePrice + SERVICE_FEE;
-  const transactionFee = calculateTransactionFee(selectedPayment, baseAmount);
-  const totalAmount = baseAmount + transactionFee;
-
-  // Prepare request payload
-  const requestPayload = {
-    orderId: initialOrderId,
-    paymentMethod: selectedPayment,
-    customerName: formData.name || vendor?.name || 'Customer',
-    customerEmail: formData.email || userProfile?.email || '',
-    customerPhone: formData.phone || userProfile?.phone || '',
-    amount: baseAmount,
-    description: `Pembayaran untuk layanan dari ${vendor?.name || 'Vendor'}`,
-  };
-
-  console.log('='.repeat(60));
-  console.log('[Payment Frontend] Starting payment process');
-  console.log('[Payment Frontend] Selected payment method:', selectedPayment);
-  console.log('[Payment Frontend] Request payload:', JSON.stringify(requestPayload, null, 2));
-  console.log('[Payment Frontend] Calculated amounts:', {
-    servicePrice,
-    serviceFee: SERVICE_FEE,
-    baseAmount,
-    transactionFee,
-    totalAmount
-  });
-
-  try {
-    console.log('[Payment Frontend] Sending POST request to /api/payments/xendit');
-
-    const response = await fetch('/api/payments/xendit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify(requestPayload),
-    });
-
-    console.log('[Payment Frontend] Response received:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
-    });
-
-    // Try to parse response
-    let data: PaymentResponse;
-    try {
-      data = await response.json();
-      console.log('[Payment Frontend] Response data:', JSON.stringify(data, null, 2));
-    } catch (parseError) {
-      console.error('[Payment Frontend] Failed to parse response:', parseError);
-      toast.error('Server mengembalikan response yang tidak valid', { duration: 5000 });
-      setIsProcessingPayment(false);
+    if (!selectedPayment) {
+      toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
       return;
     }
 
-    // Handle error responses - CHECK BOTH response.ok AND data.success
-    if (!response.ok || !data.success) {
-      console.error('[Payment Frontend] API returned error:', {
-        status: response.status,
-        success: data.success,
-        error: data.error,
-        message: data.message,
-        details: data.details
+    setIsProcessingPayment(true);
+
+    const servicePrice = calculateServicePrice();
+    const baseAmount = servicePrice + SERVICE_FEE;
+    const transactionFee = calculateTransactionFee(selectedPayment, baseAmount);
+    const totalAmount = baseAmount + transactionFee;
+
+    // Prepare request payload
+    const requestPayload = {
+      orderId: initialOrderId,
+      paymentMethod: selectedPayment,
+      customerName: formData.name || vendor?.name || 'Customer',
+      customerEmail: formData.email || userProfile?.email || '',
+      customerPhone: formData.phone || userProfile?.phone || '',
+      amount: baseAmount,
+      description: `Pembayaran untuk layanan dari ${vendor?.name || 'Vendor'}`,
+    };
+
+    console.log('='.repeat(60));
+    console.log('[Payment Frontend] Starting payment process');
+    console.log('[Payment Frontend] Selected payment method:', selectedPayment);
+    console.log('[Payment Frontend] Request payload:', JSON.stringify(requestPayload, null, 2));
+
+    try {
+      console.log('[Payment Frontend] Sending POST request to /api/payments/xendit');
+
+      const response = await fetch('/api/payments/xendit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestPayload),
       });
 
-      // Show detailed error message
-      const errorMessage = data.message || 'Gagal membuat pembayaran';
-      let errorDetails = '';
-      
-      if (data.details) {
-        if (Array.isArray(data.details)) {
-          errorDetails = data.details.join(', ');
-        } else if (typeof data.details === 'string') {
-          errorDetails = data.details;
-        } else {
-          errorDetails = JSON.stringify(data.details);
-        }
+      console.log('[Payment Frontend] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      // Try to parse response
+      let data: PaymentResponse;
+      try {
+        data = await response.json();
+        console.log('[Payment Frontend] Response data:', JSON.stringify(data, null, 2));
+      } catch (parseError) {
+        console.error('[Payment Frontend] Failed to parse response:', parseError);
+        toast.error('Server mengembalikan response yang tidak valid', { duration: 5000 });
+        setIsProcessingPayment(false);
+        return;
       }
 
-      toast.error(
-        errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage,
-        { duration: 5000 }
-      );
+      // Handle error responses
+      if (!response.ok || !data.success) {
+        console.error('[Payment Frontend] API returned error:', data);
+        const errorMessage = data.message || 'Gagal membuat pembayaran';
+        toast.error(errorMessage, { duration: 5000 });
+        setIsProcessingPayment(false);
+        return;
+      }
 
+      // Success - save payment data
+      setPaymentData(data);
+      console.log('[Payment Frontend] Payment created successfully:', data);
+
+      // Handle different payment types
+      if (data.paymentType === 'tunai') {
+        console.log('[Payment Frontend] Handling cash payment');
+        toast.success('Pembayaran tunai berhasil dikonfirmasi!');
+        setShowPaymentSuccessModal(true);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        setShowPaymentSuccessModal(false);
+
+        console.log('[Payment Frontend] Redirecting to /riwayat_pemesanan');
+        router.push('/riwayat_pemesanan');
+
+      } else {
+        // For all other payment types, show the payment step with instructions
+        console.log('[Payment Frontend] Showing payment instructions');
+        toast.success('Instruksi pembayaran berhasil dibuat');
+        setCurrentStep('payment');
+      }
+
+    } catch (error: any) {
+      console.error('[Payment Frontend] Error caught:', error);
+      const errorMessage = error.message || "Terjadi kesalahan saat memproses pembayaran";
+      toast.error(errorMessage, { duration: 5000 });
+
+    } finally {
+      console.log('[Payment Frontend] Payment process completed');
       setIsProcessingPayment(false);
-      return;
     }
-
-    // Success - save payment data
-    setPaymentData(data);
-    console.log('[Payment Frontend] Payment created successfully:', {
-      paymentType: data.paymentType,
-      orderId: data.orderId,
-      totalAmount: data.totalAmount
-    });
-
-    // Handle different payment types
-    if (data.paymentType === 'tunai') {
-      console.log('[Payment Frontend] Handling cash payment');
-      toast.success('Pembayaran tunai berhasil dikonfirmasi!');
-      setShowPaymentSuccessModal(true);
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setShowPaymentSuccessModal(false);
-
-      console.log('[Payment Frontend] Redirecting to /riwayat_pemesanan');
-      router.push('/riwayat_pemesanan');
-
-    } else if (data.paymentUrl) {
-      console.log('[Payment Frontend] Redirecting to Xendit checkout:', data.paymentUrl);
-      toast.success('Mengarahkan ke halaman pembayaran...');
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      console.log('[Payment Frontend] Performing redirect');
-      window.location.href = data.paymentUrl;
-
-    } else if (data.vaNumber || data.qrString) {
-      console.log('[Payment Frontend] Showing payment instructions');
-      toast.success('Instruksi pembayaran berhasil dibuat');
-      setCurrentStep('payment');
-
-    } else {
-      console.log('[Payment Frontend] Fallback redirect to order history');
-      toast.success('Pembayaran berhasil dibuat');
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      router.push('/riwayat_pemesanan');
-    }
-
-  } catch (error: any) {
-    console.error('='.repeat(60));
-    console.error('[Payment Frontend] Error caught:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
-    console.error('='.repeat(60));
-
-    // Show user-friendly error
-    const errorMessage = error.message || "Terjadi kesalahan saat memproses pembayaran";
-    toast.error(errorMessage, { duration: 5000 });
-
-  } finally {
-    console.log('[Payment Frontend] Payment process completed');
-    console.log('='.repeat(60));
-    setIsProcessingPayment(false);
-  }
-};
+  };
 
   const calculateServicePrice = () => {
     if (!vendor || !vendor.services) return 0;
@@ -836,6 +786,7 @@ export default function VendorFormPage() {
             selectedPayment={selectedPayment}
             onBack={() => setCurrentStep('confirmation')}
             orderId={initialOrderId}
+            router={router}
           />
         )}
       </motion.main>
@@ -920,7 +871,6 @@ export default function VendorFormPage() {
 
 // ==========================================
 // ORDER FORM COMPONENT
-// (Tetap sama seperti sebelumnya, tidak ada perubahan)
 // ==========================================
 
 function OrderForm({
@@ -1639,18 +1589,19 @@ function ConfirmationStep({
 }
 
 // ==========================================
-// PAYMENT STEP COMPONENT (VA / QRIS Display)
+// PAYMENT STEP COMPONENT (Custom UI - No Xendit Redirect)
 // ==========================================
 
-function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
+function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router }: {
   paymentData: PaymentResponse | null;
   selectedPayment: string;
   onBack: () => void;
   orderId: string;
+  router: any;
 }) {
-  const router = useRouter();
   const [copied, setCopied] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -1697,6 +1648,33 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
     }
   };
 
+  // Simulate payment for testing
+  const handleSimulatePayment = async () => {
+    setIsSimulating(true);
+    try {
+      const response = await fetch('/api/payments/xendit/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ orderId }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Pembayaran berhasil! Mengarahkan ke riwayat pemesanan...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        router.push('/riwayat_pemesanan');
+      } else {
+        toast.error(data.message || 'Gagal mensimulasikan pembayaran');
+      }
+    } catch (error) {
+      toast.error('Terjadi kesalahan saat mensimulasikan pembayaran');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   const handleGoToOrderHistory = () => {
     router.push('/riwayat_pemesanan');
   };
@@ -1722,6 +1700,9 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
           <CardTitle className="flex items-center gap-2">
             {paymentData.vaNumber && <Building className="h-5 w-5" />}
             {paymentData.qrString && <QrCode className="h-5 w-5" />}
+            {paymentData.ewalletType && <Wallet className="h-5 w-5" />}
+            {paymentData.cardType && <CreditCard className="h-5 w-5" />}
+            {paymentData.paymentCode && <Store className="h-5 w-5" />}
             <span>Instruksi Pembayaran</span>
           </CardTitle>
           <CardDescription>
@@ -1737,18 +1718,24 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white"
                   style={{ backgroundColor: methodInfo?.color || '#6B7280' }}
                 >
-                  {paymentData.vaNumber && <Building className="h-5 w-5" />}
-                  {paymentData.qrString && <QrCode className="h-5 w-5" />}
+                  {methodInfo?.icon === 'wallet' && <Wallet className="h-5 w-5" />}
+                  {methodInfo?.icon === 'building' && <Building className="h-5 w-5" />}
+                  {methodInfo?.icon === 'qrcode' && <QrCode className="h-5 w-5" />}
+                  {methodInfo?.icon === 'credit-card' && <CreditCard className="h-5 w-5" />}
+                  {methodInfo?.icon === 'store' && <Store className="h-5 w-5" />}
+                  {methodInfo?.icon === 'banknote' && <Banknote className="h-5 w-5" />}
                 </div>
                 <div>
-                  <p className="font-medium">{methodInfo?.name || selectedPayment}</p>
+                  <p className="font-medium">{paymentData.paymentMethodName || methodInfo?.name || selectedPayment}</p>
                   <p className="text-sm text-muted-foreground">Order ID: {orderId}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* VA Number Display */}
+          {/* ==========================================
+              VIRTUAL ACCOUNT DISPLAY
+              ========================================== */}
           {paymentData.vaNumber && (
             <div className="space-y-4">
               <div className="p-4 border rounded-lg">
@@ -1766,54 +1753,144 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
                 </div>
               </div>
 
-              {/* Instructions */}
+              {/* VA Instructions */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
                 <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Buka aplikasi mobile banking atau ATM</li>
+                  <li>Buka aplikasi mobile banking atau ATM {paymentData.bankCode}</li>
                   <li>Pilih menu Transfer / Virtual Account</li>
-                  <li>Masukkan nomor VA di atas</li>
-                  <li>Masukkan nominal pembayaran yang tertera</li>
+                  <li>Masukkan nomor VA: <strong>{paymentData.vaNumber}</strong></li>
+                  <li>Masukkan nominal: <strong>Rp {paymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
                   <li>Konfirmasi dan selesaikan pembayaran</li>
                 </ol>
               </div>
             </div>
           )}
 
-          {/* QRIS Display */}
+          {/* ==========================================
+              QRIS DISPLAY WITH QR CODE
+              ========================================== */}
           {paymentData.qrString && (
             <div className="space-y-4">
               <div className="p-4 border rounded-lg flex flex-col items-center">
                 <p className="text-sm text-muted-foreground mb-4">Scan QR Code dengan aplikasi e-wallet atau mobile banking</p>
-                <div className="bg-white p-4 rounded-lg border">
-                  <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-center">
-                    <div>
-                      <QrCode className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p className="text-xs text-gray-500">Scan dengan aplikasi</p>
-                      <p className="text-xs text-gray-500">pembayaran Anda</p>
-                    </div>
-                  </div>
+                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                  <QRCodeSVG 
+                    value={paymentData.qrString} 
+                    size={200}
+                    level="H"
+                    includeMargin={true}
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
+                <p className="text-xs text-muted-foreground mt-4 text-center">
                   Gunakan aplikasi seperti DANA, OVO, GoPay, ShopeePay, atau mobile banking
                 </p>
               </div>
 
-              {/* Instructions */}
+              {/* QRIS Instructions */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
                 <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
                   <li>Buka aplikasi e-wallet atau mobile banking</li>
                   <li>Pilih menu Scan QR / Bayar dengan QRIS</li>
                   <li>Scan QR Code di atas</li>
-                  <li>Konfirmasi nominal pembayaran</li>
+                  <li>Konfirmasi nominal: <strong>Rp {paymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
                   <li>Selesaikan transaksi</li>
                 </ol>
               </div>
             </div>
           )}
 
-          {/* Amount Display */}
+          {/* ==========================================
+              E-WALLET DISPLAY
+              ========================================== */}
+          {paymentData.ewalletType && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <Smartphone className="h-8 w-8 text-primary" />
+                  <div>
+                    <p className="font-medium">Pembayaran {paymentData.ewalletType}</p>
+                    <p className="text-sm text-muted-foreground">Buka aplikasi {paymentData.ewalletType} untuk menyelesaikan pembayaran</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* E-Wallet Instructions */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Buka aplikasi {paymentData.ewalletType} di smartphone Anda</li>
+                  <li>Cek notifikasi pembayaran masuk</li>
+                  <li>Atau klik tombol "Simulasi Pembayaran" di bawah untuk testing</li>
+                  <li>Konfirmasi pembayaran dengan PIN atau biometrik</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {/* ==========================================
+              CARD PAYMENT DISPLAY
+              ========================================== */}
+          {paymentData.cardType && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <CreditCard className="h-8 w-8 text-primary" />
+                  <div>
+                    <p className="font-medium">Pembayaran Kartu {paymentData.cardType}</p>
+                    <p className="text-sm text-muted-foreground">Pembayaran dengan kartu kredit/debit</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card Instructions */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Informasi:</h4>
+                <p className="text-sm text-blue-800">
+                  Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah untuk melanjutkan.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ==========================================
+              RETAIL OUTLET DISPLAY
+              ========================================== */}
+          {paymentData.paymentCode && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg">
+                <p className="text-sm text-muted-foreground mb-2">Kode Pembayaran</p>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-2xl font-mono font-bold tracking-wider">{paymentData.paymentCode}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(paymentData.paymentCode!, 'Kode Pembayaran')}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    {copied === 'Kode Pembayaran' ? 'Tersalin!' : 'Salin'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Retail Instructions */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran di {paymentData.retailOutlet}:</h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Kunjungi gerai {paymentData.retailOutlet} terdekat</li>
+                  <li>Sampaikan kepada kasir untuk pembayaran SELSAS</li>
+                  <li>Berikan kode pembayaran: <strong>{paymentData.paymentCode}</strong></li>
+                  <li>Bayar sejumlah: <strong>Rp {paymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
+                  <li>Simpan bukti pembayaran</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {/* ==========================================
+              AMOUNT DISPLAY
+              ========================================== */}
           <div className="p-4 border rounded-lg">
             <p className="text-sm text-muted-foreground mb-2">Total Pembayaran</p>
             <div className="flex items-center justify-between">
@@ -1834,7 +1911,9 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
             </p>
           </div>
 
-          {/* Expiration */}
+          {/* ==========================================
+              EXPIRATION
+              ========================================== */}
           {paymentData.expirationDate && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-start gap-2 text-yellow-800">
@@ -1847,8 +1926,29 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
             </div>
           )}
 
-          {/* Actions */}
+          {/* ==========================================
+              ACTION BUTTONS
+              ========================================== */}
           <div className="space-y-3 pt-4">
+            {/* Simulate Payment Button (For Testing) */}
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleSimulatePayment}
+              disabled={isSimulating}
+            >
+              {isSimulating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Memproses Pembayaran...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Simulasi Pembayaran Berhasil (Testing)
+                </>
+              )}
+            </Button>
+
             <Button
               className="w-full text-white"
               style={{ backgroundColor: '#7CE0A8' }}
@@ -1862,7 +1962,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId }: {
                 </>
               ) : (
                 <>
-                  <Check className="h-4 w-4 mr-2" />
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Cek Status Pembayaran
                 </>
               )}
