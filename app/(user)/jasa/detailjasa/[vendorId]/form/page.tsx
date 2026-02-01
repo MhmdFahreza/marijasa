@@ -236,6 +236,8 @@ interface PaymentResponse {
     mobile_deeplink_checkout_url?: string;
     qr_checkout_string?: string;
   };
+  // Cash payment specific
+  isCash?: boolean;
 }
 
 // ==========================================
@@ -815,22 +817,28 @@ export default function VendorFormPage() {
       setPaymentData(data);
       console.log('[Payment Frontend] Payment created successfully:', data);
 
-      // Handle different payment types
-      if (data.paymentType === 'tunai') {
-        console.log('[Payment Frontend] Handling cash payment');
-        toast.success('Pembayaran tunai berhasil dikonfirmasi!');
+      // ==========================================
+      // PERUBAHAN PENTING: Pembayaran tunai langsung ke riwayat pemesanan
+      // ==========================================
+      if (selectedPayment === 'tunai') {
+        console.log('[Payment Frontend] Handling cash payment - redirecting to order history');
+        toast.success('Pesanan berhasil dibuat dengan pembayaran tunai! Pesanan Anda sedang diproses.');
+        
+        // Clear storage setelah pembayaran tunai berhasil
+        handleClearStorage();
+        
+        // Tampilkan modal sukses sebentar sebelum redirect
         setShowPaymentSuccessModal(true);
-
         await new Promise(resolve => setTimeout(resolve, 2000));
         setShowPaymentSuccessModal(false);
-        handleClearStorage(); // Clear storage after successful payment
-
+        
+        // Redirect ke halaman riwayat pemesanan
         console.log('[Payment Frontend] Redirecting to /riwayat_pemesanan');
         router.push('/riwayat_pemesanan');
 
       } else {
-        // For all other payment types, show the payment step with instructions
-        console.log('[Payment Frontend] Showing payment instructions');
+        // Untuk semua metode pembayaran lainnya, tampilkan instruksi pembayaran
+        console.log('[Payment Frontend] Showing payment instructions for non-cash payment');
         toast.success('Instruksi pembayaran berhasil dibuat');
         setCurrentStep('payment');
       }
@@ -846,7 +854,7 @@ export default function VendorFormPage() {
     }
   };
 
-  // Handler untuk payment success dari PaymentStep
+  // Handler untuk payment success dari PaymentStep (hanya untuk non-tunai)
   const handlePaymentSuccess = async () => {
     setShowPaymentSuccessModal(true);
     await new Promise(resolve => setTimeout(resolve, 2500));
@@ -1054,7 +1062,7 @@ export default function VendorFormPage() {
         )}
       </AnimatePresence>
 
-      {/* Payment Success Modal - Shared */}
+      {/* Payment Success Modal - Updated untuk semua metode termasuk tunai */}
       <AnimatePresence>
         {showPaymentSuccessModal && (
           <motion.div
@@ -1089,7 +1097,7 @@ export default function VendorFormPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
               >
-                Pembayaran Berhasil! 🎉
+                {selectedPayment === 'tunai' ? 'Pesanan Berhasil! 🎉' : 'Pembayaran Berhasil! 🎉'}
               </motion.h3>
               <motion.p 
                 className="text-gray-600 mb-2"
@@ -1097,7 +1105,9 @@ export default function VendorFormPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
               >
-                Pesanan Anda sedang diproses.
+                {selectedPayment === 'tunai' 
+                  ? 'Pesanan Anda sedang diproses. Bayar tunai saat layanan diberikan.'
+                  : 'Pesanan Anda sedang diproses.'}
               </motion.p>
               <motion.p 
                 className="text-sm text-gray-500 mb-6"
@@ -1105,7 +1115,9 @@ export default function VendorFormPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
               >
-                Anda akan diarahkan ke halaman riwayat pemesanan...
+                {selectedPayment === 'tunai'
+                  ? 'Anda akan diarahkan ke halaman riwayat pemesanan...'
+                  : 'Anda akan diarahkan ke halaman riwayat pemesanan...'}
               </motion.p>
               <div className="flex justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7CE0A8]"></div>
@@ -1691,7 +1703,9 @@ function ConfirmationStep({
                 <div>
                   <p className="font-medium">{XENDIT_PAYMENT_FEES[selectedPayment]?.name || selectedPayment}</p>
                   <p className="text-sm text-muted-foreground">
-                    Biaya Transaksi: {getCalculatedFeeDisplay(selectedPayment, baseAmount)}
+                    {selectedPayment === 'tunai' 
+                      ? 'Bayar ditempat' 
+                      : `Biaya Transaksi: ${getCalculatedFeeDisplay(selectedPayment, baseAmount)}`}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setShowPaymentOptions(true)}>Ubah</Button>
@@ -1787,7 +1801,7 @@ function ConfirmationStep({
                                           </div>
                                         </div>
                                         <span className="text-sm text-muted-foreground">
-                                          {getFeeDescription(methodId)}
+                                          {methodId === 'tunai' ? 'Bayar saat layanan' : getFeeDescription(methodId)}
                                         </span>
                                       </label>
                                     );
@@ -1836,12 +1850,20 @@ function ConfirmationStep({
               >
                 {isProcessingPayment ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memproses...</>
-                ) : 'Bayar Sekarang'}
+                ) : selectedPayment === 'tunai' ? 'Konfirmasi Pesanan' : 'Bayar Sekarang'}
               </Button>
             </div>
 
+            {selectedPayment === 'tunai' && (
+              <p className="text-xs text-center text-blue-600 mt-4">
+                🔔 Pembayaran tunai dilakukan saat layanan diberikan. Pesanan Anda akan segera diproses.
+              </p>
+            )}
+
             <p className="text-xs text-center text-muted-foreground mt-4">
-              Dengan mengklik "Bayar Sekarang", Anda menyetujui kebijakan dan privasi dari Selsas
+              {selectedPayment === 'tunai' 
+                ? 'Dengan mengklik "Konfirmasi Pesanan", Anda menyetujui untuk membayar tunai saat layanan diberikan'
+                : 'Dengan mengklik "Bayar Sekarang", Anda menyetujui kebijakan dan privasi dari Selsas'}
             </p>
           </div>
         </CardContent>
@@ -1851,7 +1873,7 @@ function ConfirmationStep({
 }
 
 // ==========================================
-// PAYMENT STEP COMPONENT (UPDATED - with Success Modal)
+// PAYMENT STEP COMPONENT (Hanya untuk non-tunai)
 // ==========================================
 
 function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, handleClearStorage, onPaymentSuccess }: {
@@ -1869,6 +1891,20 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
   const [qrRefreshTime, setQrRefreshTime] = useState<number>(300); // 5 minutes in seconds
   const [isRefreshingQR, setIsRefreshingQR] = useState(false);
   const [currentQrString, setCurrentQrString] = useState<string>('');
+
+  // Jika pembayaran tunai, tidak boleh masuk ke sini
+  if (selectedPayment === 'tunai') {
+    return (
+      <div className="text-center py-8">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Error: Halaman Tidak Tersedia</h3>
+        <p className="text-gray-600 mb-4">Pembayaran tunai tidak memerlukan halaman instruksi pembayaran.</p>
+        <Button onClick={() => router.push('/riwayat_pemesanan')}>
+          Lihat Riwayat Pemesanan
+        </Button>
+      </div>
+    );
+  }
 
   // Initialize QR string from payment data
   useEffect(() => {
