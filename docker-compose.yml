@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: marijasa-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: marijasa
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - marijasa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: marijasa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - marijasa-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: marijasa-app
+    ports:
+      - "3000:3000"
+      - "5555:5555" # Prisma Studio
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/marijasa?schema=public"
+      DIRECT_URL: "postgresql://postgres:postgres@postgres:5432/marijasa?schema=public"
+      NEXTAUTH_URL: "http://localhost:3000"
+      NEXTAUTH_SECRET: "obeR2KX/v1OwRaRi3UL0lcIPaLRxsLmSWCH9h6F7QJ8="
+      JWT_SECRET: "Dy+3ICMsbv1KoTxuNW7FsMKPO40MbZk45fofckJAcPr56TgcT0h1Qyu6eXp+OhTeRIQ4z9ROvDzBvstbwFbfFA=="
+      UPSTASH_REDIS_REST_URL: "redis://redis:6379"
+      NODE_ENV: "development"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - marijasa-network
+    command: npm run dev
+
+  prisma-studio:
+    image: node:18-alpine
+    container_name: marijasa-prisma-studio
+    working_dir: /app
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/marijasa?schema=public"
+    ports:
+      - "5556:5555"
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+    networks:
+      - marijasa-network
+    command: npx prisma studio
+
+networks:
+  marijasa-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
