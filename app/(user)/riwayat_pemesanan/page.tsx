@@ -1,4 +1,4 @@
-// app/riwayat_pemesanan/page.tsx - FIXED WITH NO DOUBLE COUNTING
+// app/riwayat_pemesanan/page.tsx - FIXED
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
@@ -382,12 +382,12 @@ export default function OrderHistoryPage() {
 
       const data = await response.json();
       if (data.success) {
-        // Process orders dengan perhitungan yang benar - TIDAK ADA DOUBLE COUNTING
+        // Process orders dengan perhitungan yang benar - FIX: Gunakan total dari API tanpa menambahkan lagi
         const processedOrders = data.orders.map((order: any) => {
-          // Total dari API sudah termasuk layanan tambahan yang sudah dibayar
+          // Total dari API sudah final dan TIDAK perlu ditambah dengan apa pun
           const totalPrice = order.totalPrice || 0;
           
-          // Hitung total layanan tambahan yang belum dibayar
+          // Hitung total layanan tambahan yang belum dibayar untuk informasi saja
           const unpaidAdditionalTotal = order.additionalServices
             ?.filter((add: any) => 
               (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
@@ -399,9 +399,10 @@ export default function OrderHistoryPage() {
               return sum + (add.totalPrice || 0) + serviceFee + transactionFee;
             }, 0) || 0;
 
+          // FIX: Jangan tambahkan paidAdditionalTotal ke totalPrice karena sudah termasuk
           return {
             ...order,
-            // Total keseluruhan = total dari API (sudah include layanan tambahan yang sudah dibayar)
+            // Total keseluruhan = total dari API (sudah final)
             totalPrice: totalPrice,
             unpaidAdditionalTotal: unpaidAdditionalTotal
           };
@@ -442,24 +443,26 @@ export default function OrderHistoryPage() {
 
   // Get base total (pembayaran utama TANPA layanan tambahan)
   const getBaseTotal = (order: any): number => {
-    return order.paymentDetails?.subtotal + order.paymentDetails?.serviceFee + order.paymentDetails?.transactionFee;
+    // FIX: Gunakan subtotal dari API
+    return (order.paymentDetails?.subtotal || 0) + 
+           (order.paymentDetails?.serviceFee || 0) + 
+           (order.paymentDetails?.transactionFee || 0);
   };
 
   // Get total paid additional services
   const getPaidAdditionalTotal = (order: any): number => {
-    if (order.additionalServices) {
-      return order.additionalServices
-        .filter((add: any) => 
-          (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
-          add.isPaid
-        )
-        .reduce((sum: number, add: any) => {
-          const serviceFee = add.serviceFee || 10000;
-          const transactionFee = add.transactionFee || 0;
-          return sum + (add.totalPrice || 0) + serviceFee + transactionFee;
-        }, 0);
-    }
-    return 0;
+    if (!order.additionalServices) return 0;
+    
+    return order.additionalServices
+      .filter((add: any) => 
+        (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
+        add.isPaid
+      )
+      .reduce((sum: number, add: any) => {
+        const serviceFee = add.serviceFee || 10000;
+        const transactionFee = add.transactionFee || 0;
+        return sum + (add.totalPrice || 0) + serviceFee + transactionFee;
+      }, 0);
   };
 
   // Get unpaid additional services total
@@ -467,21 +470,15 @@ export default function OrderHistoryPage() {
     return order.unpaidAdditionalTotal || 0;
   };
 
-  // Get total paid so far (base + paid additional)
+  // Get total paid so far (base + paid additional) - FIX: Gunakan total dari API
   const getTotalPaid = (order: any): number => {
-    // Total dari API sudah include paid additional
+    // Total dari API sudah final
     return order.totalPrice || 0;
   };
 
   // Get total outstanding (unpaid additional)
   const getTotalOutstanding = (order: any): number => {
     return getUnpaidAdditionalTotal(order);
-  };
-
-  // Get overall total (total dari API + unpaid additional)
-  const getOverallTotal = (order: any): number => {
-    // Total keseluruhan = total sudah dibayar + yang belum dibayar
-    return getTotalPaid(order) + getTotalOutstanding(order);
   };
 
   // Check if has unpaid additional services
@@ -1467,7 +1464,7 @@ export default function OrderHistoryPage() {
                   </>
                 ) : (
                   <>
-                    <li>Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah</li>
+                    <li>Untuk testing, klik tombol "Simulasi Pembayaran" di bawah</li>
                     <li>Status pembayaran akan berubah menjadi PAID</li>
                     <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
                   </>
@@ -1538,7 +1535,7 @@ export default function OrderHistoryPage() {
               <p className="text-sm text-blue-800">
                 {xenditPaymentData.invoiceUrl
                   ? 'Klik tombol di atas untuk membuka invoice pembayaran dan lanjutkan dengan kartu Anda.'
-                  : 'Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah untuk melanjutkan.'}
+                  : 'Untuk testing, klik tombol "Simulasi Pembayaran" di bawah untuk melanjutkan.'}
               </p>
             </div>
           </div>
@@ -1909,8 +1906,6 @@ export default function OrderHistoryPage() {
           {filteredOrders.map((order) => {
             const baseTotal = getBaseTotal(order);
             const unpaidAdditionalTotal = getUnpaidAdditionalTotal(order);
-            const totalPaid = getTotalPaid(order);
-            const totalOutstanding = getTotalOutstanding(order);
 
             return (
               <motion.div
@@ -1972,15 +1967,9 @@ export default function OrderHistoryPage() {
                       {/* Price & Actions */}
                       <div className="flex flex-col items-end gap-3 md:gap-4">
                         <div className="text-right">
-                          <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100">
-                            Rp {formatPrice(totalPaid)}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Total Pembayaran
-                          </p>
-                          {totalOutstanding > 0 && (
+                          {unpaidAdditionalTotal > 0 && (
                             <p className="text-xs text-yellow-600 mt-1">
-                              Belum dibayar: Rp {formatPrice(totalOutstanding)}
+                              Belum dibayar: Rp {formatPrice(unpaidAdditionalTotal)}
                             </p>
                           )}
                         </div>
@@ -2093,7 +2082,7 @@ export default function OrderHistoryPage() {
                                 )}
                               </TabsContent>
 
-                              {/* Detail Pembayaran - FIXED NO DOUBLE COUNTING */}
+                              {/* Detail Pembayaran - FIXED */}
                               <TabsContent value="payment" className="space-y-6 m-0">
                                 <div>
                                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -2101,7 +2090,7 @@ export default function OrderHistoryPage() {
                                     Detail Pembayaran
                                   </h3>
 
-                                  {/* Pembayaran Utama - DIUBAH JADI NAMA LAYANAN */}
+                                  {/* FIX: Tampilkan pembayaran utama saja, sesuai dengan gambar */}
                                   <div className="mb-8">
                                     <div className="flex items-center justify-between mb-3">
                                       <h4 className="font-medium flex items-center gap-2">
@@ -2163,7 +2152,7 @@ export default function OrderHistoryPage() {
                                     </Card>
                                   </div>
 
-                                  {/* Layanan Tambahan */}
+                                  {/* Layanan Tambahan - Hanya tampilkan sebagai informasi terpisah */}
                                   {(() => {
                                     const approvedAdditionalServices = getApprovedAdditionalServices(order);
                                     const unpaidServices = approvedAdditionalServices.filter((add: any) => !add.isPaid);
@@ -2180,131 +2169,72 @@ export default function OrderHistoryPage() {
                                             <Package className="h-4 w-4 text-blue-600" />
                                             Layanan Tambahan
                                           </h4>
-                                          {unpaidServices.length > 0 ? (
-                                            <Badge className="bg-yellow-100 text-yellow-800">
-                                              Ada yang Belum Dibayar
-                                            </Badge>
-                                          ) : (
-                                            <Badge className="bg-green-100 text-green-800">
-                                              Semua Lunas
-                                            </Badge>
-                                          )}
+                                          <Badge variant="outline">
+                                            {approvedAdditionalServices.length} layanan
+                                          </Badge>
                                         </div>
 
-                                        {/* Layanan Tambahan yang sudah dibayar */}
-                                        {paidServices.length > 0 && (
-                                          <div className="mb-6">
-                                            <h5 className="text-sm font-medium text-green-700 mb-2">
-                                              Sudah Dibayar ({paidServices.length} layanan)
-                                            </h5>
-                                            <div className="space-y-3">
-                                              {paidServices.map((addService: any, idx: number) => {
-                                                const totalPrice = addService.totalPrice || 0;
-                                                const serviceFee = addService.serviceFee || 10000;
-                                                const transactionFee = addService.transactionFee || 0;
-                                                const total = totalPrice + serviceFee + transactionFee;
+                                        {/* Informasi Layanan Tambahan */}
+                                        <div className="space-y-4">
+                                          {approvedAdditionalServices.map((addService: any, idx: number) => {
+                                            const totalPrice = addService.totalPrice || 0;
+                                            const serviceFee = addService.serviceFee || 10000;
+                                            const transactionFee = addService.transactionFee || 0;
+                                            const total = totalPrice + serviceFee + transactionFee;
 
-                                                return (
-                                                  <Card key={`paid-${idx}`} className="border-green-100">
-                                                    <CardContent className="p-3">
-                                                      <div className="flex justify-between items-center">
-                                                        <div>
-                                                          <p className="font-medium text-green-800">{addService.description}</p>
-                                                          <p className="text-xs text-gray-500">
-                                                            Dibayar: {addService.paidAt ? new Date(addService.paidAt).toLocaleDateString('id-ID') : '-'}
-                                                          </p>
-                                                        </div>
-                                                        <Badge className="bg-green-100 text-green-800">Lunas</Badge>
-                                                      </div>
-                                                      <div className="mt-2 text-right">
-                                                        <p className="font-bold text-green-600">Rp {formatPrice(total)}</p>
-                                                      </div>
-                                                    </CardContent>
-                                                  </Card>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        )}
+                                            return (
+                                              <Card key={idx} className={addService.isPaid ? "border-green-100" : "border-yellow-200"}>
+                                                <CardContent className="p-3">
+                                                  <div className="flex justify-between items-center mb-2">
+                                                    <div>
+                                                      <p className="font-medium">{addService.description}</p>
+                                                      <p className="text-xs text-gray-500">
+                                                        {addService.isPaid 
+                                                          ? `Dibayar: ${addService.paidAt ? new Date(addService.paidAt).toLocaleDateString('id-ID') : '-'}`
+                                                          : `Diajukan: ${new Date(addService.submittedAt).toLocaleDateString('id-ID')}`
+                                                        }
+                                                      </p>
+                                                    </div>
+                                                    <Badge className={addService.isPaid ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
+                                                      {addService.isPaid ? "Lunas" : "Belum Bayar"}
+                                                    </Badge>
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <p className={`font-bold ${addService.isPaid ? "text-green-600" : "text-yellow-600"}`}>
+                                                      Rp {formatPrice(total)}
+                                                    </p>
+                                                  </div>
 
-                                        {/* Layanan Tambahan yang belum dibayar */}
-                                        {unpaidServices.length > 0 && (
-                                          <div>
-                                            <h5 className="text-sm font-medium text-yellow-700 mb-2">
-                                              Belum Dibayar ({unpaidServices.length} layanan)
-                                            </h5>
-                                            <div className="space-y-4">
-                                              {unpaidServices.map((addService: any, idx: number) => {
-                                                const totalPrice = addService.totalPrice || 0;
-                                                const serviceFee = addService.serviceFee || 10000;
-                                                const transactionFee = addService.transactionFee || 0;
-                                                const total = totalPrice + serviceFee + transactionFee;
+                                                  {/* Tombol bayar untuk yang belum dibayar */}
+                                                  {!addService.isPaid && (
+                                                    <div className="mt-3">
+                                                      <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="w-full"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleOpenXenditPaymentModal(order, true, addService);
+                                                        }}
+                                                        disabled={isActionLoading(`xendit_payment_additional_${addService.id}`)}
+                                                      >
+                                                        <CreditCard className="h-4 w-4 mr-2" />
+                                                        Bayar Layanan Ini
+                                                      </Button>
+                                                    </div>
+                                                  )}
+                                                </CardContent>
+                                              </Card>
+                                            );
+                                          })}
+                                        </div>
 
-                                                return (
-                                                  <Card key={`unpaid-${idx}`} className="border-yellow-200">
-                                                    <CardContent className="p-4">
-                                                      <div className="flex justify-between items-center mb-3">
-                                                        <div>
-                                                          <p className="font-medium text-yellow-800">{addService.description}</p>
-                                                          <p className="text-sm text-gray-500">
-                                                            Diajukan: {new Date(addService.submittedAt).toLocaleDateString('id-ID')}
-                                                          </p>
-                                                        </div>
-                                                        <Badge className="bg-yellow-100 text-yellow-800">Belum Bayar</Badge>
-                                                      </div>
-
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center text-sm">
-                                                          <span className="text-gray-600 dark:text-gray-400">Subtotal Layanan:</span>
-                                                          <span>Rp {formatPrice(totalPrice)}</span>
-                                                        </div>
-                                                        <div className="flex justify-between items-center text-sm">
-                                                          <span className="text-gray-600 dark:text-gray-400">Biaya Layanan:</span>
-                                                          <span>Rp {formatPrice(serviceFee)}</span>
-                                                        </div>
-                                                        <div className="flex justify-between items-center text-sm">
-                                                          <span className="text-gray-600 dark:text-gray-400">Biaya Transaksi:</span>
-                                                          <span>Rp {formatPrice(transactionFee)}</span>
-                                                        </div>
-                                                        <Separator className="my-2" />
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="font-semibold">Total:</span>
-                                                          <span className="font-bold text-yellow-600">
-                                                            Rp {formatPrice(total)}
-                                                          </span>
-                                                        </div>
-                                                      </div>
-
-                                                      <div className="mt-4">
-                                                        <div className="flex flex-col sm:flex-row gap-2">
-                                                          <Button
-                                                            variant="outline"
-                                                            className="flex-1"
-                                                            onClick={(e) => {
-                                                              e.stopPropagation();
-                                                              handleOpenXenditPaymentModal(order, true, addService);
-                                                            }}
-                                                            disabled={isActionLoading(`xendit_payment_additional_${addService.id}`)}
-                                                          >
-                                                            <CreditCard className="h-4 w-4 mr-2" />
-                                                            Bayar Sekarang
-                                                          </Button>
-                                                        </div>
-                                                      </div>
-                                                    </CardContent>
-                                                  </Card>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {/* Summary - HANYA MENAMPILKAN INFORMASI */}
+                                        {/* Summary */}
                                         <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                                           <div className="flex justify-between items-center mb-2">
-                                            <span className="font-semibold">Total Layanan Tambahan:</span>
+                                            <span className="font-semibold">Ringkasan Layanan Tambahan:</span>
                                             <span className="font-bold text-blue-600">
-                                              {paidServices.length + unpaidServices.length} layanan
+                                              {approvedAdditionalServices.length} layanan
                                             </span>
                                           </div>
                                           <div className="flex justify-between items-center text-sm">
@@ -2319,8 +2249,6 @@ export default function OrderHistoryPage() {
                                       </div>
                                     );
                                   })()}
-
-                                  {/* Ringkasan Total - DIHAPUS KARENA SUDAH ADA DI ATAS */}
                                 </div>
                               </TabsContent>
 
@@ -2559,7 +2487,7 @@ export default function OrderHistoryPage() {
                             </div>
                           </Tabs>
 
-                          {/* Action Buttons - TANPA RINGKASAN TOTAL */}
+                          {/* Action Buttons */}
                           <div className="border-t p-4 md:p-6 bg-gray-50 dark:bg-gray-800/50">
                             <div className="flex flex-wrap gap-3">
                               {/* TOMBOL CHAT VENDOR */}
