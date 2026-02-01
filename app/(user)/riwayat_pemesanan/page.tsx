@@ -1,4 +1,4 @@
-// app/riwayat_pemesanan/page.tsx
+// app/riwayat_pemesanan/page.tsx - FIXED WITH NO DOUBLE COUNTING
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
@@ -56,29 +56,158 @@ import {
   Star,
   CheckCircle,
   Upload,
-  ChevronDown
+  ChevronDown,
+  Store,
+  ExternalLink,
+  Copy,
+  RefreshCw,
+  Download,
+  Clock as ClockIcon
 } from "lucide-react";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import { toast } from "sonner";
 import { RadioGroup, RadioGroupItem } from "@/app/components/ui/radio-group";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Separator } from "@/app/components/ui/separator";
+import { QRCodeSVG } from 'qrcode.react';
+
+// ==========================================
+// XENDIT PAYMENT FEES (Client-side)
+// ==========================================
+
+const XENDIT_PAYMENT_FEES: Record<string, {
+  type: 'fixed' | 'percentage' | 'combined' | 'none';
+  rate?: number;
+  min?: number;
+  amount?: number;
+  fixed?: number;
+  name: string;
+  category: string;
+  icon: string;
+  color: string;
+}> = {
+  // E-Wallets - 1.5% (min Rp 1,500)
+  ewallet_dana: { type: 'percentage', rate: 1.5, min: 1500, name: 'DANA', category: 'ewallet', icon: 'wallet', color: '#10B981' },
+  ewallet_ovo: { type: 'percentage', rate: 1.5, min: 1500, name: 'OVO', category: 'ewallet', icon: 'wallet', color: '#4F46E5' },
+  ewallet_shopeepay: { type: 'percentage', rate: 1.5, min: 1500, name: 'ShopeePay', category: 'ewallet', icon: 'wallet', color: '#EE4D2D' },
+  ewallet_linkaja: { type: 'percentage', rate: 1.5, min: 1500, name: 'LinkAja', category: 'ewallet', icon: 'wallet', color: '#E31E24' },
+
+  // Virtual Account - Flat fee
+  va_bca: { type: 'fixed', amount: 4500, name: 'BCA Virtual Account', category: 'va', icon: 'building', color: '#1E3A8A' },
+  va_bni: { type: 'fixed', amount: 4000, name: 'BNI Virtual Account', category: 'va', icon: 'building', color: '#F59E0B' },
+  va_bri: { type: 'fixed', amount: 4000, name: 'BRI Virtual Account', category: 'va', icon: 'building', color: '#DC2626' },
+  va_mandiri: { type: 'fixed', amount: 4000, name: 'Mandiri Virtual Account', category: 'va', icon: 'building', color: '#059669' },
+  va_permata: { type: 'fixed', amount: 4000, name: 'Permata Virtual Account', category: 'va', icon: 'building', color: '#7C3AED' },
+  va_bsi: { type: 'fixed', amount: 4000, name: 'BSI Virtual Account', category: 'va', icon: 'building', color: '#059669' },
+  va_cimb: { type: 'fixed', amount: 4000, name: 'CIMB Niaga Virtual Account', category: 'va', icon: 'building', color: '#DC2626' },
+
+  // QRIS - 0.7%
+  qris: { type: 'percentage', rate: 0.7, min: 0, name: 'QRIS', category: 'qris', icon: 'qrcode', color: '#EF4444' },
+
+  // Cards - 2.9% + Rp 2,000
+  card_visa: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu Visa', category: 'card', icon: 'credit-card', color: '#1A1F71' },
+  card_mastercard: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu Mastercard', category: 'card', icon: 'credit-card', color: '#EB001B' },
+  card_jcb: { type: 'combined', rate: 2.9, fixed: 2000, name: 'Kartu JCB', category: 'card', icon: 'credit-card', color: '#0066B3' },
+
+  // Retail Outlets - Flat fee
+  retail_alfamart: { type: 'fixed', amount: 5000, name: 'Alfamart', category: 'retail', icon: 'store', color: '#DC2626' },
+  retail_indomaret: { type: 'fixed', amount: 5000, name: 'Indomaret', category: 'retail', icon: 'store', color: '#1E40AF' },
+
+  // Tunai - No fee
+  tunai: { type: 'fixed', amount: 0, name: 'Tunai', category: 'tunai', icon: 'banknote', color: '#6B7280' },
+};
 
 const SERVICE_FEE = 10000;
 
-const PAYMENT_FEES: Record<string, number> = {
-  "dana": 1440,
-  "ovo": 1440,
-  "gopay": 1440,
-  "bca-va": 3850,
-  "bni-va": 3700,
-  "bri-va": 3700,
-  "mandiri-va": 3700,
-  "bsi-va": 3850,
-  "debit-credit": 2784,
-  "qris": 1571,
-  "tunai": 0
-};
+// Calculate fee based on payment method
+function calculateTransactionFee(paymentMethod: string, amount: number): number {
+  const config = XENDIT_PAYMENT_FEES[paymentMethod];
+  if (!config) return 0;
+
+  switch (config.type) {
+    case 'fixed':
+      return config.amount || 0;
+    case 'percentage':
+      const percentFee = Math.ceil(amount * ((config.rate || 0) / 100));
+      return Math.max(percentFee, config.min || 0);
+    case 'combined':
+      return Math.ceil(amount * ((config.rate || 0) / 100)) + (config.fixed || 0);
+    default:
+      return 0;
+  }
+}
+
+// Get display fee description
+function getFeeDescription(paymentMethod: string): string {
+  const config = XENDIT_PAYMENT_FEES[paymentMethod];
+  if (!config) return '-';
+
+  switch (config.type) {
+    case 'fixed':
+      if (config.amount === 0) return 'Gratis';
+      return `Rp ${(config.amount || 0).toLocaleString('id-ID')}`;
+    case 'percentage':
+      return (config.min || 0) > 0
+        ? `${config.rate}% (min Rp ${(config.min || 0).toLocaleString('id-ID')})`
+        : `${config.rate}%`;
+    case 'combined':
+      return `${config.rate}% + Rp ${(config.fixed || 0).toLocaleString('id-ID')}`;
+    default:
+      return '-';
+  }
+}
+
+// Get calculated fee display
+function getCalculatedFeeDisplay(paymentMethod: string, amount: number): string {
+  const fee = calculateTransactionFee(paymentMethod, amount);
+  if (fee === 0) return 'Gratis';
+  return `Rp ${fee.toLocaleString('id-ID')}`;
+}
+
+// ==========================================
+// INTERFACES
+// ==========================================
+
+interface PaymentResponse {
+  success: boolean;
+  paymentType: string;
+  paymentMethod?: string;
+  paymentMethodName?: string;
+  orderId: string;
+  amount: number;
+  transactionFee: number;
+  totalAmount: number;
+  xenditId?: string;
+  qrId?: string;
+  qrString?: string;
+  qrCodeUrl?: string;
+  qrCodeData?: string;
+  invoiceUrl?: string;
+  expiresAt?: string;
+  vaNumber?: string;
+  bankCode?: string;
+  ewalletType?: string;
+  cardType?: string;
+  paymentCode?: string;
+  retailOutlet?: string;
+  expirationDate?: string;
+  isTestMode?: boolean;
+  message?: string;
+  error?: string;
+  details?: any;
+  checkoutUrl?: string;
+  deeplinkUrl?: string;
+  actions?: {
+    desktop_web_checkout_url?: string;
+    mobile_web_checkout_url?: string;
+    mobile_deeplink_checkout_url?: string;
+    qr_checkout_string?: string;
+  };
+}
+
+// ==========================================
+// MAIN COMPONENT - FIXED WITHOUT DOUBLE COUNTING
+// ==========================================
 
 export default function OrderHistoryPage() {
   const router = useRouter();
@@ -98,28 +227,29 @@ export default function OrderHistoryPage() {
   const [vendorServices, setVendorServices] = useState<any[]>([]);
   const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
 
-  // Payment modal states
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<string>("");
-  const [cardData, setCardData] = useState({
-    cardNumber: "",
-    expiryDate: "",
-    cvv: ""
-  });
-  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+  // Xendit Payment modal states
+  const [showXenditPaymentModal, setShowXenditPaymentModal] = useState(false);
+  const [selectedXenditPayment, setSelectedXenditPayment] = useState<string>("");
+  const [xenditPaymentData, setXenditPaymentData] = useState<PaymentResponse | null>(null);
+  const [xenditPaymentMode, setXenditPaymentMode] = useState<'select' | 'instruction'>('select');
+  const [showXenditPaymentOptions, setShowXenditPaymentOptions] = useState(false);
+  const [expandedXenditSections, setExpandedXenditSections] = useState<Record<string, boolean>>({
     ewallet: true,
     va: false,
     card: false,
     qris: false,
-    cash: false
+    retail: false,
+    tunai: false
   });
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [paymentForOrder, setPaymentForOrder] = useState<"main" | "additional">("main");
+  const [selectedAdditionalService, setSelectedAdditionalService] = useState<any>(null);
 
   // Cancel modal
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Completion modal
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -132,13 +262,65 @@ export default function OrderHistoryPage() {
   });
   const [showThankYouModal, setShowThankYouModal] = useState(false);
 
-  // Additional service payment modal
-  const [showAdditionalPaymentModal, setShowAdditionalPaymentModal] = useState(false);
-  const [selectedAdditionalService, setSelectedAdditionalService] = useState<any>(null);
-  const [paymentForAdditional, setPaymentForAdditional] = useState<"main" | "additional">("main");
+  // QRIS refresh timer
+  const [qrRefreshTime, setQrRefreshTime] = useState<number>(300);
+  const [isRefreshingQR, setIsRefreshingQR] = useState(false);
+  const [currentQrString, setCurrentQrString] = useState<string>('');
 
   // Loading states untuk setiap aktivitas
   const [actionLoadingStates, setActionLoadingStates] = useState<Record<string, boolean>>({});
+
+  // Initialize QR string from payment data
+  useEffect(() => {
+    if (xenditPaymentData?.qrString) {
+      setCurrentQrString(xenditPaymentData.qrString);
+    }
+  }, [xenditPaymentData]);
+
+  // Start countdown timer for QR refresh
+  useEffect(() => {
+    if (selectedXenditPayment === 'qris' && qrRefreshTime > 0 && showXenditPaymentModal && xenditPaymentMode === 'instruction') {
+      const interval = setInterval(() => {
+        setQrRefreshTime(prev => {
+          if (prev <= 1) {
+            refreshQRCode();
+            return 300;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [selectedXenditPayment, qrRefreshTime, showXenditPaymentModal, xenditPaymentMode]);
+
+  const refreshQRCode = async () => {
+    if (isRefreshingQR || !selectedOrder) return;
+
+    setIsRefreshingQR(true);
+    try {
+      const response = await fetch(`/api/payments/xendit?orderId=${selectedOrder.id}&refreshQR=true`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.booking?.refreshedQR) {
+        const refreshed = data.booking.refreshedQR;
+        if (refreshed.qrString) {
+          setCurrentQrString(refreshed.qrString);
+          toast.success('QR code berhasil diperbarui');
+          setQrRefreshTime(300);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing QR code:', error);
+      toast.error('Gagal memperbarui QR code');
+    } finally {
+      setIsRefreshingQR(false);
+    }
+  };
 
   // Fungsi untuk mengatur loading state
   const setActionLoading = useCallback((key: string, isLoading: boolean) => {
@@ -157,57 +339,28 @@ export default function OrderHistoryPage() {
     router.push(`/chat/${vendorId}`);
   };
 
-  const formatCardNumber = (value: string) => {
-    const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
-    const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
-    return formatted.substring(0, 19);
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} berhasil disalin`);
+    setTimeout(() => { }, 2000);
   };
 
-  const formatExpiryDate = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    if (cleaned.length >= 2) {
-      return `${cleaned.substring(0, 2)}/${cleaned.substring(2, 4)}`;
-    }
-    return cleaned;
+  const formatExpiration = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
-  const paymentMethods = {
-    ewallet: [
-      { id: "dana", name: "DANA", icon: Wallet, fee: 1440, color: "#10B981" },
-      { id: "ovo", name: "OVO", icon: Smartphone, fee: 1440, color: "#4F46E5" },
-      { id: "gopay", name: "GoPay", icon: Smartphone, fee: 1440, color: "#00AA13" },
-    ],
-    va: [
-      { id: "bca-va", name: "BCA Virtual Account", icon: BuildingIcon, fee: 3850, color: "#1E3A8A" },
-      { id: "bni-va", name: "BNI Virtual Account", icon: BuildingIcon, fee: 3700, color: "#F59E0B" },
-      { id: "bri-va", name: "BRI Virtual Account", icon: BuildingIcon, fee: 3700, color: "#DC2626" },
-      { id: "mandiri-va", name: "Mandiri Virtual Account", icon: BuildingIcon, fee: 3700, color: "#059669" },
-      { id: "bsi-va", name: "BSI Virtual Account", icon: BuildingIcon, fee: 3850, color: "#7C3AED" },
-    ],
-    card: [
-      { id: "debit-credit", name: "Kartu Debit/Kredit", icon: CreditCardIcon, fee: 2784, color: "#3B82F6" },
-    ],
-    qris: [
-      { id: "qris", name: "QRIS", icon: QrCode, fee: 1571, color: "#EF4444" },
-    ],
-    cash: [
-      { id: "tunai", name: "Tunai", icon: Banknote, fee: 0, color: "#6B7280" },
-    ]
-  };
-
-  const getPaymentMethodName = (id: string) => {
-    for (const category of Object.values(paymentMethods)) {
-      const method = category.find(m => m.id === id);
-      if (method) return method.name;
-    }
-    return "";
-  };
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const loadOrders = useCallback(async () => {
@@ -229,15 +382,30 @@ export default function OrderHistoryPage() {
 
       const data = await response.json();
       if (data.success) {
-        const processedOrders = data.orders.map((order: any) => ({
-          ...order,
-          paymentDetails: order.paymentDetails || {
-            subtotal: order.totalPrice - SERVICE_FEE,
-            serviceFee: SERVICE_FEE,
-            transactionFee: 0,
-            total: order.totalPrice
-          }
-        }));
+        // Process orders dengan perhitungan yang benar - TIDAK ADA DOUBLE COUNTING
+        const processedOrders = data.orders.map((order: any) => {
+          // Total dari API sudah termasuk layanan tambahan yang sudah dibayar
+          const totalPrice = order.totalPrice || 0;
+          
+          // Hitung total layanan tambahan yang belum dibayar
+          const unpaidAdditionalTotal = order.additionalServices
+            ?.filter((add: any) => 
+              (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
+              !add.isPaid
+            )
+            .reduce((sum: number, add: any) => {
+              const serviceFee = add.serviceFee || 10000;
+              const transactionFee = add.transactionFee || 0;
+              return sum + (add.totalPrice || 0) + serviceFee + transactionFee;
+            }, 0) || 0;
+
+          return {
+            ...order,
+            // Total keseluruhan = total dari API (sudah include layanan tambahan yang sudah dibayar)
+            totalPrice: totalPrice,
+            unpaidAdditionalTotal: unpaidAdditionalTotal
+          };
+        });
         setOrders(processedOrders);
       }
     } catch (error) {
@@ -268,6 +436,71 @@ export default function OrderHistoryPage() {
     }
   };
 
+  // ==========================================
+  // FIXED CALCULATION FUNCTIONS - NO DOUBLE COUNTING
+  // ==========================================
+
+  // Get base total (pembayaran utama TANPA layanan tambahan)
+  const getBaseTotal = (order: any): number => {
+    return order.paymentDetails?.subtotal + order.paymentDetails?.serviceFee + order.paymentDetails?.transactionFee;
+  };
+
+  // Get total paid additional services
+  const getPaidAdditionalTotal = (order: any): number => {
+    if (order.additionalServices) {
+      return order.additionalServices
+        .filter((add: any) => 
+          (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
+          add.isPaid
+        )
+        .reduce((sum: number, add: any) => {
+          const serviceFee = add.serviceFee || 10000;
+          const transactionFee = add.transactionFee || 0;
+          return sum + (add.totalPrice || 0) + serviceFee + transactionFee;
+        }, 0);
+    }
+    return 0;
+  };
+
+  // Get unpaid additional services total
+  const getUnpaidAdditionalTotal = (order: any): number => {
+    return order.unpaidAdditionalTotal || 0;
+  };
+
+  // Get total paid so far (base + paid additional)
+  const getTotalPaid = (order: any): number => {
+    // Total dari API sudah include paid additional
+    return order.totalPrice || 0;
+  };
+
+  // Get total outstanding (unpaid additional)
+  const getTotalOutstanding = (order: any): number => {
+    return getUnpaidAdditionalTotal(order);
+  };
+
+  // Get overall total (total dari API + unpaid additional)
+  const getOverallTotal = (order: any): number => {
+    // Total keseluruhan = total sudah dibayar + yang belum dibayar
+    return getTotalPaid(order) + getTotalOutstanding(order);
+  };
+
+  // Check if has unpaid additional services
+  const hasUnpaidAdditionalServices = (order: any): boolean => {
+    return getUnpaidAdditionalTotal(order) > 0;
+  };
+
+  // Get approved additional services (both paid and unpaid)
+  const getApprovedAdditionalServices = (order: any): any[] => {
+    if (!order.additionalServices) return [];
+    return order.additionalServices.filter((add: any) => 
+      add.status === "disetujui" || add.status === "approved" || add.status === "diterima"
+    );
+  };
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('id-ID').format(price);
+  };
+
   const handleOrderClick = (order: any) => {
     if (expandedOrderId === order.id) {
       setExpandedOrderId(null);
@@ -275,9 +508,6 @@ export default function OrderHistoryPage() {
     } else {
       setExpandedOrderId(order.id);
       setSelectedOrder(order);
-      if (order.paymentMethod && order.paymentMethod !== "Belum Dibayar") {
-        setSelectedPayment(order.paymentMethod.toLowerCase());
-      }
     }
   };
 
@@ -377,6 +607,18 @@ export default function OrderHistoryPage() {
     }));
   };
 
+  const calculateNewServiceTotal = () => {
+    let total = 0;
+    newServiceData.selectedServices.forEach(serviceId => {
+      const service = vendorServices.find((s: any) => s.id === serviceId);
+      if (service) {
+        const quantity = newServiceData.quantities[serviceId] || 1;
+        total += service.price * quantity;
+      }
+    });
+    return total;
+  };
+
   const handleSubmitNewService = async () => {
     if (newServiceData.selectedServices.length === 0) {
       toast.error("Harap pilih minimal satu layanan tambahan");
@@ -451,232 +693,230 @@ export default function OrderHistoryPage() {
     }
   };
 
-  const handleOpenPaymentModal = (order: any, forAdditional: boolean = false, additionalService?: any) => {
+  const handleOpenXenditPaymentModal = (order: any, forAdditional: boolean = false, additionalService?: any) => {
     setSelectedOrder(order);
-    setPaymentForAdditional(forAdditional ? "additional" : "main");
-    
-    if (forAdditional && additionalService) {
-      setSelectedAdditionalService(additionalService);
-    }
-    
-    if (order.paymentMethod && order.paymentMethod !== "Belum Dibayar") {
-      setSelectedPayment(order.paymentMethod.toLowerCase());
-    } else {
-      setSelectedPayment("");
-    }
-    setShowPaymentModal(true);
+    setPaymentForOrder(forAdditional ? "additional" : "main");
+    setSelectedAdditionalService(additionalService || null);
+
+    // Reset payment states
+    setSelectedXenditPayment("");
+    setXenditPaymentData(null);
+    setXenditPaymentMode('select');
+    setShowXenditPaymentOptions(false);
+    setQrRefreshTime(300);
+    setCurrentQrString('');
+
+    // Show modal
+    setShowXenditPaymentModal(true);
   };
 
-  const handleSavePaymentMethod = async () => {
-    if (!selectedPayment) {
+  const handleCreateXenditPayment = async () => {
+    if (!selectedXenditPayment || !selectedOrder) {
       toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
       return;
     }
 
-    if (selectedPayment === "debit-credit") {
-      if (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv) {
-        toast.error("Silakan lengkapi data kartu debit/kredit.");
-        return;
-      }
-
-      const cleanedCardNumber = cardData.cardNumber.replace(/\s/g, '');
-      if (cleanedCardNumber.length < 12 || !/^\d+$/.test(cleanedCardNumber)) {
-        toast.error("Nomor kartu tidak valid. Harus minimal 12 digit angka.");
-        return;
-      }
-
-      if (!/^\d{2}\/\d{2}$/.test(cardData.expiryDate)) {
-        toast.error("Format masa berlaku tidak valid. Gunakan format MM/YY (contoh: 01/24).");
-        return;
-      }
-
-      if (!/^\d{3,4}$/.test(cardData.cvv)) {
-        toast.error("CVV tidak valid. Harus 3 atau 4 digit angka.");
-        return;
-      }
-    }
-
-    const loadingKey = paymentForAdditional === "additional" 
-      ? `save_payment_additional_${selectedAdditionalService?.id}` 
-      : `save_payment_${selectedOrder.id}`;
+    const loadingKey = `xendit_payment_${selectedOrder.id}`;
     setActionLoading(loadingKey, true);
 
     try {
-      const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
+      let baseAmount = 0;
+      let description = "";
 
-      if (paymentForAdditional === "additional" && selectedAdditionalService) {
-        const response = await fetch('/api/user/orders/additional-service/payment', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            orderId: selectedOrder.id,
-            additionalServiceId: selectedAdditionalService.id,
-            paymentMethod: selectedPayment,
-            transactionFee: transactionFee
-          })
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Payment failed');
-        }
-
-        setOrders(prevOrders => prevOrders.map(order => {
-          if (order.id === selectedOrder.id) {
-            const updatedAdditionalServices = order.additionalServices?.map((service: any) => 
-              service.id === selectedAdditionalService.id 
-                ? { 
-                    ...service, 
-                    isPaid: true, 
-                    paidAt: new Date().toISOString(), 
-                    paymentMethod: selectedPayment,
-                    transactionFee: transactionFee
-                  }
-                : service
-            ) || [];
-            
-            return {
-              ...order,
-              additionalServices: updatedAdditionalServices
-            };
-          }
-          return order;
-        }));
-
-        toast.success("Pembayaran layanan tambahan berhasil!");
+      if (paymentForOrder === "additional" && selectedAdditionalService) {
+        // Pembayaran untuk layanan tambahan spesifik
+        const subtotal = selectedAdditionalService.totalPrice || 0;
+        baseAmount = subtotal + SERVICE_FEE;
+        description = `Pembayaran layanan tambahan: ${selectedAdditionalService.description}`;
       } else {
-        const response = await fetch('/api/user/orders', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            action: 'updatePayment',
-            orderId: selectedOrder.id,
-            paymentMethod: selectedPayment,
-            transactionFee: transactionFee
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to update payment method');
-        }
-
-        const subtotal = selectedOrder.paymentDetails.subtotal || (selectedOrder.totalPrice - SERVICE_FEE - transactionFee);
-        const total = subtotal + SERVICE_FEE + transactionFee;
-
-        setOrders(prevOrders => prevOrders.map(order => {
-          if (order.id === selectedOrder.id) {
-            return {
-              ...order,
-              paymentMethod: selectedPayment,
-              paymentId: `#${Math.floor(1000000 + Math.random() * 9000000)}`,
-              paymentDetails: {
-                ...order.paymentDetails,
-                subtotal: subtotal,
-                transactionFee: transactionFee,
-                total: total
-              },
-              totalPrice: total
-            };
-          }
-          return order;
-        }));
-
-        toast.success("Metode pembayaran berhasil disimpan!");
+        // Pembayaran utama - base total
+        baseAmount = getBaseTotal(selectedOrder);
+        description = `Pembayaran untuk layanan: ${selectedOrder.serviceType}`;
       }
 
-      setShowPaymentModal(false);
-      setShowPaymentOptions(false);
-      setSelectedAdditionalService(null);
-      setPaymentForAdditional("main");
+      // Calculate transaction fee (tunai = 0)
+      const transactionFee = selectedXenditPayment === 'tunai' ? 0 : calculateTransactionFee(selectedXenditPayment, baseAmount);
+      const totalAmount = baseAmount + transactionFee;
 
-    } catch (error: any) {
-      console.error("Error updating payment method:", error);
-      toast.error(error.message || "Gagal menyimpan metode pembayaran");
-    } finally {
-      setActionLoading(loadingKey, false);
-    }
-  };
+      // Prepare customer info
+      const customerInfo = selectedOrder.customerInfo || {};
 
-  const handlePayNow = async (order: any, forAdditional: boolean = false, additionalService?: any) => {
-    const loadingKey = forAdditional 
-      ? `pay_additional_${additionalService?.id}` 
-      : `pay_${order.id}`;
-    setActionLoading(loadingKey, true);
+      // Create payment request payload
+      const requestPayload = {
+        orderId: selectedOrder.id,
+        paymentMethod: selectedXenditPayment,
+        customerName: customerInfo.name || "Pelanggan",
+        customerEmail: customerInfo.email || "",
+        customerPhone: customerInfo.phone || "",
+        amount: baseAmount,
+        transactionFee: transactionFee,
+        totalAmount: totalAmount,
+        description: description,
+        paymentType: paymentForOrder === "additional" ? "additional" : "main",
+        additionalServiceId: paymentForOrder === "additional" ? selectedAdditionalService?.id : null
+      };
 
-    if (forAdditional && additionalService) {
-      handleOpenPaymentModal(order, true, additionalService);
-      setActionLoading(loadingKey, false);
-      return;
-    }
+      console.log('[Xendit Payment] Creating payment:', requestPayload);
 
-    if (!order.paymentMethod || order.paymentMethod === "Belum Dibayar") {
-      toast.error("Silakan pilih metode pembayaran terlebih dahulu.");
-      handleOpenPaymentModal(order);
-      setActionLoading(loadingKey, false);
-      return;
-    }
-
-    setShowSuccessModal(true);
-
-    try {
-      const response = await fetch('/api/user/orders', {
-        method: 'PUT',
+      const response = await fetch('/api/payments/xendit', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          action: 'pay',
-          orderId: order.id
-        })
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {
-        throw new Error('Payment failed');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create payment');
       }
 
-      setOrders(prevOrders => prevOrders.map(o => {
-        if (o.id === order.id) {
-          return {
-            ...o,
-            status: "diproses",
-            statusColor: "bg-blue-100 text-blue-800",
-            orderHistory: [
-              ...o.orderHistory,
-              {
-                status: "Pembayaran Diterima",
-                date: new Date().toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                }) + " - " + new Date().toLocaleTimeString('id-ID', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-              }
-            ]
-          };
-        }
-        return o;
-      }));
+      const data: PaymentResponse = await response.json();
 
-      setTimeout(() => {
-        setShowSuccessModal(false);
-        toast.success("Pembayaran berhasil! Status pesanan telah diperbarui.");
-      }, 2000);
+      if (!data.success) {
+        throw new Error(data.message || 'Payment creation failed');
+      }
+
+      // Untuk tunai, langsung refresh orders dan tutup modal
+      if (selectedXenditPayment === 'tunai') {
+        await loadOrders();
+        toast.success("Pembayaran tunai berhasil dikonfirmasi!");
+        setShowXenditPaymentModal(false);
+        setSelectedXenditPayment("");
+        setXenditPaymentData(null);
+        setXenditPaymentMode('select');
+        return;
+      }
+
+      // Untuk metode pembayaran lainnya
+      setXenditPaymentData(data);
+      setXenditPaymentMode('instruction');
+
+      if (data.qrString) {
+        setCurrentQrString(data.qrString);
+      }
+
+      toast.success("Pembayaran berhasil dibuat! Silakan selesaikan pembayaran.");
 
     } catch (error: any) {
-      console.error("Error processing payment:", error);
-      setShowSuccessModal(false);
-      toast.error(error.message || "Gagal memproses pembayaran");
+      console.error("Error creating Xendit payment:", error);
+      toast.error(error.message || "Gagal membuat pembayaran");
     } finally {
       setActionLoading(loadingKey, false);
+    }
+  };
+
+  const handleCheckPaymentStatus = async () => {
+    if (!selectedOrder) return;
+
+    const loadingKey = `check_status_${selectedOrder.id}`;
+    setActionLoading(loadingKey, true);
+
+    try {
+      const response = await fetch(`/api/payments/xendit?orderId=${selectedOrder.id}&checkXendit=true`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.booking) {
+        if (data.booking.paymentStatus === 'PAID') {
+          toast.success("Pembayaran sudah berhasil!");
+          await loadOrders();
+          setShowXenditPaymentModal(false);
+        } else {
+          toast.info(`Status pembayaran: ${data.booking.paymentStatus}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking payment status:", error);
+      toast.error("Gagal memeriksa status pembayaran");
+    } finally {
+      setActionLoading(loadingKey, false);
+    }
+  };
+
+  const handleSimulatePayment = async () => {
+    if (!selectedOrder) return;
+
+    const loadingKey = `simulate_${selectedOrder.id}`;
+    setActionLoading(loadingKey, true);
+
+    try {
+      const payload: any = {
+        orderId: selectedOrder.id
+      };
+
+      if (paymentForOrder === "additional" && selectedAdditionalService) {
+        payload.additionalServiceId = selectedAdditionalService.id;
+        payload.paymentType = "additional";
+      } else {
+        payload.paymentType = "main";
+      }
+
+      const response = await fetch('/api/payments/xendit/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Pembayaran berhasil disimulasikan!");
+        await loadOrders();
+        setShowXenditPaymentModal(false);
+        setSelectedXenditPayment("");
+        setXenditPaymentData(null);
+        setXenditPaymentMode('select');
+      } else {
+        toast.error(data.message || 'Gagal mensimulasikan pembayaran');
+      }
+    } catch (error: any) {
+      console.error("Error simulating payment:", error);
+      toast.error(error.message || "Gagal mensimulasikan pembayaran");
+    } finally {
+      setActionLoading(loadingKey, false);
+    }
+  };
+
+  const toggleXenditSection = (section: string) => {
+    setExpandedXenditSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const xenditPaymentCategories = {
+    ewallet: {
+      name: 'E-Wallet',
+      icon: Wallet,
+      methods: ['ewallet_dana', 'ewallet_ovo', 'ewallet_shopeepay', 'ewallet_linkaja']
+    },
+    va: {
+      name: 'Virtual Account',
+      icon: BuildingIcon,
+      methods: ['va_bca', 'va_bni', 'va_bri', 'va_mandiri', 'va_permata', 'va_bsi', 'va_cimb']
+    },
+    qris: {
+      name: 'QRIS',
+      icon: QrCode,
+      methods: ['qris']
+    },
+    card: {
+      name: 'Kartu Kredit/Debit',
+      icon: CreditCardIcon,
+      methods: ['card_visa', 'card_mastercard', 'card_jcb']
+    },
+    retail: {
+      name: 'Gerai Retail',
+      icon: Store,
+      methods: ['retail_alfamart', 'retail_indomaret']
+    },
+    tunai: {
+      name: 'Tunai',
+      icon: Banknote,
+      methods: ['tunai']
     }
   };
 
@@ -762,11 +1002,9 @@ export default function OrderHistoryPage() {
       return;
     }
 
-    const hasUnpaidAdditionalService = order.additionalServices?.some(
-      (addService: any) => addService.status === "disetujui" && !addService.isPaid
-    );
+    const hasUnpaid = hasUnpaidAdditionalServices(order);
 
-    if (hasUnpaidAdditionalService) {
+    if (hasUnpaid) {
       toast.error("Harap bayar layanan tambahan terlebih dahulu sebelum mengkonfirmasi selesai.");
       return;
     }
@@ -923,22 +1161,35 @@ export default function OrderHistoryPage() {
     }));
   };
 
-  const filteredOrders = orders.filter(order => {
-    if (activeTab === "semua") return true;
-    if (activeTab === "aktif") return order.status === "diproses" || order.status === "menunggu pembayaran";
-    if (activeTab === "selesai") return order.status === "selesai";
-    if (activeTab === "dibatalkan") return order.status === "dibatalkan";
-    return true;
-  });
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "dibatalkan": return "Dibatalkan";
-      case "diproses": return "Diproses";
-      case "selesai": return "Selesai";
-      case "menunggu pembayaran": return "Menunggu Pembayaran";
-      default: return status;
+  const handleDownloadQRCode = () => {
+    if (xenditPaymentData?.qrCodeUrl) {
+      const link = document.createElement('a');
+      link.href = xenditPaymentData.qrCodeUrl;
+      link.download = `qris-${selectedOrder?.id}-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('QR code berhasil diunduh');
+    } else if (currentQrString) {
+      toast.info('Fitur download dari QR string sedang dikembangkan');
     }
+  };
+
+  const generateQRCodeFromString = () => {
+    if (!currentQrString) return null;
+
+    return (
+      <div className="w-64 h-64 mx-auto">
+        <QRCodeSVG
+          value={currentQrString}
+          size={256}
+          level="H"
+          includeMargin={true}
+          bgColor="#FFFFFF"
+          fgColor="#000000"
+        />
+      </div>
+    );
   };
 
   const getServiceIcon = (serviceType: string) => {
@@ -952,73 +1203,640 @@ export default function OrderHistoryPage() {
     return <Package className="h-5 w-5" />;
   };
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('id-ID').format(price);
-  };
-
-  const calculateTotalWithFee = (order: any) => {
-    if (!selectedPayment) {
-      return order.paymentDetails?.total || order.totalPrice || 0;
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "dibatalkan": return "Dibatalkan";
+      case "diproses": return "Diproses";
+      case "selesai": return "Selesai";
+      case "menunggu pembayaran": return "Menunggu Pembayaran";
+      default: return status;
     }
-    const subtotal = order.paymentDetails?.subtotal || 0;
-    const transactionFee = PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0;
-    return subtotal + SERVICE_FEE + transactionFee;
   };
 
-  const calculateNewServiceTotal = () => {
-    let total = 0;
-    newServiceData.selectedServices.forEach(serviceId => {
-      const service = vendorServices.find((s: any) => s.id === serviceId);
-      if (service) {
-        const quantity = newServiceData.quantities[serviceId] || 1;
-        total += service.price * quantity;
-      }
-    });
-    return total;
+  const filteredOrders = orders.filter(order => {
+    if (activeTab === "semua") return true;
+    if (activeTab === "aktif") return order.status === "diproses" || order.status === "menunggu pembayaran";
+    if (activeTab === "selesai") return order.status === "selesai";
+    if (activeTab === "dibatalkan") return order.status === "dibatalkan";
+    return true;
+  });
+
+  // ==========================================
+  // RENDER FUNCTIONS
+  // ==========================================
+
+  const renderXenditPaymentInstruction = () => {
+    if (!xenditPaymentData || !selectedXenditPayment) return null;
+
+    const methodInfo = XENDIT_PAYMENT_FEES[selectedXenditPayment];
+    const isQRIS = selectedXenditPayment === 'qris';
+    const isEWallet = selectedXenditPayment.startsWith('ewallet_');
+    const isVA = selectedXenditPayment.startsWith('va_');
+    const isCard = selectedXenditPayment.startsWith('card_');
+    const isRetail = selectedXenditPayment.startsWith('retail_');
+    const isTunai = selectedXenditPayment === 'tunai';
+
+    if (isTunai) {
+      return (
+        <div className="space-y-6">
+          {/* Payment Method Info */}
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="font-medium text-green-800">Pembayaran Tunai Dikonfirmasi</p>
+                <p className="text-sm text-green-600">Order ID: {selectedOrder?.id}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Success Message */}
+          <div className="p-6 bg-white border border-green-300 rounded-lg text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+              <Check className="h-8 w-8 text-green-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Pembayaran Tunai Berhasil!</h3>
+            <p className="text-gray-600 mb-6">
+              Pembayaran tunai telah dikonfirmasi. Pesanan Anda sekarang dalam proses pengerjaan.
+            </p>
+
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg text-left">
+                <p className="font-medium mb-2">Informasi Pesanan:</p>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Layanan: {selectedOrder?.serviceType || '-'}</li>
+                  <li>• Vendor: {selectedOrder?.vendorName || '-'}</li>
+                  <li>• Total: Rp {formatPrice(xenditPaymentData.totalAmount)}</li>
+                  <li>• Status: <span className="text-green-600 font-medium">Diproses</span></li>
+                </ul>
+              </div>
+
+              <div className="bg-blue-50 p-4 rounded-lg text-left">
+                <p className="font-medium mb-2">Catatan Pembayaran Tunai:</p>
+                <ul className="text-sm text-blue-700 space-y-1">
+                  <li>• Siapkan pembayaran tunai saat vendor datang</li>
+                  <li>• Pastikan menerima layanan sebelum membayar</li>
+                  <li>• Minta tanda terima dari vendor</li>
+                  <li>• Vendor akan mengkonfirmasi setelah pembayaran</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-3 pt-4">
+            <Button
+              className="w-full bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
+              onClick={() => {
+                setShowXenditPaymentModal(false);
+                loadOrders();
+              }}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Tutup dan Lanjutkan
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => router.push(`/chat/${selectedOrder?.vendorId}`)}
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Hubungi Vendor
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Payment Method Info */}
+        <div className="p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white"
+                style={{ backgroundColor: methodInfo?.color || '#6B7280' }}
+              >
+                {methodInfo?.icon === 'wallet' && <Wallet className="h-5 w-5" />}
+                {methodInfo?.icon === 'building' && <BuildingIcon className="h-5 w-5" />}
+                {methodInfo?.icon === 'qrcode' && <QrCode className="h-5 w-5" />}
+                {methodInfo?.icon === 'credit-card' && <CreditCardIcon className="h-5 w-5" />}
+                {methodInfo?.icon === 'store' && <Store className="h-5 w-5" />}
+                {methodInfo?.icon === 'banknote' && <Banknote className="h-5 w-5" />}
+              </div>
+              <div>
+                <p className="font-medium">{xenditPaymentData.paymentMethodName || methodInfo?.name || selectedXenditPayment}</p>
+                <p className="text-sm text-muted-foreground">Order ID: {selectedOrder?.id}</p>
+                {xenditPaymentData.xenditId && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Xendit ID: {xenditPaymentData.xenditId?.slice(-8) || 'N/A'}
+                  </p>
+                )}
+              </div>
+            </div>
+            {isQRIS && (
+              <Badge variant="outline" className={qrRefreshTime <= 60 ? 'text-red-600' : ''}>
+                <ClockIcon className="h-3 w-3 mr-1" />
+                QR Berubah: {formatTime(qrRefreshTime)}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* QRIS DISPLAY */}
+        {isQRIS && (
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg flex flex-col items-center">
+              <p className="text-sm text-muted-foreground mb-4 text-center">
+                Scan QR Code dengan aplikasi e-wallet atau mobile banking<br />
+                <span className="text-xs">QR code akan otomatis diperbarui setiap 5 menit untuk keamanan</span>
+              </p>
+
+              {/* QR Code Display */}
+              <div className="bg-white p-6 rounded-lg border-2 border-dashed border-gray-300 shadow-sm">
+                {currentQrString ? (
+                  generateQRCodeFromString()
+                ) : (
+                  <div className="w-64 h-64 flex items-center justify-center">
+                    <Loader2 className="h-12 w-12 text-gray-400 animate-spin" />
+                    <span className="ml-2 text-sm">Memuat QR code...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Download QR Code Button */}
+              <div className="mt-6 flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadQRCode}
+                  disabled={!xenditPaymentData?.qrCodeUrl}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  {xenditPaymentData?.qrCodeUrl ? 'Download QR Code' : 'Download Tidak Tersedia'}
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  onClick={refreshQRCode}
+                  disabled={isRefreshingQR}
+                  className="flex items-center gap-2"
+                >
+                  {isRefreshingQR ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Perbarui QR Code
+                </Button>
+              </div>
+
+              {/* QRIS Info */}
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg w-full">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-900 mb-1">Informasi QRIS:</h4>
+                    <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                      <li>Scan dengan aplikasi DANA, OVO, GoPay, ShopeePay, LinkAja, atau mobile banking</li>
+                      <li>QR code otomatis berubah setiap 5 menit untuk keamanan</li>
+                      <li>Berlaku hingga: {xenditPaymentData.expirationDate ? formatExpiration(xenditPaymentData.expirationDate) : '24 jam'}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* E-WALLET DISPLAY */}
+        {isEWallet && (
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg">
+              <div className="flex items-center gap-3 mb-4">
+                <Smartphone className="h-8 w-8 text-primary" />
+                <div>
+                  <p className="font-medium">Pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {xenditPaymentData.checkoutUrl
+                      ? 'Klik tombol di bawah untuk membuka halaman pembayaran'
+                      : 'Klik "Simulasi Pembayaran" untuk testing'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Checkout URL Button */}
+              {xenditPaymentData.checkoutUrl && (
+                <Button
+                  className="w-full mb-4"
+                  onClick={() => window.open(xenditPaymentData.checkoutUrl, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Buka Halaman Pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}
+                </Button>
+              )}
+
+              {/* Deeplink for mobile */}
+              {xenditPaymentData.deeplinkUrl && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => window.location.href = xenditPaymentData.deeplinkUrl!}
+                >
+                  <Smartphone className="h-4 w-4 mr-2" />
+                  Buka Aplikasi {xenditPaymentData.paymentMethodName || methodInfo?.name}
+                </Button>
+              )}
+            </div>
+
+            {/* E-Wallet Instructions */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                {xenditPaymentData.checkoutUrl ? (
+                  <>
+                    <li>Klik tombol "Buka Halaman Pembayaran" di atas</li>
+                    <li>Anda akan diarahkan ke halaman pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}</li>
+                    <li>Login ke akun {xenditPaymentData.paymentMethodName || methodInfo?.name} Anda</li>
+                    <li>Konfirmasi pembayaran dengan PIN atau biometrik</li>
+                    <li>Setelah berhasil, Anda akan diarahkan kembali</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah</li>
+                    <li>Status pembayaran akan berubah menjadi PAID</li>
+                    <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
+                  </>
+                )}
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* VIRTUAL ACCOUNT DISPLAY */}
+        {isVA && xenditPaymentData.vaNumber && (
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg">
+              <p className="text-sm text-muted-foreground mb-2">Nomor Virtual Account</p>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-2xl font-mono font-bold tracking-wider">{xenditPaymentData.vaNumber}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyToClipboard(xenditPaymentData.vaNumber!, 'Nomor VA')}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Salin
+                </Button>
+              </div>
+            </div>
+
+            {/* VA Instructions */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                <li>Buka aplikasi mobile banking atau ATM {xenditPaymentData.bankCode}</li>
+                <li>Pilih menu Transfer / Virtual Account</li>
+                <li>Masukkan nomor VA: <strong>{xenditPaymentData.vaNumber}</strong></li>
+                <li>Masukkan nominal: <strong>Rp {xenditPaymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
+                <li>Konfirmasi dan selesaikan pembayaran</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* CARD PAYMENT DISPLAY */}
+        {isCard && (
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg">
+              <div className="flex items-center gap-3 mb-4">
+                <CreditCardIcon className="h-8 w-8 text-primary" />
+                <div>
+                  <p className="font-medium">Pembayaran Kartu {xenditPaymentData.cardType}</p>
+                  <p className="text-sm text-muted-foreground">Pembayaran dengan kartu kredit/debit</p>
+                </div>
+              </div>
+
+              {xenditPaymentData.invoiceUrl && (
+                <Button
+                  className="w-full"
+                  onClick={() => window.open(xenditPaymentData.invoiceUrl, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Buka Invoice Pembayaran
+                </Button>
+              )}
+            </div>
+
+            {/* Card Instructions */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Informasi:</h4>
+              <p className="text-sm text-blue-800">
+                {xenditPaymentData.invoiceUrl
+                  ? 'Klik tombol di atas untuk membuka invoice pembayaran dan lanjutkan dengan kartu Anda.'
+                  : 'Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah untuk melanjutkan.'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* RETAIL OUTLET DISPLAY */}
+        {isRetail && xenditPaymentData.paymentCode && (
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg">
+              <p className="text-sm text-muted-foreground mb-2">Kode Pembayaran</p>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-2xl font-mono font-bold tracking-wider">{xenditPaymentData.paymentCode}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyToClipboard(xenditPaymentData.paymentCode!, 'Kode Pembayaran')}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Salin
+                </Button>
+              </div>
+            </div>
+
+            {/* Retail Instructions */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran di {xenditPaymentData.retailOutlet}:</h4>
+              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                <li>Kunjungi gerai {xenditPaymentData.retailOutlet} terdekat</li>
+                <li>Sampaikan kepada kasir untuk pembayaran SELSAS</li>
+                <li>Berikan kode pembayaran: <strong>{xenditPaymentData.paymentCode}</strong></li>
+                <li>Bayar sejumlah: <strong>Rp {xenditPaymentData.totalAmount.toLocaleString('id-ID')}</strong></li>
+                <li>Simpan bukti pembayaran</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* TUNAI DISPLAY */}
+        {isTunai && (
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg">
+              <div className="flex items-center gap-3 mb-4">
+                <Banknote className="h-8 w-8 text-primary" />
+                <div>
+                  <p className="font-medium">Pembayaran Tunai</p>
+                  <p className="text-sm text-muted-foreground">
+                    Pembayaran tunai dilakukan langsung kepada vendor saat layanan diberikan
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Tunai Instructions */}
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h4 className="font-medium text-green-900 mb-2">Informasi Pembayaran Tunai:</h4>
+              <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                <li>Pembayaran dilakukan langsung kepada vendor saat layanan diberikan</li>
+                <li>Pastikan Anda telah menerima layanan sebelum melakukan pembayaran</li>
+                <li>Minta tanda terima dari vendor sebagai bukti pembayaran</li>
+                <li>Status pesanan akan berubah menjadi "Diproses" setelah pembayaran tunai dikonfirmasi</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* AMOUNT DISPLAY */}
+        <div className="p-4 border rounded-lg">
+          <p className="text-sm text-muted-foreground mb-2">Total Pembayaran</p>
+          <div className="flex items-center justify-between">
+            <span className="text-2xl font-bold text-primary">
+              Rp {xenditPaymentData.totalAmount.toLocaleString('id-ID')}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => copyToClipboard(xenditPaymentData.totalAmount.toString(), 'Nominal')}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Salin
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Termasuk biaya transaksi: Rp {xenditPaymentData.transactionFee.toLocaleString('id-ID')}
+          </p>
+        </div>
+
+        {/* EXPIRATION */}
+        {xenditPaymentData.expirationDate && !isTunai && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start gap-2 text-yellow-800">
+              <ClockIcon className="h-5 w-5 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">Batas Waktu Pembayaran</p>
+                <p className="text-sm">{formatExpiration(xenditPaymentData.expirationDate)}</p>
+                {isQRIS && (
+                  <p className="text-xs mt-1">
+                    QR code akan berubah otomatis setiap 5 menit hingga waktu habis
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="space-y-3 pt-4">
+          {/* Simulate Payment Button */}
+          {selectedXenditPayment !== 'tunai' && (
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleSimulatePayment}
+              disabled={isActionLoading(`simulate_${selectedOrder?.id}`)}
+            >
+              {isActionLoading(`simulate_${selectedOrder?.id}`) ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Memproses Pembayaran...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Simulasi Pembayaran Berhasil (Testing)
+                </>
+              )}
+            </Button>
+          )}
+
+          <Button
+            className="w-full text-white"
+            style={{ backgroundColor: '#7CE0A8' }}
+            onClick={handleCheckPaymentStatus}
+            disabled={isActionLoading(`check_status_${selectedOrder?.id}`) || selectedXenditPayment === 'tunai'}
+          >
+            {isActionLoading(`check_status_${selectedOrder?.id}`) ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Memeriksa Status...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Cek Status Pembayaran
+              </>
+            )}
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setXenditPaymentMode('select')}
+          >
+            Ubah Metode Pembayaran
+          </Button>
+        </div>
+
+        <div className="pt-4 border-t">
+          <div className="flex items-start gap-2 text-sm text-muted-foreground">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <p>
+              Pembayaran akan diverifikasi secara otomatis setelah berhasil.
+              Anda akan menerima notifikasi setelah pembayaran dikonfirmasi.
+              {isQRIS && ' QR code akan otomatis diperbarui setiap 5 menit untuk keamanan.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const hasUnpaidAdditionalServices = (order: any) => {
-    const approvedServices = order.additionalServices?.filter((addService: any) => 
-      addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima"
-    ) || [];
-    
-    return approvedServices.some((addService: any) => !addService.isPaid);
-  };
+  const renderXenditPaymentSelect = () => {
+    // Calculate amount based on what we're paying for
+    let amount = 0;
+    let description = "";
 
-  const getUnpaidAdditionalServicesTotal = (order: any) => {
-    let total = 0;
-    const approvedServices = order.additionalServices?.filter((addService: any) => 
-      addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima"
-    ) || [];
-    
-    approvedServices.forEach((addService: any) => {
-      if (!addService.isPaid) {
-        const serviceFee = addService.serviceFee || 10000;
-        const transactionFee = addService.transactionFee || 0;
-        total += (addService.totalPrice || 0) + serviceFee + transactionFee;
-      }
-    });
-    return total;
-  };
+    if (paymentForOrder === "additional" && selectedAdditionalService) {
+      const subtotal = selectedAdditionalService.totalPrice || 0;
+      amount = subtotal + SERVICE_FEE;
+      description = `Pembayaran layanan tambahan: ${selectedAdditionalService.description}`;
+    } else {
+      amount = getBaseTotal(selectedOrder);
+      description = `Pembayaran untuk layanan: ${selectedOrder.serviceType}`;
+    }
 
-  const getAllAdditionalServicesTotal = (order: any) => {
-    let total = 0;
-    const approvedServices = order.additionalServices?.filter((addService: any) => 
-      addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima"
-    ) || [];
-    
-    approvedServices.forEach((addService: any) => {
-      const serviceFee = addService.serviceFee || 10000;
-      const transactionFee = addService.transactionFee || 0;
-      total += (addService.totalPrice || 0) + serviceFee + transactionFee;
-    });
-    return total;
-  };
+    const transactionFee = selectedXenditPayment ? calculateTransactionFee(selectedXenditPayment, amount) : 0;
+    const totalAmount = amount + transactionFee;
 
-  const getApprovedAdditionalServices = (order: any) => {
-    return order.additionalServices?.filter((addService: any) => 
-      addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima"
-    ) || [];
+    return (
+      <div className="space-y-6">
+        {/* Payment Title */}
+        <div className="p-4 bg-muted/50 rounded-lg">
+          <h4 className="font-semibold">
+            {paymentForOrder === "additional" && selectedAdditionalService
+              ? `Bayar Layanan Tambahan: ${selectedAdditionalService.description}`
+              : `Bayar Pembayaran: ${selectedOrder?.serviceType}`}
+          </h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            Order ID: {selectedOrder?.id}
+            {paymentForOrder === "additional" && selectedAdditionalService &&
+              ` • Layanan: ${selectedAdditionalService.description}`}
+          </p>
+        </div>
+
+        {/* Informasi khusus untuk tunai */}
+        {selectedXenditPayment === 'tunai' && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start gap-2 text-yellow-800">
+              <Info className="h-5 w-5 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium mb-1">Pembayaran Tunai</p>
+                <p className="text-sm">
+                  Pembayaran akan langsung dikonfirmasi dan pesanan akan diproses.
+                  Bayar tunai kepada vendor saat layanan diberikan.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Selected Payment Method */}
+        {selectedXenditPayment ? (
+          <div className="mb-6 p-4 border rounded-lg bg-muted/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">{XENDIT_PAYMENT_FEES[selectedXenditPayment]?.name || selectedXenditPayment}</p>
+                <p className="text-sm text-muted-foreground">
+                  Biaya Transaksi: {getCalculatedFeeDisplay(selectedXenditPayment, amount)}
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowXenditPaymentOptions(true)}>Ubah</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6 p-4 border-2 border-dashed rounded-lg text-center">
+            <p className="text-muted-foreground">Belum memilih metode pembayaran</p>
+            <Button variant="outline" className="mt-2" onClick={() => setShowXenditPaymentOptions(true)}>
+              Pilih Metode Pembayaran
+            </Button>
+          </div>
+        )}
+
+        {/* Amount Summary - FIXED */}
+        <div className="p-4 border rounded-lg">
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Subtotal:</span>
+              <span>Rp {formatPrice(amount)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Biaya Transaksi:</span>
+              <div className="text-right">
+                <span>Rp {formatPrice(transactionFee)}</span>
+                {selectedXenditPayment && (
+                  <span className="text-xs text-muted-foreground block">
+                    ({getFeeDescription(selectedXenditPayment)})
+                  </span>
+                )}
+              </div>
+            </div>
+            <Separator className="my-2" />
+            <div className="flex justify-between font-bold text-lg">
+              <span>Total Pembayaran</span>
+              <span>Rp {formatPrice(totalAmount)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="pt-4 border-t">
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowXenditPaymentModal(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 text-white"
+              style={{ backgroundColor: '#7CE0A8' }}
+              onClick={handleCreateXenditPayment}
+              disabled={!selectedXenditPayment || isActionLoading(`xendit_payment_${selectedOrder?.id}`)}
+            >
+              {isActionLoading(`xendit_payment_${selectedOrder?.id}`) ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memproses...</>
+              ) : selectedXenditPayment === 'tunai' ? 'Konfirmasi Pembayaran Tunai' : 'Buat Pembayaran'}
+            </Button>
+          </div>
+
+          <p className="text-xs text-center text-muted-foreground mt-4">
+            {selectedXenditPayment === 'tunai'
+              ? 'Dengan mengklik "Konfirmasi Pembayaran Tunai", pesanan akan langsung diproses'
+              : 'Dengan mengklik "Buat Pembayaran", Anda akan diarahkan ke instruksi pembayaran'}
+          </p>
+        </div>
+      </div>
+    );
   };
 
   if (isPageLoading) {
@@ -1088,831 +1906,766 @@ export default function OrderHistoryPage() {
 
         {/* Order List */}
         <div className="space-y-4 md:space-y-6">
-          {filteredOrders.map((order) => (
-            <motion.div
-              key={order.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {/* Order Card */}
-              <Card
-                className={`overflow-hidden border hover:border-[#7CE0A8] transition-all duration-300 cursor-pointer ${expandedOrderId === order.id ? 'ring-2 ring-[#7CE0A8]' : ''
-                  }`}
-                onClick={() => handleOrderClick(order)}
-              >
-                <CardContent className="p-4 md:p-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    {/* Vendor Info */}
-                    <div className="flex items-start gap-3 md:gap-4">
-                      <Avatar className="h-12 w-12 md:h-16 md:w-16 border-2 border-[#7CE0A8]">
-                        <AvatarImage src={order.vendorAvatar} alt={order.vendorName} />
-                        <AvatarFallback>
-                          {getServiceIcon(order.serviceType)}
-                        </AvatarFallback>
-                      </Avatar>
+          {filteredOrders.map((order) => {
+            const baseTotal = getBaseTotal(order);
+            const unpaidAdditionalTotal = getUnpaidAdditionalTotal(order);
+            const totalPaid = getTotalPaid(order);
+            const totalOutstanding = getTotalOutstanding(order);
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mb-2">
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base md:text-lg truncate">
-                            {order.vendorName}
-                          </h3>
-                          <Badge className={`${order.statusColor} text-xs md:text-sm font-medium w-fit`}>
-                            {getStatusText(order.status)}
-                          </Badge>
-                          {order.rating && (
-                            <div className="flex items-center gap-1">
-                              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                              <span className="text-sm font-medium">{order.rating.toFixed(1)}</span>
+            return (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {/* Order Card */}
+                <Card
+                  className={`overflow-hidden border hover:border-[#7CE0A8] transition-all duration-300 cursor-pointer ${expandedOrderId === order.id ? 'ring-2 ring-[#7CE0A8]' : ''
+                    }`}
+                  onClick={() => handleOrderClick(order)}
+                >
+                  <CardContent className="p-4 md:p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      {/* Vendor Info */}
+                      <div className="flex items-start gap-3 md:gap-4">
+                        <Avatar className="h-12 w-12 md:h-16 md:w-16 border-2 border-[#7CE0A8]">
+                          <AvatarImage src={order.vendorAvatar} alt={order.vendorName} />
+                          <AvatarFallback>
+                            {getServiceIcon(order.serviceType)}
+                          </AvatarFallback>
+                        </Avatar>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mb-2">
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base md:text-lg truncate">
+                              {order.vendorName}
+                            </h3>
+                            <Badge className={`${order.statusColor} text-xs md:text-sm font-medium w-fit`}>
+                              {getStatusText(order.status)}
+                            </Badge>
+                            {order.rating && (
+                              <div className="flex items-center gap-1">
+                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                <span className="text-sm font-medium">{order.rating.toFixed(1)}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-1 text-sm md:text-base">
+                            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                              <Package className="h-4 w-4 flex-shrink-0" />
+                              <span className="truncate">{order.serviceType}</span>
                             </div>
+                            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                              <Calendar className="h-4 w-4 flex-shrink-0" />
+                              <span>{order.serviceDate} • {order.serviceTime}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                              <FileText className="h-4 w-4 flex-shrink-0" />
+                              <span>Order ID: {order.id}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Price & Actions */}
+                      <div className="flex flex-col items-end gap-3 md:gap-4">
+                        <div className="text-right">
+                          <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100">
+                            Rp {formatPrice(totalPaid)}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Total Pembayaran
+                          </p>
+                          {totalOutstanding > 0 && (
+                            <p className="text-xs text-yellow-600 mt-1">
+                              Belum dibayar: Rp {formatPrice(totalOutstanding)}
+                            </p>
                           )}
                         </div>
 
-                        <div className="space-y-1 text-sm md:text-base">
-                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                            <Package className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">{order.serviceType}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                            <Calendar className="h-4 w-4 flex-shrink-0" />
-                            <span>{order.serviceDate} • {order.serviceTime}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                            <FileText className="h-4 w-4 flex-shrink-0" />
-                            <span>Order ID: {order.id}</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${expandedOrderId === order.id ? 'rotate-90' : ''
+                            }`} />
                         </div>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
 
-                    {/* Price & Actions */}
-                    <div className="flex flex-col items-end gap-3 md:gap-4">
-                      <div className="text-right">
-                        <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100">
-                          Rp {formatPrice(order.totalPrice)}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          Total Pembayaran
-                        </p>
-                      </div>
+                {/* Expanded Details */}
+                <AnimatePresence>
+                  {expandedOrderId === order.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <Card className="mt-2 border-t-0 rounded-t-none border-x border-b">
+                        <CardContent className="p-0">
+                          <Tabs defaultValue="detail" className="w-full">
+                            <div className="border-b">
+                              <TabsList className="w-full justify-start overflow-x-auto flex-nowrap px-4 md:px-6">
+                                <TabsTrigger value="detail" className="flex-1 md:flex-none">
+                                  Detail Pesanan
+                                </TabsTrigger>
+                                <TabsTrigger value="payment" className="flex-1 md:flex-none">
+                                  Pembayaran
+                                </TabsTrigger>
+                                <TabsTrigger value="customer" className="flex-1 md:flex-none">
+                                  Pelanggan
+                                </TabsTrigger>
+                                <TabsTrigger value="service" className="flex-1 md:flex-none">
+                                  Layanan
+                                </TabsTrigger>
+                              </TabsList>
+                            </div>
 
-                      <div className="flex items-center gap-2">
-                        <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${expandedOrderId === order.id ? 'rotate-90' : ''
-                          }`} />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Expanded Details */}
-              <AnimatePresence>
-                {expandedOrderId === order.id && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="overflow-hidden"
-                  >
-                    <Card className="mt-2 border-t-0 rounded-t-none border-x border-b">
-                      <CardContent className="p-0">
-                        <Tabs defaultValue="detail" className="w-full">
-                          <div className="border-b">
-                            <TabsList className="w-full justify-start overflow-x-auto flex-nowrap px-4 md:px-6">
-                              <TabsTrigger value="detail" className="flex-1 md:flex-none">
-                                Detail Pesanan
-                              </TabsTrigger>
-                              <TabsTrigger value="payment" className="flex-1 md:flex-none">
-                                Pembayaran
-                              </TabsTrigger>
-                              <TabsTrigger value="customer" className="flex-1 md:flex-none">
-                                Pelanggan
-                              </TabsTrigger>
-                              <TabsTrigger value="service" className="flex-1 md:flex-none">
-                                Layanan
-                              </TabsTrigger>
-                            </TabsList>
-                          </div>
-
-                          {/* Tab Content */}
-                          <div className="p-4 md:p-6">
-                            {/* Detail Pesanan */}
-                            <TabsContent value="detail" className="space-y-6 m-0">
-                              {/* Riwayat Pesanan */}
-                              <div>
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                  <Clock className="h-5 w-5" />
-                                  Riwayat Pesanan
-                                </h3>
-                                <div className="space-y-3">
-                                  {order.orderHistory.map((history: any, index: number) => (
-                                    <div key={index} className="flex items-start gap-3">
-                                      <div className="flex flex-col items-center">
-                                        <div className={`h-3 w-3 rounded-full ${index === 0 ? 'bg-[#7CE0A8]' : 'bg-gray-300'
-                                          }`} />
-                                        {index < order.orderHistory.length - 1 && (
-                                          <div className="h-8 w-0.5 bg-gray-300" />
-                                        )}
-                                      </div>
-                                      <div className="flex-1">
-                                        <p className="font-medium text-gray-900 dark:text-gray-100">
-                                          {history.status}
-                                        </p>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                          {history.date}
-                                        </p>
-                                        {history.reason && (
-                                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                            Alasan: {history.reason}
+                            {/* Tab Content */}
+                            <div className="p-4 md:p-6">
+                              {/* Detail Pesanan */}
+                              <TabsContent value="detail" className="space-y-6 m-0">
+                                {/* Riwayat Pesanan */}
+                                <div>
+                                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                    <Clock className="h-5 w-5" />
+                                    Riwayat Pesanan
+                                  </h3>
+                                  <div className="space-y-3">
+                                    {order.orderHistory.map((history: any, index: number) => (
+                                      <div key={index} className="flex items-start gap-3">
+                                        <div className="flex flex-col items-center">
+                                          <div className={`h-3 w-3 rounded-full ${index === 0 ? 'bg-[#7CE0A8]' : 'bg-gray-300'
+                                            }`} />
+                                          {index < order.orderHistory.length - 1 && (
+                                            <div className="h-8 w-0.5 bg-gray-300" />
+                                          )}
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="font-medium text-gray-900 dark:text-gray-100">
+                                            {history.status}
                                           </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Rating dan Ulasan */}
-                              {order.rating && (
-                                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                                  <div className="flex items-start gap-2">
-                                    <Star className="h-5 w-5 text-yellow-500 fill-yellow-500 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <p className="font-medium text-green-800 dark:text-green-300">
-                                          Rating dan Ulasan Anda
-                                        </p>
-                                        <div className="flex items-center gap-1">
-                                          {[...Array(5)].map((_, i) => (
-                                            <Star
-                                              key={i}
-                                              className={`h-4 w-4 ${i < order.rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
-                                            />
-                                          ))}
-                                          <span className="text-sm font-medium ml-1">{order.rating.toFixed(1)}</span>
+                                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                                            {history.date}
+                                          </p>
+                                          {history.reason && (
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                              Alasan: {history.reason}
+                                            </p>
+                                          )}
                                         </div>
                                       </div>
-                                      {order.review && (
-                                        <p className="text-green-700 dark:text-green-400 text-sm">
-                                          "{order.review}"
-                                        </p>
-                                      )}
-                                    </div>
+                                    ))}
                                   </div>
                                 </div>
-                              )}
-                            </TabsContent>
 
-                            {/* Detail Pembayaran - DIPERBAIKI */}
-                            <TabsContent value="payment" className="space-y-6 m-0">
-                              <div>
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                  <CreditCard className="h-5 w-5" />
-                                  Detail Pembayaran
-                                </h3>
-
-                                {/* Pembayaran Utama */}
-                                <div className="mb-8">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <h4 className="font-medium flex items-center gap-2">
-                                      <CheckCircle className="h-4 w-4 text-green-600" />
-                                      Pembayaran Utama
-                                    </h4>
-                                    {order.status === "menunggu pembayaran" ? (
-                                      <Badge className="bg-yellow-100 text-yellow-800">
-                                        Belum Dibayar
-                                      </Badge>
-                                    ) : (
-                                      <Badge className="bg-green-100 text-green-800">
-                                        Lunas
-                                      </Badge>
-                                    )}
-                                  </div>
-
-                                  <Card className="border-green-200">
-                                    <CardContent className="p-4">
-                                      <div className="space-y-3">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                                          <span className="font-medium">Rp {formatPrice(order.paymentDetails.subtotal)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-gray-600 dark:text-gray-400">Biaya Layanan:</span>
-                                          <span className="font-medium">Rp {formatPrice(order.paymentDetails.serviceFee)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-gray-600 dark:text-gray-400">Biaya Transaksi:</span>
-                                          <span className="font-medium">Rp {formatPrice(order.paymentDetails.transactionFee)}</span>
-                                        </div>
-                                        <Separator />
-                                        <div className="flex justify-between items-center">
-                                          <span className="font-semibold">Total:</span>
-                                          <span className="font-bold text-green-600">Rp {formatPrice(order.paymentDetails.total)}</span>
-                                        </div>
-                                      </div>
-
-                                      {order.status === "menunggu pembayaran" && (
-                                        <div className="mt-4">
-                                          <div className="flex flex-col sm:flex-row gap-2">
-                                            <Button
-                                              variant="outline"
-                                              className="flex-1"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleOpenPaymentModal(order);
-                                              }}
-                                              disabled={isActionLoading(`pay_${order.id}`)}
-                                            >
-                                              <CreditCard className="h-4 w-4 mr-2" />
-                                              Pilih Metode
-                                            </Button>
-                                            <Button
-                                              className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handlePayNow(order);
-                                              }}
-                                              disabled={!order.paymentMethod || order.paymentMethod === "Belum Dibayar" || isActionLoading(`pay_${order.id}`)}
-                                            >
-                                              {isActionLoading(`pay_${order.id}`) ? (
-                                                <>
-                                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                  Memproses...
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <CreditCard className="h-4 w-4 mr-2" />
-                                                  Bayar Sekarang
-                                                </>
-                                              )}
-                                            </Button>
+                                {/* Rating dan Ulasan */}
+                                {order.rating && (
+                                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                                    <div className="flex items-start gap-2">
+                                      <Star className="h-5 w-5 text-yellow-500 fill-yellow-500 flex-shrink-0 mt-0.5" />
+                                      <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <p className="font-medium text-green-800 dark:text-green-300">
+                                            Rating dan Ulasan Anda
+                                          </p>
+                                          <div className="flex items-center gap-1">
+                                            {[...Array(5)].map((_, i) => (
+                                              <Star
+                                                key={i}
+                                                className={`h-4 w-4 ${i < order.rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
+                                              />
+                                            ))}
+                                            <span className="text-sm font-medium ml-1">{order.rating.toFixed(1)}</span>
                                           </div>
-                                          <p className="text-xs text-center text-gray-500 mt-2">
-                                            Minimum transaksi Rp75.000
-                                          </p>
                                         </div>
-                                      )}
-                                    </CardContent>
-                                  </Card>
-                                </div>
-
-                                {/* Layanan Tambahan */}
-                                {(() => {
-                                  const approvedAdditionalServices = getApprovedAdditionalServices(order);
-                                  const hasUnpaid = hasUnpaidAdditionalServices(order);
-                                  const totalAdditional = getAllAdditionalServicesTotal(order);
-                                  
-                                  if (approvedAdditionalServices.length === 0) {
-                                    return null;
-                                  }
-
-                                  return (
-                                    <div>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <h4 className="font-medium flex items-center gap-2">
-                                          <Package className="h-4 w-4 text-blue-600" />
-                                          Layanan Tambahan
-                                        </h4>
-                                        {hasUnpaid ? (
-                                          <Badge className="bg-yellow-100 text-yellow-800">
-                                            Transaksi Belum Tuntas
-                                          </Badge>
-                                        ) : (
-                                          <Badge className="bg-green-100 text-green-800">
-                                            Semua Lunas
-                                          </Badge>
+                                        {order.review && (
+                                          <p className="text-green-700 dark:text-green-400 text-sm">
+                                            "{order.review}"
+                                          </p>
                                         )}
                                       </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </TabsContent>
 
-                                      <div className="space-y-4">
-                                        {approvedAdditionalServices.map((addService: any, idx: number) => {
-                                          const isPaid = addService.isPaid;
-                                          const totalPrice = addService.totalPrice || 0;
-                                          const serviceFee = addService.serviceFee || 10000;
-                                          const transactionFee = addService.transactionFee || 0;
-                                          const total = totalPrice + serviceFee + transactionFee;
+                              {/* Detail Pembayaran - FIXED NO DOUBLE COUNTING */}
+                              <TabsContent value="payment" className="space-y-6 m-0">
+                                <div>
+                                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                    <CreditCard className="h-5 w-5" />
+                                    Detail Pembayaran
+                                  </h3>
 
-                                          return (
-                                            <Card key={idx} className="border-blue-200">
-                                              <CardContent className="p-4">
-                                                <div className="flex justify-between items-center mb-3">
-                                                  <div>
-                                                    <p className="font-medium text-blue-800 dark:text-blue-300">{addService.description}</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                      Ditambahkan: {new Date(addService.submittedAt).toLocaleDateString('id-ID')}
-                                                    </p>
-                                                  </div>
-                                                  {isPaid ? (
-                                                    <Badge className="bg-green-100 text-green-800">Lunas</Badge>
-                                                  ) : (
-                                                    <Badge className="bg-yellow-100 text-yellow-800">Belum Bayar</Badge>
-                                                  )}
-                                                </div>
+                                  {/* Pembayaran Utama - DIUBAH JADI NAMA LAYANAN */}
+                                  <div className="mb-8">
+                                    <div className="flex items-center justify-between mb-3">
+                                      <h4 className="font-medium flex items-center gap-2">
+                                        <CheckCircle className="h-4 w-4 text-green-600" />
+                                        {order.serviceType}
+                                      </h4>
+                                      {order.status === "menunggu pembayaran" && baseTotal > 0 ? (
+                                        <Badge className="bg-yellow-100 text-yellow-800">
+                                          Belum Dibayar
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-green-100 text-green-800">
+                                          Lunas
+                                        </Badge>
+                                      )}
+                                    </div>
 
-                                                <div className="space-y-2">
-                                                  <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-gray-600 dark:text-gray-400">Subtotal Layanan:</span>
-                                                    <span>Rp {formatPrice(totalPrice)}</span>
-                                                  </div>
-                                                  <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-gray-600 dark:text-gray-400">Biaya Layanan:</span>
-                                                    <span>Rp {formatPrice(serviceFee)}</span>
-                                                  </div>
-                                                  <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-gray-600 dark:text-gray-400">Biaya Transaksi:</span>
-                                                    <span>Rp {formatPrice(transactionFee)}</span>
-                                                  </div>
-                                                  <Separator className="my-2" />
-                                                  <div className="flex justify-between items-center">
-                                                    <span className="font-semibold">Total:</span>
-                                                    <span className="font-bold text-blue-600">
-                                                      Rp {formatPrice(total)}
-                                                    </span>
-                                                  </div>
-                                                </div>
+                                    <Card className="border-green-200">
+                                      <CardContent className="p-4">
+                                        <div className="space-y-3">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-gray-600 dark:text-gray-400">Subtotal Layanan:</span>
+                                            <span className="font-medium">Rp {formatPrice(order.paymentDetails?.subtotal || 0)}</span>
+                                          </div>
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-gray-600 dark:text-gray-400">Biaya Layanan:</span>
+                                            <span className="font-medium">Rp {formatPrice(order.paymentDetails?.serviceFee || 0)}</span>
+                                          </div>
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-gray-600 dark:text-gray-400">Biaya Transaksi:</span>
+                                            <span className="font-medium">Rp {formatPrice(order.paymentDetails?.transactionFee || 0)}</span>
+                                          </div>
+                                          <Separator />
+                                          <div className="flex justify-between items-center">
+                                            <span className="font-semibold">Total {order.serviceType}:</span>
+                                            <span className="font-bold text-green-600">Rp {formatPrice(baseTotal)}</span>
+                                          </div>
+                                        </div>
 
-                                                {!isPaid && (
-                                                  <div className="mt-4">
-                                                    <div className="flex flex-col sm:flex-row gap-2">
-                                                      <Button
-                                                        variant="outline"
-                                                        className="flex-1"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          handleOpenPaymentModal(order, true, addService);
-                                                        }}
-                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
-                                                      >
-                                                        <CreditCard className="h-4 w-4 mr-2" />
-                                                        Pilih Metode
-                                                      </Button>
-                                                      <Button
-                                                        className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          handlePayNow(order, true, addService);
-                                                        }}
-                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
-                                                      >
-                                                        {isActionLoading(`pay_additional_${addService.id}`) ? (
-                                                          <>
-                                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                            Memproses...
-                                                          </>
-                                                        ) : (
-                                                          <>
+                                        {order.status === "menunggu pembayaran" && baseTotal > 0 && (
+                                          <div className="mt-4">
+                                            <div className="flex flex-col sm:flex-row gap-2">
+                                              <Button
+                                                variant="outline"
+                                                className="flex-1"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleOpenXenditPaymentModal(order);
+                                                }}
+                                                disabled={isActionLoading(`xendit_payment_${order.id}`)}
+                                              >
+                                                <CreditCard className="h-4 w-4 mr-2" />
+                                                Bayar Sekarang
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </CardContent>
+                                    </Card>
+                                  </div>
+
+                                  {/* Layanan Tambahan */}
+                                  {(() => {
+                                    const approvedAdditionalServices = getApprovedAdditionalServices(order);
+                                    const unpaidServices = approvedAdditionalServices.filter((add: any) => !add.isPaid);
+                                    const paidServices = approvedAdditionalServices.filter((add: any) => add.isPaid);
+
+                                    if (approvedAdditionalServices.length === 0) {
+                                      return null;
+                                    }
+
+                                    return (
+                                      <div>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <h4 className="font-medium flex items-center gap-2">
+                                            <Package className="h-4 w-4 text-blue-600" />
+                                            Layanan Tambahan
+                                          </h4>
+                                          {unpaidServices.length > 0 ? (
+                                            <Badge className="bg-yellow-100 text-yellow-800">
+                                              Ada yang Belum Dibayar
+                                            </Badge>
+                                          ) : (
+                                            <Badge className="bg-green-100 text-green-800">
+                                              Semua Lunas
+                                            </Badge>
+                                          )}
+                                        </div>
+
+                                        {/* Layanan Tambahan yang sudah dibayar */}
+                                        {paidServices.length > 0 && (
+                                          <div className="mb-6">
+                                            <h5 className="text-sm font-medium text-green-700 mb-2">
+                                              Sudah Dibayar ({paidServices.length} layanan)
+                                            </h5>
+                                            <div className="space-y-3">
+                                              {paidServices.map((addService: any, idx: number) => {
+                                                const totalPrice = addService.totalPrice || 0;
+                                                const serviceFee = addService.serviceFee || 10000;
+                                                const transactionFee = addService.transactionFee || 0;
+                                                const total = totalPrice + serviceFee + transactionFee;
+
+                                                return (
+                                                  <Card key={`paid-${idx}`} className="border-green-100">
+                                                    <CardContent className="p-3">
+                                                      <div className="flex justify-between items-center">
+                                                        <div>
+                                                          <p className="font-medium text-green-800">{addService.description}</p>
+                                                          <p className="text-xs text-gray-500">
+                                                            Dibayar: {addService.paidAt ? new Date(addService.paidAt).toLocaleDateString('id-ID') : '-'}
+                                                          </p>
+                                                        </div>
+                                                        <Badge className="bg-green-100 text-green-800">Lunas</Badge>
+                                                      </div>
+                                                      <div className="mt-2 text-right">
+                                                        <p className="font-bold text-green-600">Rp {formatPrice(total)}</p>
+                                                      </div>
+                                                    </CardContent>
+                                                  </Card>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Layanan Tambahan yang belum dibayar */}
+                                        {unpaidServices.length > 0 && (
+                                          <div>
+                                            <h5 className="text-sm font-medium text-yellow-700 mb-2">
+                                              Belum Dibayar ({unpaidServices.length} layanan)
+                                            </h5>
+                                            <div className="space-y-4">
+                                              {unpaidServices.map((addService: any, idx: number) => {
+                                                const totalPrice = addService.totalPrice || 0;
+                                                const serviceFee = addService.serviceFee || 10000;
+                                                const transactionFee = addService.transactionFee || 0;
+                                                const total = totalPrice + serviceFee + transactionFee;
+
+                                                return (
+                                                  <Card key={`unpaid-${idx}`} className="border-yellow-200">
+                                                    <CardContent className="p-4">
+                                                      <div className="flex justify-between items-center mb-3">
+                                                        <div>
+                                                          <p className="font-medium text-yellow-800">{addService.description}</p>
+                                                          <p className="text-sm text-gray-500">
+                                                            Diajukan: {new Date(addService.submittedAt).toLocaleDateString('id-ID')}
+                                                          </p>
+                                                        </div>
+                                                        <Badge className="bg-yellow-100 text-yellow-800">Belum Bayar</Badge>
+                                                      </div>
+
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center text-sm">
+                                                          <span className="text-gray-600 dark:text-gray-400">Subtotal Layanan:</span>
+                                                          <span>Rp {formatPrice(totalPrice)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-sm">
+                                                          <span className="text-gray-600 dark:text-gray-400">Biaya Layanan:</span>
+                                                          <span>Rp {formatPrice(serviceFee)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-sm">
+                                                          <span className="text-gray-600 dark:text-gray-400">Biaya Transaksi:</span>
+                                                          <span>Rp {formatPrice(transactionFee)}</span>
+                                                        </div>
+                                                        <Separator className="my-2" />
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="font-semibold">Total:</span>
+                                                          <span className="font-bold text-yellow-600">
+                                                            Rp {formatPrice(total)}
+                                                          </span>
+                                                        </div>
+                                                      </div>
+
+                                                      <div className="mt-4">
+                                                        <div className="flex flex-col sm:flex-row gap-2">
+                                                          <Button
+                                                            variant="outline"
+                                                            className="flex-1"
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleOpenXenditPaymentModal(order, true, addService);
+                                                            }}
+                                                            disabled={isActionLoading(`xendit_payment_additional_${addService.id}`)}
+                                                          >
                                                             <CreditCard className="h-4 w-4 mr-2" />
                                                             Bayar Sekarang
-                                                          </>
-                                                        )}
-                                                      </Button>
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </CardContent>
-                                            </Card>
-                                          );
-                                        })}
+                                                          </Button>
+                                                        </div>
+                                                      </div>
+                                                    </CardContent>
+                                                  </Card>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
 
-                                        {/* Total Semua Layanan Tambahan */}
-                                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                                        {/* Summary - HANYA MENAMPILKAN INFORMASI */}
+                                        <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                                           <div className="flex justify-between items-center mb-2">
                                             <span className="font-semibold">Total Layanan Tambahan:</span>
                                             <span className="font-bold text-blue-600">
-                                              Rp {formatPrice(totalAdditional)}
+                                              {paidServices.length + unpaidServices.length} layanan
                                             </span>
                                           </div>
-                                          <p className="text-xs text-gray-500">
-                                            {hasUnpaid
-                                              ? "Ada layanan tambahan yang belum dibayar"
-                                              : "Semua layanan tambahan sudah dibayar"}
-                                          </p>
+                                          <div className="flex justify-between items-center text-sm">
+                                            <span>Sudah dibayar:</span>
+                                            <span className="text-green-600">{paidServices.length} layanan</span>
+                                          </div>
+                                          <div className="flex justify-between items-center text-sm">
+                                            <span>Belum dibayar:</span>
+                                            <span className="text-yellow-600">{unpaidServices.length} layanan</span>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  );
-                                })()}
+                                    );
+                                  })()}
 
-                                {/* Informasi Status Pembayaran */}
-                                <div className="mt-6 pt-4 border-t">
-                                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                                    <div>
-                                      <h4 className="font-semibold text-lg">Status Pembayaran</h4>
-                                      <p className="text-gray-600 dark:text-gray-400 text-sm">
-                                        {(() => {
-                                          const approvedAdditionalServices = getApprovedAdditionalServices(order);
-                                          const hasUnpaid = hasUnpaidAdditionalServices(order);
-                                          const totalAdditional = getAllAdditionalServicesTotal(order);
-                                          
-                                          if (approvedAdditionalServices.length === 0) {
-                                            return "Pembayaran utama sudah lunas";
-                                          }
-                                          
-                                          if (hasUnpaid) {
-                                            return "Harap lunasi semua pembayaran sebelum konfirmasi selesai";
-                                          }
-                                          
-                                          return "Semua pembayaran sudah lunas";
-                                        })()}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-2xl font-bold text-[#7CE0A8]">
-                                        {(() => {
-                                          const approvedAdditionalServices = getApprovedAdditionalServices(order);
-                                          const hasUnpaid = hasUnpaidAdditionalServices(order);
-                                          const unpaidTotal = getUnpaidAdditionalServicesTotal(order);
-                                          const totalAdditional = getAllAdditionalServicesTotal(order);
-                                          
-                                          if (approvedAdditionalServices.length === 0) {
-                                            return `Rp ${formatPrice(order.paymentDetails.total)}`;
-                                          }
-                                          
-                                          if (hasUnpaid) {
-                                            return `Rp ${formatPrice(order.paymentDetails.total + unpaidTotal)}`;
-                                          }
-                                          
-                                          return `Rp ${formatPrice(order.paymentDetails.total)}`;
-                                        })()}
-                                      </p>
-                                      <p className="text-sm text-gray-500">Total Keseluruhan</p>
-                                    </div>
-                                  </div>
+                                  {/* Ringkasan Total - DIHAPUS KARENA SUDAH ADA DI ATAS */}
                                 </div>
-                              </div>
-                            </TabsContent>
+                              </TabsContent>
 
-                            {/* Informasi Pelanggan */}
-                            <TabsContent value="customer" className="space-y-6 m-0">
-                              <div>
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                  <User className="h-5 w-5" />
-                                  Informasi Pelanggan
-                                </h3>
-                                <div className="space-y-4">
-                                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                    <User className="h-5 w-5 text-gray-500" />
-                                    <div>
-                                      <p className="font-medium">{order.customerInfo.name}</p>
-                                      <p className="text-sm text-gray-500 dark:text-gray-400">Nama Pelanggan</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                    <Mail className="h-5 w-5 text-gray-500" />
-                                    <div>
-                                      <p className="font-medium">{order.customerInfo.email}</p>
-                                      <p className="text-sm text-gray-500 dark:text-gray-400">Email</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                    <Phone className="h-5 w-5 text-gray-500" />
-                                    <div>
-                                      <p className="font-medium">{order.customerInfo.phone}</p>
-                                      <p className="text-sm text-gray-500 dark:text-gray-400">Telepon</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                    <MapPin className="h-5 w-5 text-gray-500 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="font-medium">Alamat</p>
-                                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                        {order.customerInfo.address}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </TabsContent>
-
-                            {/* Detail Layanan */}
-                            <TabsContent value="service" className="space-y-6 m-0">
-                              <div>
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                  <Wrench className="h-5 w-5" />
-                                  Detail Layanan
-                                </h3>
-                                <div className="space-y-4">
-                                  {/* Layanan */}
-                                  <div>
-                                    <h4 className="font-medium mb-2">Layanan yang Dipilih</h4>
-                                    <div className="space-y-2">
-                                      {order.serviceDetails.services.map((service: string, idx: number) => (
-                                        <div key={idx} className="flex items-center gap-2">
-                                          <Check className="h-4 w-4 text-[#7CE0A8]" />
-                                          <span>{service}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  {/* Info Tambahan */}
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {order.serviceDetails.propertyType && (
+                              {/* Informasi Pelanggan */}
+                              <TabsContent value="customer" className="space-y-6 m-0">
+                                <div>
+                                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                    <User className="h-5 w-5" />
+                                    Informasi Pelanggan
+                                  </h3>
+                                  <div className="space-y-4">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                      <User className="h-5 w-5 text-gray-500" />
                                       <div>
-                                        <h4 className="font-medium mb-2">Jenis Properti</h4>
-                                        <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
-                                          <Home className="h-4 w-4" />
-                                          <span>{order.serviceDetails.propertyType}</span>
-                                        </div>
+                                        <p className="font-medium">{order.customerInfo.name}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">Nama Pelanggan</p>
                                       </div>
-                                    )}
-                                    <div>
-                                      <h4 className="font-medium mb-2">Jadwal</h4>
-                                      <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
-                                        <Calendar className="h-4 w-4" />
-                                        <span>{order.serviceDetails.date || "Tanggal belum ditentukan"} • {order.serviceDetails.time || "Waktu belum ditentukan"}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                      <Mail className="h-5 w-5 text-gray-500" />
+                                      <div>
+                                        <p className="font-medium">{order.customerInfo.email}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">Email</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                      <Phone className="h-5 w-5 text-gray-500" />
+                                      <div>
+                                        <p className="font-medium">{order.customerInfo.phone}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">Telepon</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                      <MapPin className="h-5 w-5 text-gray-500 flex-shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="font-medium">Alamat</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                          {order.customerInfo.address}
+                                        </p>
                                       </div>
                                     </div>
                                   </div>
+                                </div>
+                              </TabsContent>
 
-                                  {/* Layanan Tambahan - DIPERBARUI STATUS */}
-                                  {order.additionalServices && order.additionalServices.length > 0 && (
-                                    <div className="mt-6 pt-4 border-t">
-                                      <h4 className="font-medium mb-3 text-[#7CE0A8]">Layanan Tambahan</h4>
-                                      <div className="space-y-3">
-                                        {order.additionalServices.map((addService: any, idx: number) => {
-                                          let statusText = "";
-                                          let statusClass = "";
-                                          let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
+                              {/* Detail Layanan */}
+                              <TabsContent value="service" className="space-y-6 m-0">
+                                <div>
+                                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                    <Wrench className="h-5 w-5" />
+                                    Detail Layanan
+                                  </h3>
+                                  <div className="space-y-4">
+                                    {/* Layanan */}
+                                    <div>
+                                      <h4 className="font-medium mb-2">Layanan yang Dipilih</h4>
+                                      <div className="space-y-2">
+                                        {order.serviceDetails.services.map((service: string, idx: number) => (
+                                          <div key={idx} className="flex items-center gap-2">
+                                            <Check className="h-4 w-4 text-[#7CE0A8]" />
+                                            <span>{service}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
 
-                                          if (addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima") {
-                                            statusText = "Disetujui";
-                                            statusClass = "bg-green-100 text-green-800 border-green-300";
-                                            badgeVariant = "default";
-                                          } else if (addService.status === "ditolak" || addService.status === "rejected") {
-                                            statusText = "Ditolak";
-                                            statusClass = "bg-red-100 text-red-800 border-red-300";
-                                            badgeVariant = "destructive";
-                                          } else {
-                                            statusText = "Menunggu Persetujuan";
-                                            statusClass = "bg-yellow-100 text-yellow-800 border-yellow-300";
-                                            badgeVariant = "outline";
-                                          }
+                                    {/* Info Tambahan */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {order.serviceDetails.propertyType && (
+                                        <div>
+                                          <h4 className="font-medium mb-2">Jenis Properti</h4>
+                                          <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                            <Home className="h-4 w-4" />
+                                            <span>{order.serviceDetails.propertyType}</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                      <div>
+                                        <h4 className="font-medium mb-2">Jadwal</h4>
+                                        <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                          <Calendar className="h-4 w-4" />
+                                          <span>{order.serviceDetails.date || "Tanggal belum ditentukan"} • {order.serviceDetails.time || "Waktu belum ditentukan"}</span>
+                                        </div>
+                                      </div>
+                                    </div>
 
-                                          return (
-                                            <Card key={idx} className="border-[#7CE0A8]/30">
-                                              <CardContent className="p-4">
-                                                <div className="flex justify-between items-start mb-2">
-                                                  <div>
-                                                    <p className="font-medium">{addService.description}</p>
-                                                    <p className="text-sm text-gray-500">
-                                                      Diajukan: {new Date(addService.submittedAt).toLocaleDateString('id-ID')}
-                                                      {addService.approvedAt && (
-                                                        <>
-                                                          <br />
-                                                          Disetujui: {new Date(addService.approvedAt).toLocaleDateString('id-ID')}
-                                                        </>
-                                                      )}
-                                                    </p>
-                                                  </div>
-                                                  <Badge variant={badgeVariant} className={statusClass}>
-                                                    {statusText}
-                                                  </Badge>
-                                                </div>
-                                                <div className="space-y-2">
-                                                  {addService.services && addService.services.map((service: any, sIdx: number) => (
-                                                    <div key={sIdx} className="flex justify-between items-center text-sm">
-                                                      <span>{service.name} ({service.quantity}x)</span>
-                                                      <span className="font-medium">Rp {formatPrice(service.price * service.quantity)}</span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                                {addService.reason && (
-                                                  <p className="text-sm text-gray-600 mt-2">Alasan: {addService.reason}</p>
-                                                )}
+                                    {/* Layanan Tambahan */}
+                                    {order.additionalServices && order.additionalServices.length > 0 && (
+                                      <div className="mt-6 pt-4 border-t">
+                                        <h4 className="font-medium mb-3 text-[#7CE0A8]">Layanan Tambahan</h4>
+                                        <div className="space-y-3">
+                                          {order.additionalServices.map((addService: any, idx: number) => {
+                                            let statusText = "";
+                                            let statusClass = "";
+                                            let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
 
-                                                {/* Bukti Foto */}
-                                                {addService.images && addService.images.length > 0 && (
-                                                  <div className="mt-3">
-                                                    <p className="text-sm font-medium mb-2">Bukti Foto:</p>
-                                                    <div className="grid grid-cols-3 gap-2">
-                                                      {addService.images.map((image: string, imgIdx: number) => (
-                                                        <div key={imgIdx} className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                                                          <img
-                                                            src={image}
-                                                            alt={`Bukti ${imgIdx + 1}`}
-                                                            className="w-full h-full object-cover"
-                                                          />
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                )}
+                                            if (addService.status === "disetujui" || addService.status === "approved" || addService.status === "diterima") {
+                                              statusText = addService.isPaid ? "Disetujui & Lunas" : "Disetujui";
+                                              statusClass = addService.isPaid ? "bg-green-100 text-green-800 border-green-300" : "bg-yellow-100 text-yellow-800 border-yellow-300";
+                                              badgeVariant = addService.isPaid ? "default" : "outline";
+                                            } else if (addService.status === "ditolak" || addService.status === "rejected") {
+                                              statusText = "Ditolak";
+                                              statusClass = "bg-red-100 text-red-800 border-red-300";
+                                              badgeVariant = "destructive";
+                                            } else {
+                                              statusText = "Menunggu Persetujuan";
+                                              statusClass = "bg-gray-100 text-gray-800 border-gray-300";
+                                              badgeVariant = "outline";
+                                            }
 
-                                                {/* Total Harga */}
-                                                <div className="flex justify-between items-center mt-3 pt-3 border-t">
-                                                  <p className="text-sm font-medium">Total:</p>
-                                                  <p className="text-lg font-bold text-[#7CE0A8]">
-                                                    Rp {formatPrice(addService.totalPrice || 400000)}
-                                                  </p>
-                                                </div>
-
-                                                {/* Payment button for approved additional service */}
-                                                {addService.status === "disetujui" && !addService.isPaid && (
-                                                  <div className="mt-3 pt-3 border-t">
-                                                    <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                                                      <Button
-                                                        variant="outline"
-                                                        className="flex-1"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          handleOpenPaymentModal(order, true, addService);
-                                                        }}
-                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
-                                                      >
-                                                        <CreditCard className="h-4 w-4 mr-2" />
-                                                        Pilih Metode
-                                                      </Button>
-                                                      <Button
-                                                        className="flex-1 bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          handlePayNow(order, true, addService);
-                                                        }}
-                                                        disabled={isActionLoading(`pay_additional_${addService.id}`)}
-                                                      >
-                                                        {isActionLoading(`pay_additional_${addService.id}`) ? (
+                                            return (
+                                              <Card key={idx} className="border-[#7CE0A8]/30">
+                                                <CardContent className="p-4">
+                                                  <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                      <p className="font-medium">{addService.description}</p>
+                                                      <p className="text-sm text-gray-500">
+                                                        Diajukan: {new Date(addService.submittedAt).toLocaleDateString('id-ID')}
+                                                        {addService.approvedAt && (
                                                           <>
-                                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                            Memproses...
-                                                          </>
-                                                        ) : (
-                                                          <>
-                                                            <CreditCard className="h-4 w-4 mr-2" />
-                                                            Bayar Sekarang
+                                                            <br />
+                                                            Disetujui: {new Date(addService.approvedAt).toLocaleDateString('id-ID')}
                                                           </>
                                                         )}
-                                                      </Button>
+                                                        {addService.paidAt && (
+                                                          <>
+                                                            <br />
+                                                            Dibayar: {new Date(addService.paidAt).toLocaleDateString('id-ID')}
+                                                          </>
+                                                        )}
+                                                      </p>
                                                     </div>
+                                                    <Badge variant={badgeVariant} className={statusClass}>
+                                                      {statusText}
+                                                    </Badge>
                                                   </div>
-                                                )}
+                                                  <div className="space-y-2">
+                                                    {addService.services && addService.services.map((service: any, sIdx: number) => (
+                                                      <div key={sIdx} className="flex justify-between items-center text-sm">
+                                                        <span>{service.name} ({service.quantity}x)</span>
+                                                        <span className="font-medium">Rp {formatPrice(service.price * service.quantity)}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                  {addService.reason && (
+                                                    <p className="text-sm text-gray-600 mt-2">Alasan: {addService.reason}</p>
+                                                  )}
 
-                                                {/* Tampilkan status pembayaran jika sudah dibayar */}
-                                                {addService.isPaid && (
-                                                  <div className="mt-3 pt-3 border-t">
-                                                    <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                                                      <p className="text-sm text-green-800 dark:text-green-300 flex items-center gap-2">
-                                                        <CheckCircle className="h-4 w-4" />
-                                                        Layanan tambahan sudah dibayar
-                                                      </p>
-                                                      <p className="text-xs text-gray-500 mt-1">
-                                                        Dibayar pada: {addService.paidAt ? new Date(addService.paidAt).toLocaleDateString('id-ID') : '-'}
-                                                      </p>
+                                                  {/* Bukti Foto */}
+                                                  {addService.images && addService.images.length > 0 && (
+                                                    <div className="mt-3">
+                                                      <p className="text-sm font-medium mb-2">Bukti Foto:</p>
+                                                      <div className="grid grid-cols-3 gap-2">
+                                                        {addService.images.map((image: string, imgIdx: number) => (
+                                                          <div key={imgIdx} className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                                                            <img
+                                                              src={image}
+                                                              alt={`Bukti ${imgIdx + 1}`}
+                                                              className="w-full h-full object-cover"
+                                                            />
+                                                          </div>
+                                                        ))}
+                                                      </div>
                                                     </div>
+                                                  )}
+
+                                                  {/* Total Harga */}
+                                                  <div className="flex justify-between items-center mt-3 pt-3 border-t">
+                                                    <p className="text-sm font-medium">Total:</p>
+                                                    <p className="text-lg font-bold text-[#7CE0A8]">
+                                                      Rp {formatPrice(addService.totalPrice || 0)}
+                                                    </p>
                                                   </div>
-                                                )}
-                                              </CardContent>
-                                            </Card>
-                                          );
-                                        })}
+
+                                                  {/* Payment button for approved additional service */}
+                                                  {addService.status === "disetujui" && !addService.isPaid && (
+                                                    <div className="mt-3 pt-3 border-t">
+                                                      <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                                                        <Button
+                                                          variant="outline"
+                                                          className="flex-1"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenXenditPaymentModal(order, true, addService);
+                                                          }}
+                                                          disabled={isActionLoading(`xendit_payment_additional_${addService.id}`)}
+                                                        >
+                                                          <CreditCard className="h-4 w-4 mr-2" />
+                                                          Bayar Sekarang
+                                                        </Button>
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </CardContent>
+                                              </Card>
+                                            );
+                                          })}
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Tombol Tambah Layanan */}
-                              <div className="pt-6 border-t">
-                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                  <div>
-                                    <h4 className="font-semibold text-lg">Butuh layanan tambahan?</h4>
-                                    <p className="text-gray-600 dark:text-gray-400 text-sm">
-                                      Tambahkan layanan baru untuk pesanan ini jika ada kebutuhan tambahan
-                                    </p>
-                                  </div>
-                                  <Button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAddServiceClick();
-                                    }}
-                                    className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
-                                    disabled={order.status === "dibatalkan" || order.status === "selesai" || isActionLoading(`add_service_${order.id}`)}
-                                  >
-                                    {isActionLoading(`add_service_${order.id}`) ? (
-                                      <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Memuat...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Tambah Layanan
-                                      </>
                                     )}
-                                  </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            </TabsContent>
-                          </div>
-                        </Tabs>
 
-                        {/* Action Buttons - DIPERBARUI KONDISI DISABLE */}
-                        <div className="border-t p-4 md:p-6 bg-gray-50 dark:bg-gray-800/50">
-                          <div className="flex flex-wrap gap-3">
-                            {/* TOMBOL CHAT VENDOR */}
-                            <Button 
-                              variant="outline" 
-                              className="flex-1 min-w-[140px]"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (selectedOrder?.vendorId) {
-                                  handleChatVendor(selectedOrder.vendorId);
-                                } else {
-                                  toast.error("Vendor ID tidak ditemukan");
-                                }
-                              }}
-                              disabled={isActionLoading(`chat_${order.id}`)}
-                            >
-                              {isActionLoading(`chat_${order.id}`) ? (
-                                <>
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  Memuat...
-                                </>
-                              ) : (
-                                <>
-                                  <MessageSquare className="h-4 w-4 mr-2" />
-                                  Chat Vendor
-                                </>
-                              )}
-                            </Button>
+                                {/* Tombol Tambah Layanan */}
+                                <div className="pt-6 border-t">
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                    <div>
+                                      <h4 className="font-semibold text-lg">Butuh layanan tambahan?</h4>
+                                      <p className="text-gray-600 dark:text-gray-400 text-sm">
+                                        Tambahkan layanan baru untuk pesanan ini jika ada kebutuhan tambahan
+                                      </p>
+                                    </div>
+                                    <Button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAddServiceClick();
+                                      }}
+                                      className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white"
+                                      disabled={order.status === "dibatalkan" || order.status === "selesai" || isActionLoading(`add_service_${order.id}`)}
+                                    >
+                                      {isActionLoading(`add_service_${order.id}`) ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          Memuat...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Plus className="h-4 w-4 mr-2" />
+                                          Tambah Layanan
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </TabsContent>
+                            </div>
+                          </Tabs>
 
-                            {/* Tombol Konfirmasi Pekerjaan Selesai */}
-                            {order.status === "diproses" && (
-                              <Button
-                                className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenCompletionModal(order);
-                                }}
-                                disabled={order.status === "menunggu pembayaran" || hasUnpaidAdditionalServices(order) || isActionLoading(`complete_${order.id}`)}
-                              >
-                                {isActionLoading(`complete_${order.id}`) ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Memuat...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                    Konfirmasi Selesai
-                                  </>
-                                )}
-                              </Button>
-                            )}
-
-                            {/* Tombol Batalkan Pesanan */}
-                            {order.status === "menunggu pembayaran" && (
+                          {/* Action Buttons - TANPA RINGKASAN TOTAL */}
+                          <div className="border-t p-4 md:p-6 bg-gray-50 dark:bg-gray-800/50">
+                            <div className="flex flex-wrap gap-3">
+                              {/* TOMBOL CHAT VENDOR */}
                               <Button
                                 variant="outline"
-                                className="flex-1 min-w-[140px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                className="flex-1 min-w-[140px]"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleOpenCancelModal(order);
+                                  if (order?.vendorId) {
+                                    handleChatVendor(order.vendorId);
+                                  } else {
+                                    toast.error("Vendor ID tidak ditemukan");
+                                  }
                                 }}
-                                disabled={isActionLoading(`cancel_${order.id}`)}
+                                disabled={isActionLoading(`chat_${order.id}`)}
                               >
-                                {isActionLoading(`cancel_${order.id}`) ? (
+                                {isActionLoading(`chat_${order.id}`) ? (
                                   <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                     Memuat...
                                   </>
                                 ) : (
                                   <>
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Batalkan Pesanan
+                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                    Chat Vendor
                                   </>
                                 )}
                               </Button>
-                            )}
 
-                            {/* Informasi jika status sudah selesai */}
-                            {order.status === "selesai" && (
-                              <div className="flex-1 min-w-[140px] p-3 border rounded-lg text-center bg-green-50 dark:bg-green-900/20">
-                                <p className="text-sm text-green-700 dark:text-green-300">
-                                  ✓ Pekerjaan telah selesai
+                              {/* Tombol Konfirmasi Pekerjaan Selesai */}
+                              {order.status === "diproses" && (
+                                <Button
+                                  className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenCompletionModal(order);
+                                  }}
+                                  disabled={order.status === "menunggu pembayaran" || hasUnpaidAdditionalServices(order) || isActionLoading(`complete_${order.id}`)}
+                                >
+                                  {isActionLoading(`complete_${order.id}`) ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      Memuat...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="h-4 w-4 mr-2" />
+                                      Konfirmasi Selesai
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+
+                              {/* Tombol Batalkan Pesanan */}
+                              {order.status === "menunggu pembayaran" && (
+                                <Button
+                                  variant="outline"
+                                  className="flex-1 min-w-[140px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenCancelModal(order);
+                                  }}
+                                  disabled={isActionLoading(`cancel_${order.id}`)}
+                                >
+                                  {isActionLoading(`cancel_${order.id}`) ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      Memuat...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Batalkan Pesanan
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+
+                              {/* Informasi jika status sudah selesai */}
+                              {order.status === "selesai" && (
+                                <div className="flex-1 min-w-[140px] p-3 border rounded-lg text-center bg-green-50 dark:bg-green-900/20">
+                                  <p className="text-sm text-green-700 dark:text-green-300">
+                                    ✓ Pekerjaan telah selesai
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Informasi jika ada layanan tambahan belum dibayar */}
+                            {order.status === "diproses" && hasUnpaidAdditionalServices(order) && (
+                              <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                <p className="text-sm text-yellow-800 dark:text-yellow-300 flex items-center gap-2">
+                                  <AlertCircle className="h-4 w-4" />
+                                  Harap lunasi semua layanan tambahan sebelum konfirmasi selesai
                                 </p>
                               </div>
                             )}
                           </div>
-                          
-                          {/* Informasi jika ada layanan tambahan belum dibayar */}
-                          {order.status === "diproses" && hasUnpaidAdditionalServices(order) && (
-                            <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                              <p className="text-sm text-yellow-800 dark:text-yellow-300 flex items-center gap-2">
-                                <AlertCircle className="h-4 w-4" />
-                                Harap lunasi semua layanan tambahan sebelum konfirmasi selesai
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          ))}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* Empty State */}
@@ -1936,6 +2689,190 @@ export default function OrderHistoryPage() {
           </Card>
         )}
       </motion.main>
+
+      {/* ==========================================
+          MODAL PEMBAYARAN XENDIT
+          ========================================== */}
+      <AnimatePresence>
+        {showXenditPaymentModal && selectedOrder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => {
+              setShowXenditPaymentModal(false);
+              setXenditPaymentMode('select');
+              setXenditPaymentData(null);
+              setSelectedXenditPayment("");
+              setQrRefreshTime(300);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4 z-10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      {xenditPaymentMode === 'select' ? 'Pembayaran dengan Xendit' : 'Instruksi Pembayaran'}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {paymentForOrder === "additional" && selectedAdditionalService
+                        ? `Layanan: ${selectedAdditionalService.description}`
+                        : `Pesanan #${selectedOrder.id} • ${selectedOrder.vendorName}`}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowXenditPaymentModal(false);
+                      setXenditPaymentMode('select');
+                      setXenditPaymentData(null);
+                      setSelectedXenditPayment("");
+                      setQrRefreshTime(300);
+                    }}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
+                {xenditPaymentMode === 'select' ? (
+                  renderXenditPaymentSelect()
+                ) : (
+                  renderXenditPaymentInstruction()
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Pilihan Metode Pembayaran Xendit */}
+      <AnimatePresence>
+        {showXenditPaymentOptions && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setShowXenditPaymentOptions(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Pilih Metode Pembayaran</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowXenditPaymentOptions(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto max-h-[60vh] p-6">
+                <RadioGroup
+                  value={selectedXenditPayment}
+                  onValueChange={setSelectedXenditPayment}
+                  className="space-y-4"
+                >
+                  {Object.entries(xenditPaymentCategories).map(([categoryKey, category]) => (
+                    <div key={categoryKey} className="border rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={() => toggleXenditSection(categoryKey)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <category.icon className="h-5 w-5" />
+                          <span className="font-medium">{category.name}</span>
+                        </div>
+                        {expandedXenditSections[categoryKey] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </button>
+
+                      <AnimatePresence>
+                        {expandedXenditSections[categoryKey] && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="p-4 space-y-2">
+                              {category.methods.map((methodId) => {
+                                const method = XENDIT_PAYMENT_FEES[methodId];
+                                if (!method) return null;
+
+                                return (
+                                  <label
+                                    key={methodId}
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedXenditPayment === methodId ? 'border-[#7CE0A8] bg-[#7CE0A8]/5' : 'hover:border-[#7CE0A8]'
+                                      }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <RadioGroupItem value={methodId} id={methodId} />
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+                                          style={{ backgroundColor: method.color }}
+                                        >
+                                          {method.icon === 'wallet' && <Wallet className="h-4 w-4" />}
+                                          {method.icon === 'building' && <BuildingIcon className="h-4 w-4" />}
+                                          {method.icon === 'qrcode' && <QrCode className="h-4 w-4" />}
+                                          {method.icon === 'credit-card' && <CreditCardIcon className="h-4 w-4" />}
+                                          {method.icon === 'store' && <Store className="h-4 w-4" />}
+                                          {method.icon === 'banknote' && <Banknote className="h-4 w-4" />}
+                                        </div>
+                                        <span className="font-medium">{method.name}</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      {getFeeDescription(methodId)}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  ))}
+                </RadioGroup>
+
+                <div className="mt-6 pt-4 border-t">
+                  <Button
+                    type="button"
+                    className="w-full text-white"
+                    style={{ backgroundColor: '#7CE0A8' }}
+                    onClick={() => setShowXenditPaymentOptions(false)}
+                  >
+                    Simpan Metode Pembayaran
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal Tambah Layanan */}
       <AnimatePresence>
@@ -2056,7 +2993,6 @@ export default function OrderHistoryPage() {
                       </div>
                     )}
 
-                    {/* Ringkasan Layanan yang Dipilih */}
                     {newServiceData.selectedServices.length > 0 && (
                       <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                         <h4 className="font-medium mb-2">Layanan yang Dipilih:</h4>
@@ -2296,662 +3232,6 @@ export default function OrderHistoryPage() {
         )}
       </AnimatePresence>
 
-      {/* Modal Metode Pembayaran (untuk semua jenis pembayaran) */}
-      <AnimatePresence>
-        {showPaymentModal && selectedOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-            onClick={() => {
-              if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
-                return;
-              }
-              setShowPaymentModal(false);
-              setShowPaymentOptions(false);
-              setSelectedAdditionalService(null);
-              setPaymentForAdditional("main");
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4 z-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold">
-                      {paymentForAdditional === "additional" ? "Bayar Layanan Tambahan" : "Pilih Metode Pembayaran"}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {paymentForAdditional === "additional" 
-                        ? `Layanan: ${selectedAdditionalService?.description}` 
-                        : `Pesanan #${selectedOrder.id} • ${selectedOrder.vendorName}`}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
-                        return;
-                      }
-                      setShowPaymentModal(false);
-                      setShowPaymentOptions(false);
-                      setSelectedAdditionalService(null);
-                      setPaymentForAdditional("main");
-                    }}
-                    className="h-8 w-8 p-0"
-                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
-                <div className="space-y-6">
-                  {/* Ringkasan Pembayaran */}
-                  {paymentForAdditional === "additional" && selectedAdditionalService && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-6">
-                      <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">Ringkasan Layanan</h4>
-                      <p className="text-sm text-blue-700 dark:text-blue-400 mb-1">
-                        {selectedAdditionalService.description}
-                      </p>
-                      <div className="space-y-1 mt-2">
-                        <div className="flex justify-between text-sm">
-                          <span>Subtotal:</span>
-                          <span>Rp {formatPrice(selectedAdditionalService.totalPrice || 0)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span>Biaya Layanan:</span>
-                          <span>Rp {formatPrice(selectedAdditionalService.serviceFee || 10000)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span>Biaya Transaksi:</span>
-                          <span>Rp {formatPrice(selectedAdditionalService.transactionFee || 0)}</span>
-                        </div>
-                        <Separator className="my-1" />
-                        <div className="flex justify-between font-bold">
-                          <span>Total:</span>
-                          <span className="text-blue-600">
-                            Rp {formatPrice(
-                              (selectedAdditionalService.totalPrice || 0) + 
-                              (selectedAdditionalService.serviceFee || 10000) + 
-                              (selectedAdditionalService.transactionFee || 0)
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pilihan Metode Pembayaran */}
-                  <div className="mb-4">
-                    {selectedPayment && selectedPayment !== "" ? (
-                      <div className="mb-6 p-4 border rounded-lg bg-muted/50">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{getPaymentMethodName(selectedPayment)}</p>
-                            <p className="text-sm text-muted-foreground">
-                              Biaya Transaksi: Rp {PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES]?.toLocaleString('id-ID')}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowPaymentOptions(true)}
-                            disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                          >
-                            Ubah
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mb-6 p-4 border-2 border-dashed rounded-lg text-center">
-                        <p className="text-muted-foreground">Belum memilih metode pembayaran</p>
-                        <Button
-                          variant="outline"
-                          className="mt-2"
-                          onClick={() => setShowPaymentOptions(true)}
-                          disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                        >
-                          Pilih Metode Pembayaran
-                        </Button>
-                      </div>
-                    )}
-
-                    {/* Form Kartu Debit/Kredit */}
-                    {selectedPayment === "debit-credit" && (
-                      <div className="mb-6 p-6 border rounded-lg bg-white shadow-sm dark:bg-gray-800">
-                        <div className="mb-4">
-                          <h3 className="text-xl font-bold">Kartu Debit/Kredit</h3>
-                          <p className="text-muted-foreground">
-                            <strong>Kartu Debit/Kredit</strong><br />
-                            Biaya Transaksi Rp2.784
-                          </p>
-                        </div>
-
-                        <div className="space-y-6">
-                          <div>
-                            <h4 className="font-semibold mb-2 flex items-center gap-2">
-                              <CreditCardIcon className="h-5 w-5" />
-                              VISA
-                            </h4>
-                            <div className="space-y-2">
-                              <Label htmlFor="cardNumber" className="text-sm font-medium">
-                                Nomor Kartu
-                              </Label>
-                              <Input
-                                id="cardNumber"
-                                placeholder="Contoh: 1234 5678 9012 3456"
-                                value={formatCardNumber(cardData.cardNumber)}
-                                onChange={(e) => {
-                                  const formatted = formatCardNumber(e.target.value);
-                                  setCardData({ ...cardData, cardNumber: formatted });
-                                }}
-                                maxLength={19}
-                                disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Nomor yang terletak pada kartu debit/credit Anda
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="expiryDate" className="text-sm font-medium">
-                                Masa Berlaku
-                              </Label>
-                              <Input
-                                id="expiryDate"
-                                placeholder="MM/YY"
-                                value={cardData.expiryDate}
-                                onChange={(e) => {
-                                  const formatted = formatExpiryDate(e.target.value);
-                                  setCardData({ ...cardData, expiryDate: formatted });
-                                }}
-                                maxLength={5}
-                                disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Masa berlaku pada kartu Anda
-                              </p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="cvv" className="text-sm font-medium">
-                                CVV
-                              </Label>
-                              <Input
-                                id="cvv"
-                                type="password"
-                                placeholder="123"
-                                value={cardData.cvv}
-                                onChange={(e) => {
-                                  const cleaned = e.target.value.replace(/\D/g, '');
-                                  if (cleaned.length <= 4) {
-                                    setCardData({ ...cardData, cvv: cleaned });
-                                  }
-                                }}
-                                maxLength={4}
-                                disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                3 atau 4 digit terakhir pada kartu Anda
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Modal/Popup Payment Options */}
-                    <AnimatePresence>
-                      {showPaymentOptions && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 20 }}
-                          transition={{ duration: 0.2 }}
-                          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
-                          onClick={() => {
-                            if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
-                              return;
-                            }
-                            setShowPaymentOptions(false);
-                          }}
-                        >
-                          <motion.div
-                            initial={{ scale: 0.95 }}
-                            animate={{ scale: 1 }}
-                            exit={{ scale: 0.95 }}
-                            className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="sticky top-0 bg-white dark:bg-gray-900 border-b px-6 py-4">
-                              <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-semibold">Pilih Metode Pembayaran</h3>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setShowPaymentOptions(false)}
-                                  disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                >
-                                  ✕
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="overflow-y-auto max-h-[60vh] p-6">
-                              <RadioGroup
-                                value={selectedPayment}
-                                onValueChange={(value) => {
-                                  setSelectedPayment(value);
-                                  if (value !== "debit-credit") {
-                                    setCardData({ cardNumber: "", expiryDate: "", cvv: "" });
-                                  }
-                                }}
-                                className="space-y-4"
-                              >
-                                {/* E-Wallet */}
-                                <div className="border rounded-lg overflow-hidden">
-                                  <button
-                                    type="button"
-                                    className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    onClick={() => toggleSection('ewallet')}
-                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <Wallet className="h-5 w-5" />
-                                      <span className="font-medium">E-Wallet</span>
-                                    </div>
-                                    {expandedSections.ewallet ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </button>
-
-                                  <AnimatePresence>
-                                    {expandedSections.ewallet && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2 }}
-                                        className="overflow-hidden"
-                                      >
-                                        <div className="p-4 space-y-2">
-                                          {paymentMethods.ewallet.map((method) => (
-                                            <label
-                                              key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                                }`}
-                                            >
-                                              <div className="flex items-center gap-3">
-                                                <RadioGroupItem value={method.id} id={method.id} />
-                                                <div className="flex items-center gap-2">
-                                                  <div
-                                                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                                                    style={{ backgroundColor: method.color }}
-                                                  >
-                                                    <method.icon className="h-4 w-4 text-white" />
-                                                  </div>
-                                                  <span>{method.name}</span>
-                                                </div>
-                                              </div>
-                                              <span className="text-sm text-muted-foreground">
-                                                Rp{method.fee.toLocaleString('id-ID')}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-
-                                {/* Virtual Account */}
-                                <div className="border rounded-lg overflow-hidden">
-                                  <button
-                                    type="button"
-                                    className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    onClick={() => toggleSection('va')}
-                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <BuildingIcon className="h-5 w-5" />
-                                      <span className="font-medium">Virtual Account</span>
-                                    </div>
-                                    {expandedSections.va ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </button>
-
-                                  <AnimatePresence>
-                                    {expandedSections.va && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2 }}
-                                        className="overflow-hidden"
-                                      >
-                                        <div className="p-4 space-y-2">
-                                          {paymentMethods.va.map((method) => (
-                                            <label
-                                              key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                                }`}
-                                            >
-                                              <div className="flex items-center gap-3">
-                                                <RadioGroupItem value={method.id} id={method.id} />
-                                                <div className="flex items-center gap-2">
-                                                  <div
-                                                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                                                    style={{ backgroundColor: method.color }}
-                                                  >
-                                                    <method.icon className="h-4 w-4 text-white" />
-                                                  </div>
-                                                  <span>{method.name}</span>
-                                                </div>
-                                              </div>
-                                              <span className="text-sm text-muted-foreground">
-                                                Rp{method.fee.toLocaleString('id-ID')}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-
-                                {/* Kartu Debit/Kredit */}
-                                <div className="border rounded-lg overflow-hidden">
-                                  <button
-                                    type="button"
-                                    className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    onClick={() => toggleSection('card')}
-                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <CreditCardIcon className="h-5 w-5" />
-                                      <span className="font-medium">Kartu Debit/Kredit</span>
-                                    </div>
-                                    {expandedSections.card ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </button>
-
-                                  <AnimatePresence>
-                                    {expandedSections.card && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2 }}
-                                        className="overflow-hidden"
-                                      >
-                                        <div className="p-4">
-                                          {paymentMethods.card.map((method) => (
-                                            <label
-                                              key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                                }`}
-                                            >
-                                              <div className="flex items-center gap-3">
-                                                <RadioGroupItem value={method.id} id={method.id} />
-                                                <div className="flex items-center gap-2">
-                                                  <div
-                                                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                                                    style={{ backgroundColor: method.color }}
-                                                  >
-                                                    <method.icon className="h-4 w-4 text-white" />
-                                                  </div>
-                                                  <span>{method.name}</span>
-                                                </div>
-                                              </div>
-                                              <span className="text-sm text-muted-foreground">
-                                                Rp{method.fee.toLocaleString('id-ID')}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-
-                                {/* QRIS */}
-                                <div className="border rounded-lg overflow-hidden">
-                                  <button
-                                    type="button"
-                                    className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    onClick={() => toggleSection('qris')}
-                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <QrCode className="h-5 w-5" />
-                                      <span className="font-medium">Code QR</span>
-                                    </div>
-                                    {expandedSections.qris ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </button>
-
-                                  <AnimatePresence>
-                                    {expandedSections.qris && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2 }}
-                                        className="overflow-hidden"
-                                      >
-                                        <div className="p-4">
-                                          {paymentMethods.qris.map((method) => (
-                                            <label
-                                              key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                                }`}
-                                            >
-                                              <div className="flex items-center gap-3">
-                                                <RadioGroupItem value={method.id} id={method.id} />
-                                                <div className="flex items-center gap-2">
-                                                  <div
-                                                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                                                    style={{ backgroundColor: method.color }}
-                                                  >
-                                                    <method.icon className="h-4 w-4 text-white" />
-                                                  </div>
-                                                  <span>{method.name}</span>
-                                                </div>
-                                              </div>
-                                              <span className="text-sm text-muted-foreground">
-                                                Rp{method.fee.toLocaleString('id-ID')}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-
-                                {/* Tunai */}
-                                <div className="border rounded-lg overflow-hidden">
-                                  <button
-                                    type="button"
-                                    className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    onClick={() => toggleSection('cash')}
-                                    disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <Banknote className="h-5 w-5" />
-                                      <span className="font-medium">Tunai</span>
-                                    </div>
-                                    {expandedSections.cash ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </button>
-
-                                  <AnimatePresence>
-                                    {expandedSections.cash && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2 }}
-                                        className="overflow-hidden"
-                                      >
-                                        <div className="p-4">
-                                          {paymentMethods.cash.map((method) => (
-                                            <label
-                                              key={method.id}
-                                              className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${selectedPayment === method.id ? 'border-primary bg-primary/5' : 'hover:border-primary'
-                                                }`}
-                                            >
-                                              <div className="flex items-center gap-3">
-                                                <RadioGroupItem value={method.id} id={method.id} />
-                                                <div className="flex items-center gap-2">
-                                                  <div
-                                                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                                                    style={{ backgroundColor: method.color }}
-                                                  >
-                                                    <method.icon className="h-4 w-4 text-white" />
-                                                  </div>
-                                                  <span>{method.name}</span>
-                                                </div>
-                                              </div>
-                                              <span className="text-sm text-muted-foreground">
-                                                {method.fee === 0 ? 'Gratis' : `Rp${method.fee.toLocaleString('id-ID')}`}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              </RadioGroup>
-
-                              <div className="mt-6 pt-4 border-t">
-                                <Button
-                                  type="button"
-                                  className="w-full text-white transition-colors duration-200"
-                                  style={{ backgroundColor: '#7CE0A8' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
-                                  onClick={() => setShowPaymentOptions(false)}
-                                  disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                                >
-                                  Simpan Metode Pembayaran
-                                </Button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* Ringkasan Harga */}
-                    <div className="mt-6 pt-6 border-t">
-                      <div className="bg-muted/30 p-4 rounded-lg mb-4">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="font-medium">Total Pembayaran</span>
-                          <span className="font-bold text-lg">
-                            {paymentForAdditional === "additional" && selectedAdditionalService ? (
-                              <>
-                                Rp {formatPrice(
-                                  (selectedAdditionalService.totalPrice || 0) + 
-                                  (selectedAdditionalService.serviceFee || 10000) + 
-                                  (selectedAdditionalService.transactionFee || 0) +
-                                  (PAYMENT_FEES[selectedPayment as keyof typeof PAYMENT_FEES] || 0)
-                                )}
-                              </>
-                            ) : (
-                              <>Rp {formatPrice(calculateTotalWithFee(selectedOrder))}</>
-                            )}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {paymentForAdditional === "additional" 
-                            ? "Pembayaran untuk layanan tambahan" 
-                            : "Minimum transaksi Rp75.000"}
-                        </p>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="flex-1"
-                          onClick={() => {
-                            if (isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)) {
-                              return;
-                            }
-                            setShowPaymentModal(false);
-                            setShowPaymentOptions(false);
-                            setSelectedAdditionalService(null);
-                            setPaymentForAdditional("main");
-                          }}
-                          disabled={isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                        >
-                          Batal
-                        </Button>
-                        <Button
-                          type="button"
-                          className="flex-1 text-white transition-colors duration-200"
-                          style={{ backgroundColor: '#7CE0A8' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5CA68A'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7CE0A8'}
-                          onClick={handleSavePaymentMethod}
-                          disabled={!selectedPayment || (selectedPayment === "debit-credit" && (!cardData.cardNumber || !cardData.expiryDate || !cardData.cvv)) || isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`)}
-                        >
-                          {isActionLoading(paymentForAdditional === "additional" ? `save_payment_additional_${selectedAdditionalService?.id}` : `save_payment_${selectedOrder.id}`) ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Menyimpan...
-                            </>
-                          ) : paymentForAdditional === "additional" ? (
-                            "Bayar Sekarang"
-                          ) : (
-                            "Simpan Metode Pembayaran"
-                          )}
-                        </Button>
-                      </div>
-
-                      <p className="text-xs text-center text-muted-foreground mt-4">
-                        {paymentForAdditional === "additional" 
-                          ? "Setelah pembayaran, layanan tambahan akan diaktifkan"
-                          : "Setelah menyimpan metode pembayaran, Anda dapat melanjutkan ke pembayaran"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Modal Konfirmasi Pekerjaan Selesai dan Rating */}
       <AnimatePresence>
         {showCompletionModal && selectedOrder && (
@@ -2960,12 +3240,7 @@ export default function OrderHistoryPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-            onClick={() => {
-              if (isActionLoading(`complete_${selectedOrder.id}`)) {
-                return;
-              }
-              setShowCompletionModal(false);
-            }}
+            onClick={() => setShowCompletionModal(false)}
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
@@ -2986,12 +3261,7 @@ export default function OrderHistoryPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      if (isActionLoading(`complete_${selectedOrder.id}`)) {
-                        return;
-                      }
-                      setShowCompletionModal(false);
-                    }}
+                    onClick={() => setShowCompletionModal(false)}
                     className="h-8 w-8 p-0"
                     disabled={isActionLoading(`complete_${selectedOrder.id}`)}
                   >

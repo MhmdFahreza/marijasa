@@ -1,4 +1,3 @@
-// app/api/user/orders/route.ts - UPDATED
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 
@@ -155,31 +154,56 @@ export async function GET(request: NextRequest) {
         reason: history.reason
       }));
 
-      const additionalServices = booking.additional_service_requests.map(req => ({
-        id: req.request_id,
-        description: req.description,
-        totalPrice: req.total_price,
-        status: req.status.toLowerCase(),
-        reason: req.reason,
-        images: req.images,
-        services: req.items.map(item => ({
-          id: item.service_id,
-          name: item.service.name,
-          price: item.price,
-          quantity: item.quantity,
-          priceType: item.service.price_type
-        })),
-        submittedAt: req.created_at.toISOString(),
-        approvedAt: req.approved_at?.toISOString(),
-        rejectedAt: req.rejected_at?.toISOString(),
-        rejectionReason: req.rejection_reason,
-        isPaid: req.payment_status === 'PAID',
-        paymentMethod: req.payment_method,
-        paymentStatus: req.payment_status,
-        transactionFee: req.transaction_fee || 0,
-        serviceFee: req.service_fee || 10000,
-        paidAt: req.paid_at?.toISOString()
-      }));
+      // Hitung total dari semua additional services yang sudah dibayar
+      const paidAdditionalServices = booking.additional_service_requests.filter(
+        (req: any) => 
+          (req.status === 'APPROVED' || req.status === 'disetujui' || req.status === 'diterima') &&
+          req.payment_status === 'PAID'
+      );
+
+      // Hitung total layanan tambahan yang sudah dibayar
+      const totalAdditionalPaid = paidAdditionalServices.reduce((sum: number, req: any) => {
+        const serviceFee = req.service_fee || 10000;
+        const transactionFee = req.transaction_fee || 0;
+        return sum + (req.total_price || 0) + serviceFee + transactionFee;
+      }, 0);
+
+      // Total booking = subtotal utama + biaya layanan + biaya transaksi + total layanan tambahan yang sudah dibayar
+      const totalBooking = booking.subtotal + booking.service_fee + booking.transaction_fee + totalAdditionalPaid;
+
+      const additionalServices = booking.additional_service_requests.map(req => {
+        const isPaid = req.payment_status === 'PAID';
+        const serviceFee = req.service_fee || 10000;
+        const transactionFee = req.transaction_fee || 0;
+        const totalWithFees = (req.total_price || 0) + serviceFee + transactionFee;
+
+        return {
+          id: req.request_id,
+          description: req.description,
+          totalPrice: req.total_price,
+          status: req.status.toLowerCase(),
+          reason: req.reason,
+          images: req.images,
+          services: req.items.map(item => ({
+            id: item.service_id,
+            name: item.service.name,
+            price: item.price,
+            quantity: item.quantity,
+            priceType: item.service.price_type
+          })),
+          submittedAt: req.created_at.toISOString(),
+          approvedAt: req.approved_at?.toISOString(),
+          rejectedAt: req.rejected_at?.toISOString(),
+          rejectionReason: req.rejection_reason,
+          isPaid: isPaid,
+          paymentMethod: req.payment_method,
+          paymentStatus: req.payment_status,
+          transactionFee: transactionFee,
+          serviceFee: serviceFee,
+          totalWithFees: totalWithFees,
+          paidAt: req.paid_at?.toISOString()
+        };
+      });
 
       const vendorServices = vendorServicesByBooking[booking.booking_id] || [];
 
@@ -201,12 +225,12 @@ export async function GET(request: NextRequest) {
         statusColor: getStatusColor(frontendStatus),
         paymentMethod: booking.payment_method || 'Belum Dibayar',
         paymentId: booking.payment_method ? `#${Math.floor(1000000 + Math.random() * 9000000)}` : null,
-        totalPrice: booking.total,
+        totalPrice: totalBooking,
         paymentDetails: {
           subtotal: booking.subtotal,
           serviceFee: booking.service_fee,
           transactionFee: booking.transaction_fee,
-          total: booking.total
+          total: totalBooking
         },
         customerInfo: {
           name: booking.user.name,
@@ -241,7 +265,10 @@ export async function GET(request: NextRequest) {
         isAnonymous: booking.is_anonymous,
         cancellationReason: booking.cancellation_reason,
         cancelledBy: booking.cancelled_by,
-        cancelledAt: booking.cancelled_at?.toISOString()
+        cancelledAt: booking.cancelled_at?.toISOString(),
+        // Tambahan field untuk membantu perhitungan di frontend
+        paidAdditionalServicesCount: paidAdditionalServices.length,
+        paidAdditionalServicesTotal: totalAdditionalPaid
       };
     });
 
@@ -297,8 +324,22 @@ export async function PUT(request: NextRequest) {
           transactionFee
         });
 
-        // Calculate new total
-        const newTotal = booking.subtotal + booking.service_fee + (transactionFee || 0);
+        // Hitung total baru termasuk layanan tambahan yang sudah dibayar
+        const paidAdditionalServices = await prisma.additionalServiceRequest.findMany({
+          where: {
+            booking_id: booking.booking_id,
+            status: 'APPROVED',
+            payment_status: 'PAID'
+          }
+        });
+
+        const totalAdditionalPaid = paidAdditionalServices.reduce((sum: number, req: any) => {
+          const serviceFee = req.service_fee || 10000;
+          const transactionFee = req.transaction_fee || 0;
+          return sum + (req.total_price || 0) + serviceFee + transactionFee;
+        }, 0);
+
+        const newTotal = booking.subtotal + booking.service_fee + (transactionFee || 0) + totalAdditionalPaid;
 
         // ✅ Update booking dengan payment_method yang benar
         await prisma.booking.update({

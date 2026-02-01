@@ -606,6 +606,7 @@ model AdditionalServiceRequest {
   transaction_fee  Float?    @default(0)
   service_fee      Float?    @default(10000)
   paid_at          DateTime?
+  payment_metadata Json?
 
   rejection_reason String?   @db.Text
   approved_at      DateTime?

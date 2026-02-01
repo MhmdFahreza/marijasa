@@ -1,5 +1,4 @@
 // app/api/payments/xendit/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 import {
@@ -25,6 +24,7 @@ import {
 } from '@/app/components/lib/xendit';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const SERVICE_FEE = 10000; // Biaya layanan
 
 // ==========================================
 // POST - Create Payment (Full Xendit Integration)
@@ -86,13 +86,27 @@ export async function POST(request: NextRequest) {
     console.log('\n[Auth] User ID:', userId);
 
     // Extract data
-    const { orderId, paymentMethod, customerName, customerEmail, customerPhone, amount, description } = requestBody;
+    const {
+      orderId,
+      paymentMethod,
+      customerName,
+      customerEmail,
+      customerPhone,
+      amount,
+      description,
+      paymentType, // 'main' atau 'additional'
+      additionalServiceId,
+      transactionFee,
+      totalAmount
+    } = requestBody;
 
     console.log('\n[Payment Data]');
     console.log('  - Order ID:', orderId);
     console.log('  - Method:', paymentMethod);
     console.log('  - Amount:', amount);
     console.log('  - Customer:', customerName, customerEmail, customerPhone);
+    console.log('  - Payment Type:', paymentType);
+    console.log('  - Additional Service ID:', additionalServiceId);
 
     // Validate
     if (!orderId || !paymentMethod || !amount || amount <= 0) {
@@ -127,11 +141,45 @@ export async function POST(request: NextRequest) {
 
     console.log('\n[Booking] Found:', booking.booking_id, '-', booking.vendor.name);
 
-    // Calculate fees
-    const transactionFee = calculateXenditFee(paymentMethod as PaymentMethodId, amount);
-    const totalAmount = amount + transactionFee;
+    // Check if this is for additional service
+    let additionalService = null;
+    if (paymentType === 'additional' && additionalServiceId) {
+      additionalService = await prisma.additionalServiceRequest.findFirst({
+        where: {
+          request_id: additionalServiceId,
+          booking_id: booking.booking_id,
+          status: 'APPROVED'
+        }
+      });
 
-    console.log('\n[Fees] Base:', amount, '+ Fee:', transactionFee, '= Total:', totalAmount);
+      if (!additionalService) {
+        return NextResponse.json(
+          { success: false, error: 'Not Found', message: 'Layanan tambahan tidak ditemukan atau belum disetujui' },
+          { status: 404 }
+        );
+      }
+
+      if (additionalService.payment_status === 'PAID') {
+        return NextResponse.json(
+          { success: false, error: 'Already Paid', message: 'Layanan tambahan ini sudah dibayar' },
+          { status: 400 }
+        );
+      }
+
+      console.log('[Payment] Additional service found:', additionalService.description);
+      console.log('[Payment] Current additional service payment status:', additionalService.payment_status);
+    }
+
+    // Calculate fees - PERBAIKAN: Gunakan amount dari request yang sudah termasuk SERVICE_FEE
+    const finalAmount = amount; // amount dari request sudah termasuk SERVICE_FEE
+    const finalTransactionFee = transactionFee || calculateXenditFee(paymentMethod as PaymentMethodId, finalAmount);
+    const finalTotalAmount = totalAmount || (finalAmount + finalTransactionFee);
+
+    console.log('\n[Fees Calculation]');
+    console.log('  - Base Amount (include service fee):', finalAmount);
+    console.log('  - Transaction Fee:', finalTransactionFee);
+    console.log('  - Total Amount:', finalTotalAmount);
+    console.log('  - Payment Type:', paymentType);
 
     // Get payment method config
     const feeConfig = XENDIT_PAYMENT_FEES[paymentMethod as PaymentMethodId];
@@ -153,15 +201,22 @@ export async function POST(request: NextRequest) {
     let responseData: any = {
       success: true,
       message: 'Pembayaran berhasil dibuat',
-      paymentType: feeConfig.category,
+      paymentType: paymentType || 'main',
       paymentMethod: paymentMethod,
       paymentMethodName: feeConfig.name,
       orderId,
-      amount,
-      transactionFee,
-      totalAmount,
+      amount: finalAmount,
+      transactionFee: finalTransactionFee,
+      totalAmount: finalTotalAmount,
       expirationDate: new Date(Date.now() + 86400000).toISOString(),
     };
+
+    // Gunakan external_id yang berbeda untuk layanan tambahan
+    const externalId = paymentType === 'additional' && additionalServiceId
+      ? `${orderId}_additional_${additionalServiceId}`
+      : orderId;
+
+    console.log('[Payment] External ID for Xendit:', externalId);
 
     // ==========================================
     // PROCESS PAYMENT BY TYPE
@@ -175,42 +230,102 @@ export async function POST(request: NextRequest) {
         case 'tunai': {
           console.log('\n[Processing] Cash payment...');
 
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_method: paymentMethod,
-              payment_status: 'PENDING',
-              transaction_fee: 0,
-              total: amount,
-              status: 'CONFIRMED',
-              payment_metadata: {
-                payment_type: 'tunai',
-                created_at: new Date().toISOString(),
+          // Update based on payment type
+          if (paymentType === 'additional' && additionalService) {
+            // Update additional service for cash payment
+            await prisma.additionalServiceRequest.update({
+              where: { request_id: additionalServiceId },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PAID', // Langsung PAID untuk tunai
+                transaction_fee: 0,
+                service_fee: SERVICE_FEE,
+                paid_at: new Date(),
+                payment_metadata: {
+                  payment_type: 'tunai',
+                  created_at: new Date().toISOString(),
+                  amount: finalAmount,
+                  total_amount: finalTotalAmount,
+                  is_additional_service: true,
+                  cash_confirmed_at: new Date().toISOString()
+                }
               }
-            }
-          });
+            });
+
+            // Update booking total
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                total: booking.total + finalTotalAmount
+              }
+            });
+
+            // Tambahkan ke booking history untuk layanan tambahan
+            await prisma.bookingHistory.create({
+              data: {
+                booking_id: booking.booking_id,
+                status: 'Pembayaran Tunai Layanan Tambahan Dikonfirmasi',
+                reason: `Pembayaran tunai untuk layanan tambahan: ${additionalService.description}`
+              }
+            });
+
+            responseData.message = 'Pembayaran Tunai layanan tambahan berhasil dikonfirmasi';
+          } else {
+            // Main payment
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PAID', // Langsung PAID untuk tunai
+                transaction_fee: 0,
+                total: finalTotalAmount,
+                status: 'CONFIRMED',
+                payment_metadata: {
+                  payment_type: 'tunai',
+                  created_at: new Date().toISOString(),
+                  amount: finalAmount,
+                  total_amount: finalTotalAmount,
+                  is_additional_service: false,
+                  cash_confirmed_at: new Date().toISOString()
+                }
+              }
+            });
+
+            // Tambahkan ke booking history untuk pembayaran utama
+            await prisma.bookingHistory.create({
+              data: {
+                booking_id: booking.booking_id,
+                status: 'Pembayaran Tunai Dikonfirmasi',
+                reason: 'Pembayaran tunai dikonfirmasi, menunggu layanan'
+              }
+            });
+
+            responseData.message = 'Pembayaran Tunai berhasil dikonfirmasi';
+          }
+
+          // Create notification
+          const notificationTitle = paymentType === 'additional'
+            ? '💵 Pembayaran Tunai Layanan Tambahan Dikonfirmasi'
+            : '💵 Pembayaran Tunai Dikonfirmasi';
+
+          const notificationMessage = paymentType === 'additional'
+            ? `Pembayaran tunai untuk layanan tambahan "${additionalService?.description}" telah dikonfirmasi. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}.`
+            : `Pesanan #${orderId} dikonfirmasi dengan pembayaran tunai. Siapkan pembayaran saat layanan diberikan.`;
 
           await prisma.userNotification.create({
             data: {
               user_id: userId,
-              title: '💵 Pembayaran Tunai Dikonfirmasi',
-              message: `Pesanan #${orderId} dikonfirmasi dengan pembayaran tunai. Siapkan pembayaran saat layanan diberikan.`,
+              title: notificationTitle,
+              message: notificationMessage,
               type: 'payment',
               order_id: booking.booking_id,
             }
           });
 
-          await prisma.bookingHistory.create({
-            data: {
-              booking_id: booking.booking_id,
-              status: 'Pembayaran Tunai - Menunggu Layanan',
-              reason: 'Pembayaran tunai saat layanan diberikan'
-            }
-          });
-
-          responseData.message = 'Pembayaran Tunai berhasil dikonfirmasi';
           responseData.transactionFee = 0;
-          responseData.totalAmount = amount;
+          responseData.totalAmount = finalAmount;
+          responseData.isCash = true;
+          responseData.cashConfirmedAt = new Date().toISOString();
           break;
         }
 
@@ -221,12 +336,14 @@ export async function POST(request: NextRequest) {
           console.log('\n[Processing] QRIS payment via Xendit...');
 
           const qrResponse = await createQRISPayment({
-            externalId: orderId,
-            amount: totalAmount,
+            externalId: externalId, // Gunakan externalId yang sudah disesuaikan
+            amount: finalTotalAmount,
             customerName: customerName || 'Customer',
             customerPhone: customerPhone || '',
             customerEmail: customerEmail || '',
-            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            description: description || (paymentType === 'additional'
+              ? `Pembayaran layanan tambahan: ${additionalService?.description}`
+              : `Pembayaran untuk layanan dari ${booking.vendor.name}`),
             expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
           });
 
@@ -242,34 +359,69 @@ export async function POST(request: NextRequest) {
             xendit_status: qrResponse.status,
             xendit_expires_at: qrResponse.expires_at,
             created_at: qrResponse.created,
+            amount: finalAmount,
+            transaction_fee: finalTransactionFee,
+            total_amount: finalTotalAmount,
+            is_additional_service: paymentType === 'additional',
+            additional_service_id: paymentType === 'additional' ? additionalServiceId : null
           };
 
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_method: paymentMethod,
-              payment_status: 'PENDING',
-              transaction_fee: transactionFee,
-              total: totalAmount,
-              payment_metadata: paymentMetadata
-            }
-          });
+          // Update based on payment type
+          if (paymentType === 'additional' && additionalService) {
+            await prisma.additionalServiceRequest.update({
+              where: { request_id: additionalServiceId },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                service_fee: SERVICE_FEE,
+                payment_metadata: paymentMetadata
+              }
+            });
+          } else {
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                total: finalTotalAmount,
+                payment_metadata: paymentMetadata
+              }
+            });
+          }
+
+          // Create notification
+          const qrisNotificationTitle = paymentType === 'additional'
+            ? `📱 QRIS Layanan Tambahan Dibuat`
+            : `📱 QRIS Dibuat`;
+
+          const qrisNotificationMessage = paymentType === 'additional'
+            ? `Pembayaran untuk layanan tambahan "${additionalService?.description}" via QRIS berhasil dibuat. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}. Scan QR code untuk membayar.`
+            : `Pembayaran #${orderId} via QRIS berhasil dibuat. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}. Scan QR code untuk membayar.`;
 
           await prisma.userNotification.create({
             data: {
               user_id: userId,
-              title: '📱 QRIS Dibuat',
-              message: `Pembayaran #${orderId} via QRIS berhasil dibuat. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Scan QR code untuk membayar.`,
+              title: qrisNotificationTitle,
+              message: qrisNotificationMessage,
               type: 'payment',
               order_id: booking.booking_id,
             }
           });
 
+          // Add to booking history
+          const qrisHistoryStatus = paymentType === 'additional'
+            ? 'Menunggu Pembayaran - QRIS (Layanan Tambahan)'
+            : 'Menunggu Pembayaran - QRIS';
+
           await prisma.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
-              status: 'Menunggu Pembayaran - QRIS',
-              reason: `Xendit QR ID: ${qrResponse.id}`
+              status: qrisHistoryStatus,
+              reason: paymentType === 'additional'
+                ? `Xendit QR ID: ${qrResponse.id} untuk layanan tambahan`
+                : `Xendit QR ID: ${qrResponse.id}`
             }
           });
 
@@ -295,13 +447,15 @@ export async function POST(request: NextRequest) {
           console.log('[E-Wallet] Channel Code:', channelCode);
 
           const ewalletResponse = await createEWalletPayment({
-            externalId: orderId,
-            amount: totalAmount,
+            externalId: externalId,
+            amount: finalTotalAmount,
             channelCode: channelCode,
             customerPhone: customerPhone || '',
             customerName: customerName || 'Customer',
             customerEmail: customerEmail || '',
-            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            description: description || (paymentType === 'additional'
+              ? `Pembayaran layanan tambahan: ${additionalService?.description}`
+              : `Pembayaran untuk layanan dari ${booking.vendor.name}`),
             successRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=success`,
             failureRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=failed`,
           });
@@ -322,34 +476,69 @@ export async function POST(request: NextRequest) {
             deeplink_url: ewalletResponse.actions?.mobile_deeplink_checkout_url || null,
             qr_string: ewalletResponse.actions?.qr_checkout_string || null,
             created_at: ewalletResponse.created,
+            amount: finalAmount,
+            transaction_fee: finalTransactionFee,
+            total_amount: finalTotalAmount,
+            is_additional_service: paymentType === 'additional',
+            additional_service_id: paymentType === 'additional' ? additionalServiceId : null
           };
 
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_method: paymentMethod,
-              payment_status: 'PENDING',
-              transaction_fee: transactionFee,
-              total: totalAmount,
-              payment_metadata: paymentMetadata
-            }
-          });
+          // Update based on payment type
+          if (paymentType === 'additional' && additionalService) {
+            await prisma.additionalServiceRequest.update({
+              where: { request_id: additionalServiceId },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                service_fee: SERVICE_FEE,
+                payment_metadata: paymentMetadata
+              }
+            });
+          } else {
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                total: finalTotalAmount,
+                payment_metadata: paymentMetadata
+              }
+            });
+          }
+
+          // Create notification
+          const ewalletNotificationTitle = paymentType === 'additional'
+            ? `📱 Pembayaran ${feeConfig.name} Layanan Tambahan Dibuat`
+            : `📱 Pembayaran ${feeConfig.name} Dibuat`;
+
+          const ewalletNotificationMessage = paymentType === 'additional'
+            ? `Pembayaran untuk layanan tambahan "${additionalService?.description}" via ${feeConfig.name} berhasil dibuat. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`
+            : `Pembayaran #${orderId} via ${feeConfig.name} berhasil dibuat. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`;
 
           await prisma.userNotification.create({
             data: {
               user_id: userId,
-              title: `📱 Pembayaran ${feeConfig.name} Dibuat`,
-              message: `Pembayaran #${orderId} via ${feeConfig.name} berhasil dibuat. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`,
+              title: ewalletNotificationTitle,
+              message: ewalletNotificationMessage,
               type: 'payment',
               order_id: booking.booking_id,
             }
           });
 
+          // Add to booking history
+          const ewalletHistoryStatus = paymentType === 'additional'
+            ? `Menunggu Pembayaran - ${feeConfig.name} (Layanan Tambahan)`
+            : `Menunggu Pembayaran - ${feeConfig.name}`;
+
           await prisma.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
-              status: `Menunggu Pembayaran - ${feeConfig.name}`,
-              reason: `Xendit Charge ID: ${ewalletResponse.id}`
+              status: ewalletHistoryStatus,
+              reason: paymentType === 'additional'
+                ? `Xendit Charge ID: ${ewalletResponse.id} untuk layanan tambahan`
+                : `Xendit Charge ID: ${ewalletResponse.id}`
             }
           });
 
@@ -376,13 +565,15 @@ export async function POST(request: NextRequest) {
           console.log('[VA] Bank Code:', bankCode);
 
           const vaResponse = await createVirtualAccount({
-            externalId: orderId,
+            externalId: externalId,
             bankCode: bankCode,
-            amount: totalAmount,
+            amount: finalTotalAmount,
             customerName: customerName || 'SELSAS Customer',
             customerPhone: customerPhone || '',
             customerEmail: customerEmail || '',
-            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            description: description || (paymentType === 'additional'
+              ? `Pembayaran layanan tambahan: ${additionalService?.description}`
+              : `Pembayaran untuk layanan dari ${booking.vendor.name}`),
             expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
             isSingleUse: true,
             isClosed: true,
@@ -402,34 +593,69 @@ export async function POST(request: NextRequest) {
             expiration_date: vaResponse.expiration_date,
             is_closed: vaResponse.is_closed,
             is_single_use: vaResponse.is_single_use,
+            amount: finalAmount,
+            transaction_fee: finalTransactionFee,
+            total_amount: finalTotalAmount,
+            is_additional_service: paymentType === 'additional',
+            additional_service_id: paymentType === 'additional' ? additionalServiceId : null
           };
 
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_method: paymentMethod,
-              payment_status: 'PENDING',
-              transaction_fee: transactionFee,
-              total: totalAmount,
-              payment_metadata: paymentMetadata
-            }
-          });
+          // Update based on payment type
+          if (paymentType === 'additional' && additionalService) {
+            await prisma.additionalServiceRequest.update({
+              where: { request_id: additionalServiceId },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                service_fee: SERVICE_FEE,
+                payment_metadata: paymentMetadata
+              }
+            });
+          } else {
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                total: finalTotalAmount,
+                payment_metadata: paymentMetadata
+              }
+            });
+          }
+
+          // Create notification
+          const vaNotificationTitle = paymentType === 'additional'
+            ? `🏦 Virtual Account ${bankCode} Layanan Tambahan Dibuat`
+            : `🏦 Virtual Account ${bankCode} Dibuat`;
+
+          const vaNotificationMessage = paymentType === 'additional'
+            ? `Pembayaran untuk layanan tambahan "${additionalService?.description}" via ${feeConfig.name}. VA: ${vaResponse.account_number}. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}`
+            : `Pembayaran #${orderId} via ${feeConfig.name}. VA: ${vaResponse.account_number}. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}`;
 
           await prisma.userNotification.create({
             data: {
               user_id: userId,
-              title: `🏦 Virtual Account ${bankCode} Dibuat`,
-              message: `Pembayaran #${orderId} via ${feeConfig.name}. VA: ${vaResponse.account_number}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
+              title: vaNotificationTitle,
+              message: vaNotificationMessage,
               type: 'payment',
               order_id: booking.booking_id,
             }
           });
 
+          // Add to booking history
+          const vaHistoryStatus = paymentType === 'additional'
+            ? `Menunggu Pembayaran - ${feeConfig.name} (Layanan Tambahan)`
+            : `Menunggu Pembayaran - ${feeConfig.name}`;
+
           await prisma.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
-              status: `Menunggu Pembayaran - ${feeConfig.name}`,
-              reason: `VA Number: ${vaResponse.account_number}`
+              status: vaHistoryStatus,
+              reason: paymentType === 'additional'
+                ? `VA Number: ${vaResponse.account_number} untuk layanan tambahan`
+                : `VA Number: ${vaResponse.account_number}`
             }
           });
 
@@ -454,13 +680,15 @@ export async function POST(request: NextRequest) {
           console.log('[Retail] Outlet:', retailCode);
 
           const retailResponse = await createRetailPayment({
-            externalId: orderId,
+            externalId: externalId,
             retailOutletName: retailCode,
-            amount: totalAmount,
+            amount: finalTotalAmount,
             customerName: customerName || 'SELSAS Customer',
             customerPhone: customerPhone || '',
             customerEmail: customerEmail || '',
-            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            description: description || (paymentType === 'additional'
+              ? `Pembayaran layanan tambahan: ${additionalService?.description}`
+              : `Pembayaran untuk layanan dari ${booking.vendor.name}`),
             expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
             isSingleUse: true,
           });
@@ -477,34 +705,69 @@ export async function POST(request: NextRequest) {
             expected_amount: retailResponse.expected_amount,
             expiration_date: retailResponse.expiration_date,
             is_single_use: retailResponse.is_single_use,
+            amount: finalAmount,
+            transaction_fee: finalTransactionFee,
+            total_amount: finalTotalAmount,
+            is_additional_service: paymentType === 'additional',
+            additional_service_id: paymentType === 'additional' ? additionalServiceId : null
           };
 
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_method: paymentMethod,
-              payment_status: 'PENDING',
-              transaction_fee: transactionFee,
-              total: totalAmount,
-              payment_metadata: paymentMetadata
-            }
-          });
+          // Update based on payment type
+          if (paymentType === 'additional' && additionalService) {
+            await prisma.additionalServiceRequest.update({
+              where: { request_id: additionalServiceId },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                service_fee: SERVICE_FEE,
+                payment_metadata: paymentMetadata
+              }
+            });
+          } else {
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                total: finalTotalAmount,
+                payment_metadata: paymentMetadata
+              }
+            });
+          }
+
+          // Create notification
+          const retailNotificationTitle = paymentType === 'additional'
+            ? `🏪 Kode Pembayaran ${retailCode} Layanan Tambahan Dibuat`
+            : `🏪 Kode Pembayaran ${retailCode} Dibuat`;
+
+          const retailNotificationMessage = paymentType === 'additional'
+            ? `Pembayaran untuk layanan tambahan "${additionalService?.description}" via ${feeConfig.name}. Kode: ${retailResponse.payment_code}. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}`
+            : `Pembayaran #${orderId} via ${feeConfig.name}. Kode: ${retailResponse.payment_code}. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}`;
 
           await prisma.userNotification.create({
             data: {
               user_id: userId,
-              title: `🏪 Kode Pembayaran ${retailCode} Dibuat`,
-              message: `Pembayaran #${orderId} via ${feeConfig.name}. Kode: ${retailResponse.payment_code}. Total: Rp ${totalAmount.toLocaleString('id-ID')}`,
+              title: retailNotificationTitle,
+              message: retailNotificationMessage,
               type: 'payment',
               order_id: booking.booking_id,
             }
           });
 
+          // Add to booking history
+          const retailHistoryStatus = paymentType === 'additional'
+            ? `Menunggu Pembayaran - ${feeConfig.name} (Layanan Tambahan)`
+            : `Menunggu Pembayaran - ${feeConfig.name}`;
+
           await prisma.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
-              status: `Menunggu Pembayaran - ${feeConfig.name}`,
-              reason: `Payment Code: ${retailResponse.payment_code}`
+              status: retailHistoryStatus,
+              reason: paymentType === 'additional'
+                ? `Payment Code: ${retailResponse.payment_code} untuk layanan tambahan`
+                : `Payment Code: ${retailResponse.payment_code}`
             }
           });
 
@@ -532,12 +795,14 @@ export async function POST(request: NextRequest) {
           }
 
           const cardResponse = await createCardPayment({
-            externalId: orderId,
-            amount: totalAmount,
+            externalId: externalId,
+            amount: finalTotalAmount,
             payerEmail: customerEmail,
             customerName: customerName || 'Customer',
             customerPhone: customerPhone || '',
-            description: description || `Pembayaran untuk layanan dari ${booking.vendor.name}`,
+            description: description || (paymentType === 'additional'
+              ? `Pembayaran layanan tambahan: ${additionalService?.description}`
+              : `Pembayaran untuk layanan dari ${booking.vendor.name}`),
             successRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=success`,
             failureRedirectUrl: `${APP_URL}/riwayat_pemesanan?orderId=${orderId}&status=failed`,
             invoiceDuration: 86400,
@@ -553,34 +818,69 @@ export async function POST(request: NextRequest) {
             xendit_status: cardResponse.status,
             expiry_date: cardResponse.expiry_date,
             merchant_name: cardResponse.merchant_name,
+            amount: finalAmount,
+            transaction_fee: finalTransactionFee,
+            total_amount: finalTotalAmount,
+            is_additional_service: paymentType === 'additional',
+            additional_service_id: paymentType === 'additional' ? additionalServiceId : null
           };
 
-          await prisma.booking.update({
-            where: { booking_id: booking.booking_id },
-            data: {
-              payment_method: paymentMethod,
-              payment_status: 'PENDING',
-              transaction_fee: transactionFee,
-              total: totalAmount,
-              payment_metadata: paymentMetadata
-            }
-          });
+          // Update based on payment type
+          if (paymentType === 'additional' && additionalService) {
+            await prisma.additionalServiceRequest.update({
+              where: { request_id: additionalServiceId },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                service_fee: SERVICE_FEE,
+                payment_metadata: paymentMetadata
+              }
+            });
+          } else {
+            await prisma.booking.update({
+              where: { booking_id: booking.booking_id },
+              data: {
+                payment_method: paymentMethod,
+                payment_status: 'PENDING',
+                transaction_fee: finalTransactionFee,
+                total: finalTotalAmount,
+                payment_metadata: paymentMetadata
+              }
+            });
+          }
+
+          // Create notification
+          const cardNotificationTitle = paymentType === 'additional'
+            ? `💳 Pembayaran Kartu Layanan Tambahan Dibuat`
+            : `💳 Pembayaran Kartu Dibuat`;
+
+          const cardNotificationMessage = paymentType === 'additional'
+            ? `Pembayaran untuk layanan tambahan "${additionalService?.description}" via ${feeConfig.name}. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`
+            : `Pembayaran #${orderId} via ${feeConfig.name}. Total: Rp ${finalTotalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`;
 
           await prisma.userNotification.create({
             data: {
               user_id: userId,
-              title: `💳 Pembayaran Kartu Dibuat`,
-              message: `Pembayaran #${orderId} via ${feeConfig.name}. Total: Rp ${totalAmount.toLocaleString('id-ID')}. Silakan selesaikan pembayaran.`,
+              title: cardNotificationTitle,
+              message: cardNotificationMessage,
               type: 'payment',
               order_id: booking.booking_id,
             }
           });
 
+          // Add to booking history
+          const cardHistoryStatus = paymentType === 'additional'
+            ? `Menunggu Pembayaran - ${feeConfig.name} (Layanan Tambahan)`
+            : `Menunggu Pembayaran - ${feeConfig.name}`;
+
           await prisma.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
-              status: `Menunggu Pembayaran - ${feeConfig.name}`,
-              reason: `Invoice ID: ${cardResponse.id}`
+              status: cardHistoryStatus,
+              reason: paymentType === 'additional'
+                ? `Invoice ID: ${cardResponse.id} untuk layanan tambahan`
+                : `Invoice ID: ${cardResponse.id}`
             }
           });
 
@@ -605,6 +905,7 @@ export async function POST(request: NextRequest) {
       console.log('\n╔══════════════════════════════════════════════════════════════════╗');
       console.log('║                 PAYMENT CREATED SUCCESSFULLY                     ║');
       console.log('║ Type:', feeConfig.category.toUpperCase().padEnd(55), '║');
+      console.log('║ Payment Type:', (paymentType || 'main').toUpperCase().padEnd(51), '║');
       console.log('║ Xendit ID:', (responseData.xenditId || 'N/A').substring(0, 48).padEnd(51), '║');
       console.log('╚══════════════════════════════════════════════════════════════════╝\n');
 
@@ -644,8 +945,10 @@ export async function GET(request: NextRequest) {
     const orderId = request.nextUrl.searchParams.get('orderId');
     const refreshQR = request.nextUrl.searchParams.get('refreshQR') === 'true';
     const checkXendit = request.nextUrl.searchParams.get('checkXendit') === 'true';
+    const additionalServiceId = request.nextUrl.searchParams.get('additionalServiceId');
 
     console.log('\n[Payment Status] GET request for:', orderId);
+    console.log('[Payment Status] Additional Service ID:', additionalServiceId);
 
     if (!orderId) {
       return NextResponse.json(
@@ -654,6 +957,121 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Jika ada additionalServiceId, cek status layanan tambahan
+    if (additionalServiceId) {
+      const additionalService = await prisma.additionalServiceRequest.findFirst({
+        where: {
+          request_id: additionalServiceId,
+          booking: {
+            booking_number: orderId
+          }
+        },
+        select: {
+          request_id: true,
+          payment_status: true,
+          payment_method: true,
+          total_price: true,
+          transaction_fee: true,
+          service_fee: true,
+          status: true,
+          payment_metadata: true,
+          booking: {
+            select: {
+              booking_id: true
+            }
+          }
+        }
+      });
+
+      if (!additionalService) {
+        return NextResponse.json(
+          { success: false, error: 'Not Found', message: 'Layanan tambahan tidak ditemukan' },
+          { status: 404 }
+        );
+      }
+
+      const metadata = additionalService.payment_metadata as any;
+      let xenditStatus = null;
+      let refreshedData = null;
+
+      // Check Xendit status if requested
+      if (checkXendit && metadata?.xendit_id) {
+        try {
+          const paymentType = metadata.payment_type;
+
+          switch (paymentType) {
+            case 'qris':
+              xenditStatus = await getQRCodeDetails(metadata.xendit_id);
+              break;
+            case 'ewallet':
+              xenditStatus = await getEWalletChargeStatus(metadata.xendit_id);
+              break;
+            case 'va':
+              xenditStatus = await getVirtualAccountDetails(metadata.xendit_id);
+              break;
+            case 'retail':
+              xenditStatus = await getRetailPaymentDetails(metadata.xendit_id);
+              break;
+            case 'card':
+              xenditStatus = await getInvoiceDetails(metadata.xendit_id);
+              break;
+          }
+
+          console.log('[Payment Status] Xendit status for additional service:', xenditStatus?.status);
+
+        } catch (error) {
+          console.error('[Payment Status] Error checking Xendit:', error);
+        }
+      }
+
+      // Refresh QR code if requested
+      if (refreshQR && metadata?.xendit_qr_id) {
+        try {
+          const qrDetails = await getQRCodeDetails(metadata.xendit_qr_id);
+          refreshedData = {
+            qrString: qrDetails.qr_string,
+            qrCodeUrl: qrDetails.qr_code_url,
+            status: qrDetails.status,
+            expiresAt: qrDetails.expires_at,
+          };
+
+          // Update metadata
+          await prisma.additionalServiceRequest.update({
+            where: { request_id: additionalServiceId },
+            data: {
+              payment_metadata: {
+                ...metadata,
+                xendit_qr_string: qrDetails.qr_string,
+                qr_code_url: qrDetails.qr_code_url,
+                xendit_status: qrDetails.status,
+              }
+            }
+          });
+
+        } catch (error) {
+          console.error('[Payment Status] Error refreshing QR:', error);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        additionalService: {
+          id: additionalService.request_id,
+          paymentStatus: additionalService.payment_status,
+          paymentMethod: additionalService.payment_method,
+          totalPrice: additionalService.total_price,
+          transactionFee: additionalService.transaction_fee,
+          serviceFee: additionalService.service_fee,
+          status: additionalService.status,
+          metadata: metadata,
+          xenditStatus: xenditStatus,
+          refreshedQR: refreshedData,
+          totalAmount: additionalService.total_price + (additionalService.service_fee || 0) + (additionalService.transaction_fee || 0)
+        },
+      });
+    }
+
+    // Jika tidak ada additionalServiceId, cek status booking
     const booking = await prisma.booking.findFirst({
       where: { booking_number: orderId },
       select: {

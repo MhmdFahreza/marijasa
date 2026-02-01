@@ -1,5 +1,6 @@
 // app/api/payments/xendit/webhook/route.ts
 // Xendit Webhook Handler - All Payment Types (TypeScript Fixed)
+// PERBAIKAN: Tambah penanganan untuk pembayaran layanan tambahan
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
@@ -263,7 +264,158 @@ export async function POST(request: NextRequest) {
     }
 
     // ==========================================
-    // Find and Update Booking
+    // CHECK IF THIS IS FOR ADDITIONAL SERVICE
+    // ==========================================
+    if (orderId && orderId.includes('_additional_')) {
+      // Parse orderId to get booking number and additional service ID
+      const [bookingNumber, additionalServiceId] = orderId.split('_additional_');
+      
+      console.log('[Webhook] Additional service payment:', { bookingNumber, additionalServiceId });
+
+      // Find additional service
+      const additionalService = await prisma.additionalServiceRequest.findFirst({
+        where: {
+          request_id: additionalServiceId,
+          booking: {
+            booking_number: bookingNumber
+          }
+        },
+        include: {
+          booking: {
+            include: {
+              user: true,
+              vendor: true
+            }
+          }
+        }
+      });
+
+      if (!additionalService) {
+        console.log('[Webhook] Additional service not found:', additionalServiceId);
+        return NextResponse.json({
+          received: true,
+          message: 'Additional service not found',
+          orderId
+        });
+      }
+
+      console.log('[Webhook] Found additional service:', additionalService.description);
+      console.log('[Webhook] Current payment status:', additionalService.payment_status);
+
+      // Get current metadata
+      const currentMetadata = (additionalService.payment_metadata as Record<string, any>) || {};
+
+      // Update additional service based on payment status
+      if (paymentStatus === 'PAID') {
+        // Update to PAID
+        await prisma.additionalServiceRequest.update({
+          where: { request_id: additionalServiceId },
+          data: {
+            payment_status: 'PAID',
+            paid_at: new Date(),
+            payment_metadata: {
+              ...currentMetadata,
+              ...paymentDetails,
+              webhook_received_at: new Date().toISOString(),
+              webhook_event: webhookEvent,
+              xendit_id: xenditId,
+            }
+          }
+        });
+
+        // Update booking total
+        const additionalServiceTotal = additionalService.total_price + 
+          (additionalService.service_fee || 10000) + 
+          (additionalService.transaction_fee || 0);
+        
+        await prisma.booking.update({
+          where: { booking_id: additionalService.booking_id },
+          data: {
+            total: additionalService.booking.total + additionalServiceTotal
+          }
+        });
+
+        // Create success notification
+        const paymentMethodName = getPaymentMethodName(additionalService.payment_method);
+        await prisma.userNotification.create({
+          data: {
+            user_id: additionalService.booking.user.user_id,
+            title: '✅ Pembayaran Layanan Tambahan Berhasil',
+            message: `Pembayaran untuk layanan tambahan "${additionalService.description}" telah berhasil via ${paymentMethodName}. Total: Rp ${additionalServiceTotal.toLocaleString('id-ID')}.`,
+            type: 'payment',
+            order_id: additionalService.booking_id,
+          }
+        });
+
+        // Add to booking history
+        await prisma.bookingHistory.create({
+          data: {
+            booking_id: additionalService.booking_id,
+            status: 'Pembayaran Layanan Tambahan Berhasil',
+            reason: `Pembayaran via ${paymentMethodName} telah dikonfirmasi untuk layanan tambahan: ${additionalService.description}. Xendit ID: ${xenditId || 'N/A'}`
+          }
+        });
+
+        console.log('[Webhook] ✅ Additional service payment updated to PAID');
+
+      } else if (paymentStatus === 'FAILED') {
+        // Update to FAILED
+        await prisma.additionalServiceRequest.update({
+          where: { request_id: additionalServiceId },
+          data: {
+            payment_status: 'FAILED',
+            payment_metadata: {
+              ...currentMetadata,
+              ...paymentDetails,
+              failure_webhook_at: new Date().toISOString(),
+              webhook_event: webhookEvent,
+              xendit_id: xenditId,
+            }
+          }
+        });
+
+        // Create failure notification
+        await prisma.userNotification.create({
+          data: {
+            user_id: additionalService.booking.user.user_id,
+            title: '❌ Pembayaran Layanan Tambahan Gagal',
+            message: `Pembayaran untuk layanan tambahan "${additionalService.description}" gagal atau kedaluwarsa. Silakan lakukan pembayaran ulang atau pilih metode pembayaran lain.`,
+            type: 'payment',
+            order_id: additionalService.booking_id,
+          }
+        });
+
+        // Add to booking history
+        await prisma.bookingHistory.create({
+          data: {
+            booking_id: additionalService.booking_id,
+            status: 'Pembayaran Layanan Tambahan Gagal',
+            reason: `Pembayaran gagal atau kedaluwarsa. Event: ${webhookEvent}`
+          }
+        });
+
+        console.log('[Webhook] ❌ Additional service payment updated to FAILED');
+      }
+
+      console.log('\n╔══════════════════════════════════════════════════════════════════╗');
+      console.log('║          ADDITIONAL SERVICE WEBHOOK PROCESSED                    ║');
+      console.log('║ Service:', (additionalService.description.substring(0, 50) + '...').padEnd(55), '║');
+      console.log('║ Status:', paymentStatus.padEnd(54), '║');
+      console.log('╚══════════════════════════════════════════════════════════════════╝\n');
+
+      return NextResponse.json({
+        received: true,
+        success: true,
+        orderId,
+        paymentType: 'additional',
+        status: paymentStatus,
+        xenditId,
+        additionalServiceId,
+      });
+    }
+
+    // ==========================================
+    // Find and Update Booking (MAIN PAYMENT)
     // ==========================================
 
     const booking = await prisma.booking.findFirst({
@@ -411,7 +563,8 @@ export async function GET(request: NextRequest) {
       'fpc_paid',
       'invoice.paid',
       'invoice.expired',
-    ]
+    ],
+    note: 'Supports both main payments and additional service payments'
   });
 }
 
