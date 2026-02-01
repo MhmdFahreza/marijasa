@@ -1,4 +1,3 @@
-// schema.prisma
 generator client {
   provider        = "prisma-client-js"
   output          = "../app/generated/prisma"
@@ -8,10 +7,6 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-
-// ==========================================
-// ENUM TYPES
-// ==========================================
 
 enum UserRole {
   USER
@@ -113,35 +108,29 @@ enum CallType {
   VIDEO
 }
 
-// ==========================================
-// WEBRTC CALL TABLES - Add these models
-// ==========================================
-
 model Call {
   call_id    String     @id @default(uuid()) @db.Uuid
   session_id String     @db.Uuid
   
   caller_id   String   @db.Uuid
-  caller_type String   @db.VarChar(10) // 'user' or 'mitra'
+  caller_type String   @db.VarChar(10)
   receiver_id String   @db.Uuid
-  receiver_type String @db.VarChar(10) // 'user' or 'mitra'
+  receiver_type String @db.VarChar(10)
   
   call_type  CallType   @default(VOICE)
   status     CallStatus @default(INITIATING)
   
-  // WebRTC signaling data
-  offer      Json?    // SDP offer
-  answer     Json?    // SDP answer
-  ice_candidates_caller   Json?  // ICE candidates from caller
-  ice_candidates_receiver Json?  // ICE candidates from receiver
+  offer      Json?
+  answer     Json?
+  ice_candidates_caller   Json?
+  ice_candidates_receiver Json?
   
-  // Call timing
   started_at  DateTime  @default(now())
   answered_at DateTime?
   ended_at    DateTime?
-  duration    Int?      // Duration in seconds
+  duration    Int?
   
-  end_reason  String?   // 'completed', 'rejected', 'missed', 'failed', 'busy'
+  end_reason  String?
   
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -162,10 +151,10 @@ model CallSignal {
   call_id     String @db.Uuid
   
   sender_id   String @db.Uuid
-  sender_type String @db.VarChar(10) // 'user' or 'mitra'
+  sender_type String @db.VarChar(10)
   
-  signal_type String  // 'offer', 'answer', 'ice-candidate', 'hangup', 'reject', 'busy'
-  signal_data Json    // Signal payload
+  signal_type String
+  signal_data Json
   
   is_processed Boolean @default(false)
   
@@ -179,10 +168,6 @@ model CallSignal {
   @@index([created_at])
   @@map("call_signals")
 }
-
-// ==========================================
-// MASTER DATA TABLES
-// ==========================================
 
 model City {
   city_id    String  @id @default(uuid()) @db.Uuid
@@ -217,10 +202,6 @@ model Category {
   @@map("categories")
 }
 
-// ==========================================
-// USER TABLES
-// ==========================================
-
 model User {
   user_id        String   @id @default(uuid()) @db.Uuid
   email          String   @unique
@@ -250,16 +231,12 @@ model User {
   @@map("users")
 }
 
-// ==========================================
-// NOTIFICATION TABLES
-// ==========================================
-
 model UserNotification {
   notification_id String  @id @default(uuid()) @db.Uuid
   user_id         String  @db.Uuid
   title           String
   message         String  @db.Text
-  type            String  // order, promo, system, reminder, additional_service
+  type            String
   order_id        String? @db.Uuid
   is_read         Boolean @default(false)
 
@@ -279,7 +256,7 @@ model AdminNotification {
   notification_id String  @id @default(uuid()) @db.Uuid
   title           String
   message         String  @db.Text
-  type            String  // additional_service_request, order, system
+  type            String
   request_id      String? @db.Uuid
   order_id        String? @db.Uuid
   is_read         Boolean @default(false)
@@ -294,25 +271,18 @@ model AdminNotification {
   @@map("admin_notifications")
 }
 
-// ==========================================
-// ACTIVITY LOG TABLE
-// ==========================================
-
 model ActivityLog {
   activity_id String       @id @default(uuid()) @db.Uuid
   type        ActivityType
   
-  // Actor information
   user_id   String? @db.Uuid
   vendor_id String? @db.Uuid
   admin_id  String? @db.Uuid
   
-  // Activity details
   action      String
   description String? @db.Text
-  metadata    Json?   // Store additional data as JSON
+  metadata    Json?
   
-  // Request information
   ip_address String?
   user_agent String? @db.Text
   page       String?
@@ -326,10 +296,6 @@ model ActivityLog {
   @@index([created_at])
   @@map("activity_logs")
 }
-
-// ==========================================
-// USER FAVORITES TABLE
-// ==========================================
 
 model UserFavorite {
   favorite_id String @id @default(uuid()) @db.Uuid
@@ -347,10 +313,6 @@ model UserFavorite {
   @@index([vendor_id])
   @@map("user_favorites")
 }
-
-// ==========================================
-// ADMIN TABLES
-// ==========================================
 
 model Admin {
   admin_id  String  @id @default(uuid()) @db.Uuid
@@ -392,10 +354,6 @@ model Withdrawal {
   @@map("withdrawals")
 }
 
-// ==========================================
-// VENDOR/MITRA TABLES
-// ==========================================
-
 model Vendor {
   vendor_id   String       @id @default(uuid()) @db.Uuid
   email       String       @unique
@@ -417,7 +375,6 @@ model Vendor {
   tags          String[]
   category      String?
 
-  // Additional fields for registration
   address      String?      @db.Text
   partner_type PartnerType  @default(INDIVIDU)
 
@@ -443,10 +400,10 @@ model Vendor {
 model VendorDocument {
   document_id   String @id @default(uuid()) @db.Uuid
   vendor_id     String @db.Uuid
-  document_type String // ktp, selfie_ktp, skck, siup, cv
+  document_type String
   file_url      String @db.Text
   file_name     String
-  file_type     String // image/jpeg, application/pdf, etc.
+  file_type     String
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -495,10 +452,6 @@ model VendorGallery {
   @@map("vendor_gallery")
 }
 
-// ==========================================
-// BOOKING TABLES
-// ==========================================
-
 model Booking {
   booking_id     String @id @default(uuid()) @db.Uuid
   booking_number String @unique
@@ -520,19 +473,16 @@ model Booking {
   transaction_fee Float @default(0)
   total           Float
 
-  // Payment metadata for Xendit
-  payment_metadata Json? // ✅ TAMBAHKAN FIELD INI
+  payment_metadata Json?
 
-  // Rating fields
   rating         Int?
   rating_comment String? @db.Text
   rating_photos  String[]
   is_anonymous   Boolean @default(false)
   rated_at       DateTime?
 
-  // Cancellation fields
   cancellation_reason String? @db.Text
-  cancelled_by        String? // 'user' or 'vendor'
+  cancelled_by        String?
   cancelled_at        DateTime?
 
   created_at   DateTime  @default(now())
@@ -585,10 +535,6 @@ model BookingHistory {
   @@map("booking_history")
 }
 
-// ==========================================
-// ADDITIONAL SERVICE REQUEST TABLES
-// ==========================================
-
 model AdditionalServiceRequest {
   request_id  String                  @id @default(uuid()) @db.Uuid
   booking_id  String                  @db.Uuid
@@ -600,9 +546,8 @@ model AdditionalServiceRequest {
   images      String[]
   status      AdditionalServiceStatus @default(PENDING)
 
-  // Payment fields - ADDED
-  payment_method   String?   // e.g., 'dana', 'ovo', 'qris', etc.
-  payment_status   String?   @default("PENDING") // 'PENDING', 'PAID'
+  payment_method   String?
+  payment_status   String?   @default("PENDING")
   transaction_fee  Float?    @default(0)
   service_fee      Float?    @default(10000)
   paid_at          DateTime?
@@ -643,10 +588,6 @@ model AdditionalServiceRequestItem {
   @@map("additional_service_request_items")
 }
 
-// ==========================================
-// REVIEW TABLES
-// ==========================================
-
 model Review {
   review_id  String @id @default(uuid()) @db.Uuid
   booking_id String @unique @db.Uuid
@@ -667,10 +608,6 @@ model Review {
   @@index([user_id])
   @@map("reviews")
 }
-
-// ==========================================
-// CHAT TABLES
-// ==========================================
 
 model ChatSession {
   session_id String @id @default(uuid()) @db.Uuid
@@ -701,18 +638,17 @@ model Message {
   message_id  String      @id @default(uuid()) @db.Uuid
   session_id  String      @db.Uuid
   sender_id   String      @db.Uuid
-  sender_type String      @db.VarChar(10) // 'user' or 'mitra'
+  sender_type String      @db.VarChar(10)
 
   text         String?     @db.Text
   message_type MessageType @default(TEXT)
 
-  // Media fields
   file_url  String?
   file_name String?
   file_type String?
   file_size Int?
   thumbnail String?
-  duration  Int? // For voice/video messages in seconds
+  duration  Int?
 
   is_read Boolean   @default(false)
   read_at DateTime?
