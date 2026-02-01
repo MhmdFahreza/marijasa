@@ -556,7 +556,7 @@ const Chatbot = () => {
                         </span>
                       )}
                       {message.image && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center gap-1">
                           <ImageIcon className="w-2.5 h-2.5" />
                           Gambar
                         </span>
@@ -643,7 +643,7 @@ const Chatbot = () => {
                   disabled={isTyping || isUploadingImage}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="relative px-3 py-2 sm:px-3 sm:py-3 bg-gradient-to-r from-blue-400 to-blue-500 text-white rounded-lg sm:rounded-xl hover:from-blue-500 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 group"
+                  className="relative px-3 py-2 sm:px-3 sm:py-3 bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white rounded-lg sm:rounded-xl hover:from-emerald-500 hover:to-[#7CE0A8] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 group"
                   title="Upload Gambar"
                 >
                   {isUploadingImage ? (
