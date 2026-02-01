@@ -1,61 +1,92 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
-import { Vendors } from "@/app/data/dataVendor";
-import { Search, Filter, MessageSquare, Clock, CheckCheck, Check } from "lucide-react";
+import { Search, Filter, MessageSquare, CheckCheck, Check } from "lucide-react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
-// Mock chat list data
-const mockChatList = Vendors.slice(0, 6).map((vendor, index) => ({
-  id: vendor.id,
-  vendor,
-  lastMessage: [
-    "Halo, ada yang bisa saya bantu?",
-    "Estimasi biaya untuk ruangan segitu sekitar Rp 1.500.000",
-    "Bisa survey lokasi besok jam 10?",
-    "Terima kasih telah menggunakan jasa kami",
-    "Pesanan Anda sedang diproses",
-  ][index % 5],
-  timestamp: new Date(Date.now() - 1000 * 60 * 60 * (index + 1)),
-  unreadCount: index === 0 ? 2 : index === 2 ? 1 : 0,
-  read: index !== 0,
-}));
+interface Vendor {
+  id: string;
+  name: string;
+  avatar: string;
+  verified: boolean;
+  rating: number;
+  review_count: number;
+  tags: string[];
+  is_online: boolean;
+}
 
-export default function ChatListPage() {
+interface Chat {
+  id: string;
+  vendor: Vendor;
+  lastMessage: string;
+  timestamp: Date;
+  unreadCount: number;
+  read: boolean;
+}
+
+interface ChatListClientProps {
+  initialChats: Chat[];
+  userId: string;
+}
+
+export default function ChatListClient({ initialChats, userId }: ChatListClientProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
+  const [chats, setChats] = useState<Chat[]>(initialChats);
 
-  const filteredChats = mockChatList.filter((chat) => {
-    const matchesSearch = chat.vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
+  // Fetch real-time updates atau polling bisa ditambahkan di sini
+  useEffect(() => {
+    // Optional: Setup WebSocket atau polling untuk update real-time
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/chat/sessions?userId=${userId}`);
+        const data = await response.json();
+        if (data.success) {
+          setChats(data.chats);
+        }
+      } catch (error) {
+        console.error("Failed to fetch chat updates:", error);
+      }
+    }, 30000); // Poll setiap 30 detik
+
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  const filteredChats = chats.filter((chat) => {
+    const matchesSearch = 
+      chat.vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
     
     if (activeFilter === "unread") {
       return matchesSearch && chat.unreadCount > 0;
+    }
+    if (activeFilter === "online") {
+      return matchesSearch && chat.vendor.is_online;
     }
     return matchesSearch;
   });
 
   const formatTime = (date: Date) => {
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
+    const diffMs = now.getTime() - new Date(date).getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffMins < 1) return "Baru saja";
-    if (diffMins < 60) return `${diffMins} menit`;
-    if (diffHours < 24) return `${diffHours} jam`;
+    if (diffMins < 60) return `${diffMins} menit lalu`;
+    if (diffHours < 24) return `${diffHours} jam lalu`;
     if (diffDays === 1) return "Kemarin";
-    return format(date, "dd/MM/yy", { locale: id });
+    return format(new Date(date), "dd/MM/yy", { locale: id });
   };
 
   return (
@@ -76,6 +107,7 @@ export default function ChatListPage() {
               variant="ghost"
               size="icon"
               className="rounded-full hover:bg-gray-100"
+              onClick={() => setActiveFilter(activeFilter === "online" ? "all" : "online")}
             >
               <Filter className="h-5 w-5" />
             </Button>
@@ -111,18 +143,12 @@ export default function ChatListPage() {
               Belum Dibaca
             </Button>
             <Button
-              variant="outline"
+              variant={activeFilter === "online" ? "default" : "outline"}
               size="sm"
               className="rounded-full"
+              onClick={() => setActiveFilter("online")}
             >
-              Paling Aktif
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-            >
-              Terbaru
+              Online
             </Button>
           </div>
         </div>
@@ -159,19 +185,26 @@ export default function ChatListPage() {
               >
                 <Card
                   className="p-4 border-0 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer hover:bg-blue-50/50"
-                  onClick={() => router.push(`/chat/${chat.id}`)}
+                  onClick={() => router.push(`/chat/${chat.vendor.id}`)}
                 >
                   <div className="flex items-start gap-3">
                     {/* Avatar with Status */}
                     <div className="relative">
                       <Avatar className="h-12 w-12 border-2 border-white shadow">
-                        <AvatarImage src={chat.vendor.avatar} alt={chat.vendor.name} />
+                        <AvatarImage 
+                          src={chat.vendor.avatar || "/default-avatar.png"} 
+                          alt={chat.vendor.name} 
+                        />
                         <AvatarFallback>
                           {chat.vendor.name.substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="absolute -bottom-1 -right-1">
-                        <div className={`h-3 w-3 rounded-full border-2 border-white ${index < 2 ? "bg-green-500" : "bg-gray-400"}`} />
+                        <div 
+                          className={`h-3 w-3 rounded-full border-2 border-white ${
+                            chat.vendor.is_online ? "bg-green-500" : "bg-gray-400"
+                          }`} 
+                        />
                       </div>
                     </div>
 
@@ -196,14 +229,23 @@ export default function ChatListPage() {
                           {[...Array(5)].map((_, i) => (
                             <svg
                               key={i}
-                              className={`w-3 h-3 ${i < Math.floor(chat.vendor.rating) ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}`}
+                              className={`w-3 h-3 ${
+                                i < Math.floor(chat.vendor.rating) 
+                                  ? "text-yellow-400 fill-yellow-400" 
+                                  : "text-gray-300"
+                              }`}
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                             >
                               <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
                             </svg>
                           ))}
-                          <span className="ml-1 font-semibold">{chat.vendor.rating.toFixed(1)}</span>
+                          <span className="ml-1 font-semibold">
+                            {chat.vendor.rating.toFixed(1)}
+                          </span>
+                          <span className="ml-1 text-gray-500">
+                            ({chat.vendor.review_count})
+                          </span>
                         </div>
                       </div>
 
@@ -221,13 +263,24 @@ export default function ChatListPage() {
                       </div>
 
                       {/* Tags */}
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {chat.vendor.tags.slice(0, 2).map((tag) => (
-                          <Badge key={tag} variant="outline" className="text-xs rounded-full">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
+                      {chat.vendor.tags && chat.vendor.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {chat.vendor.tags.slice(0, 2).map((tag: string, tagIndex: number) => (
+                            <Badge 
+                              key={`${tag}-${tagIndex}`} 
+                              variant="outline" 
+                              className="text-xs rounded-full"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                          {chat.vendor.tags.length > 2 && (
+                            <Badge variant="outline" className="text-xs rounded-full">
+                              +{chat.vendor.tags.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Unread Badge */}
