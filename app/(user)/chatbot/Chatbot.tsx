@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   MessageCircle, X, Send, User, Bot, Clock, Sparkles, 
-  Star, MapPin, Phone, ChevronRight 
+  Star, MapPin, Phone, ChevronRight, Image as ImageIcon,
+  Loader2, XCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +15,11 @@ export type ChatMessage = {
   sender: "user" | "bot";
   timestamp: string;
   data?: any;
+  image?: {
+    base64: string;
+    type: string;
+    preview: string;
+  };
 };
 
 type VendorCard = {
@@ -29,13 +35,16 @@ type VendorCard = {
   description?: string;
 };
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
 const Chatbot = () => {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 1,
-      text: "Halo! Saya Chatbot MARIJASA 👋\n\nSaya di sini untuk membantu Anda mengajukan pertanyaan mengenai masalah yang terjadi pada rumah tangga.\n\nAda yang bisa saya bantu hari ini?",
+      text: "Halo! Saya Chatbot MARIJASA 👋\n\nSaya di sini untuk membantu Anda mengajukan pertanyaan mengenai masalah yang terjadi pada rumah tangga.\n\n📸 Anda juga bisa mengirim gambar untuk saya analisis!\n\nAda yang bisa saya bantu hari ini?",
       sender: "bot",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
@@ -43,11 +52,21 @@ const Chatbot = () => {
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [currentTooltipText, setCurrentTooltipText] = useState(0);
+  const [selectedImage, setSelectedImage] = useState<{
+    base64: string;
+    type: string;
+    preview: string;
+    file: File;
+  } | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tooltipTexts = [
     "Marijasa AI",
-    "Tanyakan Kendalamu Disini"
+    "Tanyakan Kendalamu Disini",
+    "📸 Kirim Gambar Juga Bisa!"
   ];
 
   const scrollToBottom = () => {
@@ -82,19 +101,101 @@ const Chatbot = () => {
       .trim();
   };
 
+  // Handle image selection
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Format gambar tidak didukung. Gunakan JPG, PNG, GIF, atau WebP.');
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Ukuran gambar terlalu besar. Maksimal 5MB.');
+      return;
+    }
+
+    setIsUploadingImage(true);
+
+    try {
+      // Convert to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix to get pure base64
+          const base64Data = result.split(',')[1];
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Create preview URL
+      const preview = URL.createObjectURL(file);
+
+      setSelectedImage({
+        base64,
+        type: file.type,
+        preview,
+        file
+      });
+    } catch (error) {
+      console.error('Error processing image:', error);
+      alert('Gagal memproses gambar. Silakan coba lagi.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Remove selected image
+  const removeSelectedImage = () => {
+    if (selectedImage?.preview) {
+      URL.revokeObjectURL(selectedImage.preview);
+    }
+    setSelectedImage(null);
+  };
+
+  // Trigger file input click
+  const handleImageButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !selectedImage) return;
 
     const newUserMessage: ChatMessage = {
       id: messages.length + 1,
-      text: inputText,
+      text: inputText || (selectedImage ? "Tolong analisis gambar ini" : ""),
       sender: "user",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      image: selectedImage ? {
+        base64: selectedImage.base64,
+        type: selectedImage.type,
+        preview: selectedImage.preview
+      } : undefined,
     };
 
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
+    
+    // Prepare image data for API
+    const imageData = selectedImage ? {
+      base64: selectedImage.base64,
+      type: selectedImage.type
+    } : null;
+
+    // Clear input and image
     setInputText("");
+    removeSelectedImage();
     setIsTyping(true);
 
     try {
@@ -104,7 +205,11 @@ const Chatbot = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: updatedMessages,
+          messages: updatedMessages.map(msg => ({
+            text: msg.text,
+            sender: msg.sender,
+          })),
+          image: imageData,
         }),
       });
 
@@ -230,8 +335,32 @@ const Chatbot = () => {
     </motion.div>
   );
 
+  // Image preview component for messages
+  const MessageImage = ({ image }: { image: ChatMessage['image'] }) => {
+    if (!image) return null;
+    
+    return (
+      <div className="mt-2 rounded-lg overflow-hidden max-w-[200px]">
+        <img 
+          src={image.preview} 
+          alt="Uploaded" 
+          className="w-full h-auto object-cover rounded-lg"
+        />
+      </div>
+    );
+  };
+
   return (
     <>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        onChange={handleImageSelect}
+        className="hidden"
+      />
+
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end">
         <AnimatePresence>
           {!isOpen && (
@@ -319,6 +448,7 @@ const Chatbot = () => {
             transition={{ duration: 0.2, type: "spring", stiffness: 300, damping: 25 }}
             className="fixed bottom-24 right-4 sm:bottom-28 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-sm sm:max-w-md md:max-w-lg bg-white dark:bg-neutral-900 rounded-xl sm:rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden backdrop-blur-sm"
           >
+            {/* Header */}
             <div className="relative bg-gradient-to-r from-[#7CE0A8] via-emerald-500 to-emerald-600 p-3 sm:p-4 flex items-center justify-between overflow-hidden">
               <div className="absolute inset-0 opacity-20">
                 <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/30 blur-xl" />
@@ -342,7 +472,7 @@ const Chatbot = () => {
                   </div>
                   <p className="text-white/80 text-xs flex items-center gap-1 mt-1">
                     <Clock className="w-3 h-3" />
-                    <span className="animate-pulse">Powered by Groq AI</span>
+                    <span className="animate-pulse">Powered by Groq AI • Vision Enabled</span>
                   </p>
                 </div>
               </div>
@@ -354,6 +484,7 @@ const Chatbot = () => {
               </button>
             </div>
 
+            {/* Messages */}
             <div className="h-[300px] sm:h-[350px] md:h-[400px] overflow-y-auto p-3 sm:p-4 bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900">
               {messages.map((message) => (
                 <motion.div
@@ -383,6 +514,11 @@ const Chatbot = () => {
                     >
                       {message.sender === "user" && (
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shine" />
+                      )}
+                      
+                      {/* Show image if present */}
+                      {message.image && (
+                        <MessageImage image={message.image} />
                       )}
                       
                       <p className="text-xs sm:text-sm whitespace-pre-line leading-relaxed relative z-10">
@@ -419,6 +555,12 @@ const Chatbot = () => {
                           AI
                         </span>
                       )}
+                      {message.image && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center gap-1">
+                          <ImageIcon className="w-2.5 h-2.5" />
+                          Gambar
+                        </span>
+                      )}
                     </motion.div>
                   </div>
 
@@ -447,7 +589,7 @@ const Chatbot = () => {
                         <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                       </div>
                       <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                        Sedang mengetik...
+                        Sedang menganalisis...
                       </span>
                     </div>
                   </div>
@@ -456,8 +598,62 @@ const Chatbot = () => {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Image Preview */}
+            <AnimatePresence>
+              {selectedImage && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="px-3 sm:px-4 py-2 bg-neutral-50 dark:bg-neutral-800/50 border-t border-neutral-200 dark:border-neutral-700"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <img 
+                        src={selectedImage.preview} 
+                        alt="Preview" 
+                        className="w-16 h-16 object-cover rounded-lg ring-2 ring-emerald-200 dark:ring-emerald-800"
+                      />
+                      <button
+                        onClick={removeSelectedImage}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 truncate">
+                        {selectedImage.file.name}
+                      </p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {(selectedImage.file.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Input Area */}
             <div className="p-3 sm:p-4 border-t border-neutral-200 dark:border-neutral-800 bg-gradient-to-t from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-950">
               <div className="flex gap-2 sm:gap-3">
+                {/* Image Upload Button */}
+                <motion.button
+                  onClick={handleImageButtonClick}
+                  disabled={isTyping || isUploadingImage}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="relative px-3 py-2 sm:px-3 sm:py-3 bg-gradient-to-r from-blue-400 to-blue-500 text-white rounded-lg sm:rounded-xl hover:from-blue-500 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 group"
+                  title="Upload Gambar"
+                >
+                  {isUploadingImage ? (
+                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                  )}
+                </motion.button>
+
+                {/* Text Input */}
                 <div className="flex-1 relative">
                   <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-[#7CE0A8]/10 rounded-lg sm:rounded-xl blur-sm" />
                   <input
@@ -465,19 +661,21 @@ const Chatbot = () => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="Tanyakan tentang layanan kami..."
+                    placeholder={selectedImage ? "Tambahkan pesan (opsional)..." : "Tanyakan atau kirim gambar..."}
                     disabled={isTyping}
                     className="relative w-full px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm border border-emerald-200 dark:border-emerald-800/50 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7CE0A8] focus:border-transparent placeholder-emerald-600/50 dark:placeholder-emerald-400/50 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  {!inputText && !isTyping && (
+                  {!inputText && !isTyping && !selectedImage && (
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                       <Sparkles className="w-4 h-4 text-emerald-400/50" />
                     </div>
                   )}
                 </div>
+
+                {/* Send Button */}
                 <motion.button
                   onClick={handleSendMessage}
-                  disabled={!inputText.trim() || isTyping}
+                  disabled={(!inputText.trim() && !selectedImage) || isTyping}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className="relative px-3 py-2 sm:px-4 sm:py-3 bg-gradient-to-r from-[#7CE0A8] to-emerald-500 text-white rounded-lg sm:rounded-xl hover:from-emerald-500 hover:to-[#7CE0A8] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 group overflow-hidden"
@@ -486,14 +684,15 @@ const Chatbot = () => {
                   
                   <Send className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                   
-                  {inputText.trim() && !isTyping && (
+                  {(inputText.trim() || selectedImage) && !isTyping && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-300 rounded-full animate-ping opacity-75" />
                   )}
                 </motion.button>
               </div>
               <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mt-2 text-center flex items-center justify-center gap-1">
                 <Sparkles className="w-3 h-3" />
-                Powered by Groq AI • Respon real-time
+                Powered by Groq AI • Vision & Text
+                <ImageIcon className="w-3 h-3 ml-1" />
               </p>
             </div>
           </motion.div>

@@ -17,11 +17,17 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-const AI_MODELS = [
+// Model untuk text-only
+const TEXT_MODELS = [
   "meta-llama/llama-guard-4-12b",
   "moonshotai/kimi-k2-instruct",
   "llama-3.1-70b-versatile",
   "mixtral-8x7b-32768",
+];
+
+// Model untuk vision (image + text)
+const VISION_MODELS = [
+  "meta-llama/llama-4-scout-17b-16e-instruct",
 ];
 
 async function getTopVendors() {
@@ -137,6 +143,19 @@ ID: ${v.vendor_id}`
 
   return `Kamu adalah MARIJASA AI Assistant, chatbot pintar yang membantu pengguna dengan pertanyaan tentang layanan jasa rumah tangga di platform MARIJASA.
 
+KEMAMPUAN VISION:
+Kamu memiliki kemampuan untuk melihat dan menganalisis gambar yang dikirim oleh pengguna. Jika pengguna mengirim gambar:
+- Analisis gambar dengan teliti
+- Identifikasi masalah atau kerusakan yang terlihat (jika ada)
+- Berikan penjelasan tentang apa yang kamu lihat
+- Jika relevan, rekomendasikan jenis jasa yang mungkin diperlukan
+- Berikan tips atau saran berdasarkan gambar
+
+Contoh penggunaan:
+- User mengirim foto AC yang rusak → Analisis kondisi AC, identifikasi kemungkinan masalah, sarankan untuk memanggil teknisi AC
+- User mengirim foto pipa bocor → Jelaskan tingkat keparahan, berikan tips darurat, sarankan untuk memanggil tukang ledeng
+- User mengirim foto kerusakan listrik → Peringatkan tentang bahaya, sarankan untuk tidak menyentuh, rekomendasikan teknisi listrik
+
 TENTANG MARIJASA:
 MARIJASA adalah platform yang menghubungkan pelanggan dengan penyedia jasa rumah tangga profesional dan terverifikasi. Platform ini menyediakan berbagai layanan seperti perbaikan listrik, AC, ledeng, pembersihan rumah, tukang bangunan, dan masih banyak lagi.
 
@@ -161,7 +180,7 @@ INFORMASI LENGKAP TENTANG LAYANAN MARIJASA:
    - Setelah selesai, berikan rating dan ulasan
 
 2. CARA DAFTAR AKUN USER/PELANGGAN:
-   - Kunjungi: https://com/auth/register
+   - Kunjungi: https://marijasa.com/auth/register
    - Isi form pendaftaran dengan data lengkap (nama, email, telepon, password)
    - Centang "Saya setuju dengan syarat dan ketentuan"
    - Klik tombol "Daftar"
@@ -244,6 +263,14 @@ INFORMASI LENGKAP TENTANG LAYANAN MARIJASA:
    - Social Media: @marijasa di Instagram, Facebook, Twitter
 
 CARA MENJAWAB PERTANYAAN:
+
+UNTUK PERTANYAAN DENGAN GAMBAR:
+- Analisis gambar dengan teliti dan detail
+- Jelaskan apa yang kamu lihat dalam gambar
+- Identifikasi masalah atau kerusakan (jika ada)
+- Berikan saran atau rekomendasi yang relevan
+- Jika diperlukan, tawarkan untuk merekomendasikan mitra yang sesuai
+- Gunakan bahasa yang mudah dipahami
 
 UNTUK PERTANYAAN UMUM / INFORMASI:
 - Berikan jawaban yang LENGKAP, DETAIL, dan INFORMATIF
@@ -391,7 +418,69 @@ function analyzeQuery(query: string): {
   };
 }
 
-async function tryModels(
+// Helper function untuk membuat message content dengan gambar
+function createMessageContent(text: string, imageBase64?: string, imageType?: string): any {
+  if (imageBase64 && imageType) {
+    return [
+      {
+        type: "text",
+        text: text || "Tolong analisis gambar ini dan berikan penjelasan detail tentang apa yang kamu lihat. Jika ada masalah atau kerusakan, jelaskan dan berikan saran."
+      },
+      {
+        type: "image_url",
+        image_url: {
+          url: `data:${imageType};base64,${imageBase64}`
+        }
+      }
+    ];
+  }
+  return text;
+}
+
+// Try vision models for image requests
+async function tryVisionModels(
+  messages: any[],
+  systemPrompt: string
+): Promise<string> {
+  const allMessages = [
+    { role: "system", content: systemPrompt },
+    ...messages,
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const model of VISION_MODELS) {
+    try {
+      console.log(`Trying vision model: ${model}`);
+
+      const completion = await groq.chat.completions.create({
+        model: model,
+        messages: allMessages as ChatCompletionMessageParam[],
+        temperature: 0.7,
+        max_tokens: 2048,
+        top_p: 0.9,
+      });
+
+      const responseText = completion.choices[0]?.message?.content;
+
+      if (responseText) {
+        console.log(`Success with vision model: ${model}`);
+        return responseText;
+      }
+    } catch (error: any) {
+      console.error(`Error with vision model ${model}:`, error.message);
+      lastError = error;
+      continue;
+    }
+  }
+
+  throw (
+    lastError ||
+    new Error("Model vision tidak tersedia saat ini. Silakan coba lagi.")
+  );
+}
+
+async function tryTextModels(
   messages: ChatCompletionMessageParam[],
   systemPrompt: string
 ): Promise<string> {
@@ -402,9 +491,9 @@ async function tryModels(
 
   let lastError: Error | null = null;
 
-  for (const model of AI_MODELS) {
+  for (const model of TEXT_MODELS) {
     try {
-      console.log(`Trying model: ${model}`);
+      console.log(`Trying text model: ${model}`);
 
       const completion = await groq.chat.completions.create({
         model: model,
@@ -417,11 +506,11 @@ async function tryModels(
       const responseText = completion.choices[0]?.message?.content;
 
       if (responseText) {
-        console.log(`Success with model: ${model}`);
+        console.log(`Success with text model: ${model}`);
         return responseText;
       }
     } catch (error: any) {
-      console.error(`Error with model ${model}:`, error.message);
+      console.error(`Error with text model ${model}:`, error.message);
       lastError = error;
 
       if (
@@ -442,13 +531,11 @@ async function tryModels(
   );
 }
 
-// ✅ Helper function untuk extract JSON dari response
+// Helper function untuk extract JSON dari response
 function extractJSON(text: string): any | null {
   try {
-    // Try parsing directly first
     return JSON.parse(text);
   } catch (e) {
-    // If direct parse fails, try to extract JSON from markdown code blocks
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || 
                      text.match(/```\s*([\s\S]*?)\s*```/) ||
                      text.match(/\{[\s\S]*\}/);
@@ -469,7 +556,7 @@ function extractJSON(text: string): any | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages } = await request.json();
+    const { messages, image } = await request.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -482,6 +569,53 @@ export async function POST(request: NextRequest) {
     const queryAnalysis = analyzeQuery(lastUserMessage);
     const systemPrompt = await generateSystemPrompt();
 
+    // Check if there's an image in the request
+    const hasImage = image && image.base64 && image.type;
+
+    // Jika ada gambar, gunakan vision model
+    if (hasImage) {
+      console.log("Processing image request with vision model");
+      
+      // Build messages for vision model
+      const visionMessages = messages.map((msg: any, index: number) => {
+        const isLastMessage = index === messages.length - 1;
+        
+        if (msg.sender === "user") {
+          // Only add image to the last user message
+          if (isLastMessage && hasImage) {
+            return {
+              role: "user",
+              content: createMessageContent(msg.text, image.base64, image.type)
+            };
+          }
+          return {
+            role: "user",
+            content: msg.text
+          };
+        }
+        return {
+          role: "assistant",
+          content: msg.text
+        };
+      });
+
+      try {
+        const responseText = await tryVisionModels(visionMessages, systemPrompt);
+        
+        return NextResponse.json({
+          success: true,
+          message: responseText,
+        });
+      } catch (error: any) {
+        console.error("Vision model error:", error);
+        return NextResponse.json({
+          success: true,
+          message: "Maaf, saya tidak dapat menganalisis gambar saat ini. Silakan coba lagi atau jelaskan masalah Anda dengan teks.",
+        });
+      }
+    }
+
+    // Text-only messages (existing logic)
     const groqMessages: ChatCompletionMessageParam[] = messages.map(
       (msg: any) => ({
         role: msg.sender === "user" ? "user" : "assistant",
@@ -489,7 +623,7 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // ✅ PERBAIKAN: Jika request adalah rekomendasi vendor
+    // Jika request adalah rekomendasi vendor
     if (queryAnalysis.isVendorSearch && queryAnalysis.isRecommendationRequest) {
       let vendors: any[] = [];
 
@@ -547,21 +681,18 @@ RULES:
 - Jumlah vendor HARUS ${vendors.length}`,
         };
 
-        const responseText = await tryModels(enhancedMessages, systemPrompt);
+        const responseText = await tryTextModels(enhancedMessages, systemPrompt);
         console.log("AI Response:", responseText);
 
-        // ✅ Extract dan parse JSON dari response
         const jsonData = extractJSON(responseText);
 
         if (jsonData && jsonData.type === "vendor_recommendation") {
-          // ✅ Response valid JSON vendor recommendation
           return NextResponse.json({
             success: true,
             message: jsonData.message,
             data: jsonData,
           });
         } else {
-          // ✅ Fallback: Jika AI tidak return JSON yang valid, kita buat sendiri
           console.warn("AI did not return valid JSON, creating manual response");
           return NextResponse.json({
             success: true,
@@ -589,7 +720,6 @@ RULES:
           });
         }
       } else {
-        // No vendors found
         const noVendorMessages = [...groqMessages];
         noVendorMessages[noVendorMessages.length - 1] = {
           role: "user",
@@ -602,7 +732,7 @@ Berikan response yang informatif dan helpful, sarankan untuk:
 3. Cek halaman /jasa untuk melihat semua mitra tersedia`,
         };
 
-        const responseText = await tryModels(noVendorMessages, systemPrompt);
+        const responseText = await tryTextModels(noVendorMessages, systemPrompt);
         return NextResponse.json({
           success: true,
           message: responseText,
@@ -610,8 +740,8 @@ Berikan response yang informatif dan helpful, sarankan untuk:
       }
     }
 
-    // ✅ Untuk pertanyaan umum (bukan rekomendasi vendor)
-    const responseText = await tryModels(groqMessages, systemPrompt);
+    // Untuk pertanyaan umum (bukan rekomendasi vendor)
+    const responseText = await tryTextModels(groqMessages, systemPrompt);
 
     return NextResponse.json({
       success: true,
