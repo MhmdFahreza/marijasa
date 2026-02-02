@@ -2,21 +2,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = params.id;
+    const { id } = await params;
 
     const user = await prisma.user.findUnique({
-      where: { user_id: userId },
+      where: { user_id: id },
       include: {
         _count: {
           select: {
@@ -57,16 +51,16 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = params.id;
+    const { id } = await params;
     const body = await request.json();
     const { name, email, phone, role, is_active, password } = body;
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { user_id: userId },
+      where: { user_id: id },
     });
 
     if (!existingUser) {
@@ -107,7 +101,7 @@ export async function PUT(
 
     // Update user
     const user = await prisma.user.update({
-      where: { user_id: userId },
+      where: { user_id: id },
       data: updateData,
     });
 
@@ -134,14 +128,14 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = params.id;
+    const { id } = await params;
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { user_id: userId },
+      where: { user_id: id },
       select: {
         user_id: true,
         name: true,
@@ -165,17 +159,17 @@ export async function DELETE(
     // Delete related data first (manual deletion for better control)
     // Delete reviews
     await prisma.review.deleteMany({
-      where: { user_id: userId },
+      where: { user_id: id },
     });
 
     // Delete favorites
     await prisma.userFavorite.deleteMany({
-      where: { user_id: userId },
+      where: { user_id: id },
     });
 
     // Delete booking items through bookings
     const userBookings = await prisma.booking.findMany({
-      where: { user_id: userId },
+      where: { user_id: id },
       select: { booking_id: true },
     });
 
@@ -203,7 +197,7 @@ export async function DELETE(
 
     // Finally delete the user
     await prisma.user.delete({
-      where: { user_id: userId },
+      where: { user_id: id },
     });
 
     return NextResponse.json({

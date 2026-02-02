@@ -4,18 +4,12 @@ import prisma from "@/app/components/lib/prisma";
 
 export const dynamic = 'force-dynamic';
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
 export async function GET(
   request: Request,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const vendor = await prisma.vendor.findUnique({
       where: { vendor_id: id },
@@ -90,10 +84,10 @@ export async function GET(
 
 export async function DELETE(
   request: Request,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // Check if vendor exists
     const vendor = await prisma.vendor.findUnique({
@@ -133,10 +127,10 @@ export async function DELETE(
 
 export async function PATCH(
   request: Request,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     // Check if vendor exists

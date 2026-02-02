@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
-import { PrismaClient } from "@/app/generated/prisma";
+import prisma from "@/app/components/lib/prisma";  // Gunakan prisma instance yang sudah ada
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-const prisma = globalForPrisma.prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
 
 // Model untuk text-only
 const TEXT_MODELS = [
