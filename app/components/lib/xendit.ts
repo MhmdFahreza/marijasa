@@ -2,12 +2,44 @@
 // Xendit Payment Gateway - Full Integration (All Payment Methods)
 // Updated: January 2025
 // ✅ FIXED: Removed 'description' field from Virtual Account (not supported by BCA and some other banks)
+// ✅ FIXED: Added URL sanitization to prevent malformed redirect URLs
 
 const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY || '';
 const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || '';
 const XENDIT_PUBLIC_KEY = process.env.XENDIT_PUBLIC_KEY || '';
 const BASE_URL = 'https://api.xendit.co';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://pillowy-noncategorically-lovella.ngrok-free.dev';
+
+// ==========================================
+// URL SANITIZATION HELPER
+// ==========================================
+
+function sanitizeAppUrl(url: string | undefined): string {
+  const defaultUrl = 'http://localhost:3000';
+  
+  if (!url) return defaultUrl;
+  
+  // Remove any surrounding quotes
+  let sanitized = url.replace(/^["']|["']$/g, '');
+  
+  // Remove any inline comments (everything after space followed by //)
+  sanitized = sanitized.split(/\s+\/\//)[0].trim();
+  
+  // Remove any trailing slashes
+  sanitized = sanitized.replace(/\/+$/, '');
+  
+  // Validate URL format
+  try {
+    new URL(sanitized);
+    return sanitized;
+  } catch {
+    console.warn(`[Xendit] Invalid APP_URL: "${url}", using default: ${defaultUrl}`);
+    return defaultUrl;
+  }
+}
+
+const APP_URL = sanitizeAppUrl(process.env.NEXT_PUBLIC_APP_URL);
+
+console.log(`[Xendit] Using APP_URL: ${APP_URL}`);
 
 // ==========================================
 // XENDIT PAYMENT FEES (January 2025)
@@ -106,6 +138,14 @@ export function getSecretKeyInfo(): { configured: boolean; prefix: string; lengt
 
 export function getWebhookToken(): string {
   return XENDIT_WEBHOOK_TOKEN;
+}
+
+// ==========================================
+// GET APP URL (for external use)
+// ==========================================
+
+export function getAppUrl(): string {
+  return APP_URL;
 }
 
 // ==========================================
@@ -273,6 +313,13 @@ export async function createEWalletPayment(params: CreateEWalletPaymentParams): 
   console.log('\n[E-Wallet] Creating E-Wallet charge...');
   console.log('[E-Wallet] Channel:', params.channelCode);
 
+  // Sanitize redirect URLs
+  const successUrl = sanitizeRedirectUrl(params.successRedirectUrl) || `${APP_URL}/riwayat_pemesanan?status=success`;
+  const failureUrl = sanitizeRedirectUrl(params.failureRedirectUrl) || `${APP_URL}/riwayat_pemesanan?status=failed`;
+
+  console.log('[E-Wallet] Success URL:', successUrl);
+  console.log('[E-Wallet] Failure URL:', failureUrl);
+
   const body: any = {
     reference_id: params.externalId,
     currency: 'IDR',
@@ -280,8 +327,8 @@ export async function createEWalletPayment(params: CreateEWalletPaymentParams): 
     checkout_method: 'ONE_TIME_PAYMENT',
     channel_code: params.channelCode,
     channel_properties: {
-      success_redirect_url: params.successRedirectUrl || `${APP_URL}/riwayat_pemesanan?status=success`,
-      failure_redirect_url: params.failureRedirectUrl || `${APP_URL}/riwayat_pemesanan?status=failed`,
+      success_redirect_url: successUrl,
+      failure_redirect_url: failureUrl,
     },
     metadata: {
       description: params.description || 'Pembayaran SELSAS',
@@ -298,6 +345,26 @@ export async function createEWalletPayment(params: CreateEWalletPaymentParams): 
   }
 
   return xenditRequest('/ewallets/charges', 'POST', body, '2021-01-25');
+}
+
+// Helper function to sanitize redirect URLs
+function sanitizeRedirectUrl(url: string | undefined): string | null {
+  if (!url) return null;
+
+  // Remove any surrounding quotes
+  let sanitized = url.replace(/^["']|["']$/g, '');
+
+  // Remove any inline comments (everything after space followed by //)
+  sanitized = sanitized.split(/\s+\/\//)[0].trim();
+
+  // Validate URL format
+  try {
+    new URL(sanitized);
+    return sanitized;
+  } catch {
+    console.warn(`[Xendit] Invalid redirect URL: "${url}"`);
+    return null;
+  }
 }
 
 export async function getEWalletChargeStatus(chargeId: string): Promise<EWalletPaymentResponse> {
@@ -462,6 +529,10 @@ export interface CardPaymentResponse {
 export async function createCardPayment(params: CreateCardPaymentParams): Promise<CardPaymentResponse> {
   console.log('\n[Card] Creating Card payment via Invoice...');
 
+  // Sanitize redirect URLs
+  const successUrl = sanitizeRedirectUrl(params.successRedirectUrl) || `${APP_URL}/riwayat_pemesanan?status=success`;
+  const failureUrl = sanitizeRedirectUrl(params.failureRedirectUrl) || `${APP_URL}/riwayat_pemesanan?status=failed`;
+
   const body: any = {
     external_id: params.externalId,
     amount: params.amount,
@@ -471,8 +542,8 @@ export async function createCardPayment(params: CreateCardPaymentParams): Promis
     invoice_duration: params.invoiceDuration || 86400,
     // Only allow card payments
     payment_methods: ['CREDIT_CARD'],
-    success_redirect_url: params.successRedirectUrl || `${APP_URL}/riwayat_pemesanan?status=success`,
-    failure_redirect_url: params.failureRedirectUrl || `${APP_URL}/riwayat_pemesanan?status=failed`,
+    success_redirect_url: successUrl,
+    failure_redirect_url: failureUrl,
   };
 
   if (params.customerName || params.customerPhone) {
@@ -506,6 +577,10 @@ export interface CreateInvoiceParams {
 export async function createXenditInvoice(params: CreateInvoiceParams): Promise<CardPaymentResponse> {
   console.log('\n[Invoice] Creating Universal Invoice...');
 
+  // Sanitize redirect URLs
+  const successUrl = sanitizeRedirectUrl(params.successRedirectUrl);
+  const failureUrl = sanitizeRedirectUrl(params.failureRedirectUrl);
+
   const body: any = {
     external_id: params.externalId,
     amount: params.amount,
@@ -523,8 +598,8 @@ export async function createXenditInvoice(params: CreateInvoiceParams): Promise<
     };
   }
 
-  if (params.successRedirectUrl) body.success_redirect_url = params.successRedirectUrl;
-  if (params.failureRedirectUrl) body.failure_redirect_url = params.failureRedirectUrl;
+  if (successUrl) body.success_redirect_url = successUrl;
+  if (failureUrl) body.failure_redirect_url = failureUrl;
 
   // Only add payment_methods if specified (otherwise Xendit shows all)
   if (params.paymentMethods && params.paymentMethods.length > 0) {
