@@ -13,7 +13,14 @@ interface ProvidersProps {
 
 export default function Providers({ children }: ProvidersProps) {
   return (
-    <SessionProvider refetchInterval={5 * 60} refetchOnWindowFocus={true}>
+    <SessionProvider 
+      // Refetch session every 4 minutes (before token expires)
+      refetchInterval={4 * 60}
+      // Refetch when window becomes focused
+      refetchOnWindowFocus={true}
+      // Don't refetch when offline
+      refetchWhenOffline={false}
+    >
       <LanguageProvider>
         <AuthProvider>
           <NotificationProvider>
