@@ -59,60 +59,65 @@ export async function GET(request: NextRequest) {
   try {
     console.log("[Auth Me] 🔍 Processing authentication check...");
 
-    // FIRST: Check for NextAuth session (Google OAuth) - Quick check
-    try {
-      const nextAuthSession = await getServerSession(authOptions);
-      if (nextAuthSession?.user?.email) {
-        console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
-
-        // Get fresh user data from database
-        const user = await prisma.user.findUnique({
-          where: { email: nextAuthSession.user.email.toLowerCase() },
-          select: {
-            user_id: true,
-            email: true,
-            name: true,
-            phone: true,
-            avatar: true,
-            role: true,
-            is_active: true,
-          },
-        });
-
-        if (user && user.is_active) {
-          console.log("[Auth Me] ✅ NextAuth user found:", user.email, `(${Date.now() - startTime}ms)`);
-
-          return NextResponse.json(
-            {
-              authenticated: true,
-              user: createUserResponse(user),
-              authMethod: "nextauth",
-            },
-            {
-              status: 200,
-              headers: NO_CACHE_HEADERS,
-            }
-          );
-        } else {
-          console.log("[Auth Me] ⚠️ NextAuth user not found or inactive in database");
-        }
-      }
-    } catch (error) {
-      // NextAuth session check failed - this is normal for JWT auth
-      console.log("[Auth Me] NextAuth session check failed (normal for JWT auth)");
-    }
-
-    // SECOND: Check custom JWT session
+    // Get cookies early to avoid race conditions
     const sessionId = request.cookies.get("session_id")?.value;
     const accessToken = request.cookies.get("access_token")?.value;
     const refreshToken = request.cookies.get("refresh_token")?.value;
+    const nextAuthToken = request.cookies.get("next-auth.session-token")?.value;
 
     console.log("[Auth Me] Cookie status:", {
       hasSessionId: !!sessionId,
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
+      hasNextAuthToken: !!nextAuthToken,
+      sessionIdPreview: sessionId?.substring(0, 8) + "...",
     });
 
+    // FIRST: Check for NextAuth session (Google OAuth) - Quick check
+    if (nextAuthToken) {
+      try {
+        const nextAuthSession = await getServerSession(authOptions);
+        if (nextAuthSession?.user?.email) {
+          console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
+
+          // Get fresh user data from database
+          const user = await prisma.user.findUnique({
+            where: { email: nextAuthSession.user.email.toLowerCase() },
+            select: {
+              user_id: true,
+              email: true,
+              name: true,
+              phone: true,
+              avatar: true,
+              role: true,
+              is_active: true,
+            },
+          });
+
+          if (user && user.is_active) {
+            console.log("[Auth Me] ✅ NextAuth user found:", user.email, `(${Date.now() - startTime}ms)`);
+
+            return NextResponse.json(
+              {
+                authenticated: true,
+                user: createUserResponse(user),
+                authMethod: "nextauth",
+              },
+              {
+                status: 200,
+                headers: NO_CACHE_HEADERS,
+              }
+            );
+          } else {
+            console.log("[Auth Me] ⚠️ NextAuth user not found or inactive in database");
+          }
+        }
+      } catch (error) {
+        console.log("[Auth Me] NextAuth session check failed:", error);
+      }
+    }
+
+    // SECOND: Check custom JWT session
     // No session ID = not authenticated
     if (!sessionId) {
       console.log("[Auth Me] ❌ No session ID found");
@@ -125,7 +130,7 @@ export async function GET(request: NextRequest) {
     // Verify session exists in Redis
     const session = await getSession(sessionId);
     if (!session) {
-      console.log("[Auth Me] ❌ Session not found in Redis");
+      console.log("[Auth Me] ❌ Session not found in Redis:", sessionId);
       const response = NextResponse.json(
         { message: "Session expired", authenticated: false, user: null },
         { status: 401, headers: NO_CACHE_HEADERS }

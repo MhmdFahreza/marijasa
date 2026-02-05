@@ -71,7 +71,8 @@ function NavbarSkeleton() {
 }
 
 export default function UserLayout({ children }: { children: ReactNode }) {
-  // Hydration-safe mounted state
+  // CRITICAL: Set isMounted to true immediately in state
+  // This prevents the initial render showing completely empty content
   const [isMounted, setIsMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -101,10 +102,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const userAvatar = user?.avatar || defaultAvatar;
   const userEmail = user?.email || "";
 
-  // Set mounted state after hydration
+  // CRITICAL FIX: Set mounted immediately on first render
   useEffect(() => {
     setIsMounted(true);
-  }, []);
+  }, []); // Empty deps = run once after mount
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -291,19 +292,34 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     );
   }, [notifications, handleNotificationClick, getNotificationIcon, deleteNotification]);
 
-  // Determine render state - only after mount to prevent hydration mismatch
-  const showSkeleton = !isMounted || (!isInitialized && authLoading);
-  const showAuthenticatedUI = isMounted && isInitialized && isAuthenticated && user;
-  const showGuestUI = isMounted && isInitialized && !isAuthenticated;
+  // IMPROVED LOGIC: Better render state determination
+  // Show skeleton ONLY when auth is actively loading AND not yet initialized
+  const showSkeleton = authLoading && !isInitialized;
+  
+  // Show authenticated UI when we have a user (regardless of initialization state)
+  const showAuthenticatedUI = isAuthenticated && user;
+  
+  // Show guest UI when not authenticated and initialized
+  const showGuestUI = !isAuthenticated && isInitialized;
+
+  // Enhanced logging - only in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log("[Layout] Render state:", {
+      isMounted,
+      isInitialized,
+      isAuthenticated,
+      hasUser: !!user,
+      authLoading,
+      showSkeleton,
+      showAuthenticatedUI,
+      showGuestUI,
+      userEmail: user?.email || 'none'
+    });
+  }
 
   // Render navbar content based on auth state
   const renderNavbarContent = () => {
-    // Show skeleton during SSR and initial load
-    if (showSkeleton) {
-      return <NavbarSkeleton />;
-    }
-
-    // Show authenticated UI
+    // PRIORITY 1: If we have user data, show authenticated UI immediately
     if (showAuthenticatedUI) {
       return (
         <div className="flex items-center gap-4">
@@ -456,51 +472,50 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // Show guest UI (default for SSR consistency)
-    return (
-      <div className="flex items-center gap-4">
-        <Link href="/login" prefetch={true}>
-          <NavbarButton
-            as="span"
-            variant="outline"
-            className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
-          >
-            Masuk
-          </NavbarButton>
-        </Link>
-
-        <Link href="/register" prefetch={true}>
-          <NavbarButton
-            as="span"
-            variant="primary"
-            className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
-          >
-            Daftar
-          </NavbarButton>
-        </Link>
-
-        <LanguageSelector
-          selectedLanguage={selectedLanguage}
-          onSelectLanguage={handleSelectLanguage}
-        />
-      </div>
-    );
-  };
-
-  // Render mobile menu content
-  const renderMobileMenuContent = () => {
+    // PRIORITY 2: Show skeleton while loading
     if (showSkeleton) {
+      return <NavbarSkeleton />;
+    }
+
+    // PRIORITY 3: Show guest UI when confirmed not authenticated
+    if (showGuestUI) {
       return (
-        <div className="space-y-4 p-4">
-          <div className="animate-pulse">
-            <div className="h-12 bg-gray-200 dark:bg-neutral-700 rounded-lg mb-4" />
-            <div className="h-10 bg-gray-200 dark:bg-neutral-700 rounded-lg mb-2" />
-            <div className="h-10 bg-gray-200 dark:bg-neutral-700 rounded-lg" />
-          </div>
+        <div className="flex items-center gap-4">
+          <Link href="/login" prefetch={true}>
+            <NavbarButton
+              as="span"
+              variant="outline"
+              className="border-[#7CE0A8] text-[#7CE0A8] hover:bg-[#7CE0A8] hover:text-white transition-colors font-medium px-5 py-2.5 min-w-[100px]"
+            >
+              Masuk
+            </NavbarButton>
+          </Link>
+
+          <Link href="/register" prefetch={true}>
+            <NavbarButton
+              as="span"
+              variant="primary"
+              className="bg-[#7CE0A8] hover:bg-[#6bd097] text-white font-medium px-5 py-2.5 shadow-sm min-w-[100px]"
+            >
+              Daftar
+            </NavbarButton>
+          </Link>
+
+          <LanguageSelector
+            selectedLanguage={selectedLanguage}
+            onSelectLanguage={handleSelectLanguage}
+          />
         </div>
       );
     }
 
+    // FALLBACK: Show skeleton if we're in an unexpected state
+    return <NavbarSkeleton />;
+  };
+
+  // Render mobile menu content
+  const renderMobileMenuContent = () => {
+    // PRIORITY 1: Authenticated UI
     if (showAuthenticatedUI) {
       return (
         <div className="space-y-6">
@@ -583,6 +598,20 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
+    // PRIORITY 2: Loading skeleton
+    if (showSkeleton) {
+      return (
+        <div className="space-y-4 p-4">
+          <div className="animate-pulse">
+            <div className="h-12 bg-gray-200 dark:bg-neutral-700 rounded-lg mb-4" />
+            <div className="h-10 bg-gray-200 dark:bg-neutral-700 rounded-lg mb-2" />
+            <div className="h-10 bg-gray-200 dark:bg-neutral-700 rounded-lg" />
+          </div>
+        </div>
+      );
+    }
+
+    // PRIORITY 3: Guest UI
     return (
       <div className="space-y-6">
         <div className="space-y-3">
@@ -618,7 +647,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative w-full min-h-screen">
-      {/* Only show full-screen loader during logout */}
       {isLoggingOut && (
         <div className="fixed inset-0 flex justify-center items-center bg-white dark:bg-neutral-900 z-[9999]">
           <LoaderTwo />
@@ -639,8 +667,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               <NavbarLogo />
             </div>
             <div className="flex items-center gap-2">
-              {/* Mobile Notification Bell - only show after mount and if authenticated */}
-              {isMounted && showAuthenticatedUI && (
+              {showAuthenticatedUI && (
                 <div className="relative md:hidden" ref={mobileNotificationRef}>
                   <button
                     onClick={(e) => {
