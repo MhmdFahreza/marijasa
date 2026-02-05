@@ -546,7 +546,7 @@ export async function POST(request: NextRequest) {
       await prisma.bookingHistory.create({
         data: {
           booking_id: booking.booking_id,
-          status: xenditSimulated ? 'Pembayaran Berhasil (Xendit Simulation)' : 'Pembayaran Berhasil (Local Simulation)',
+          status: xenditSimulated ? 'Pembayaran Berhasil (Xendit Simulation)' : 'Pembayaran Berhasil',
           reason: `Pembayaran via ${paymentMethodName} telah dikonfirmasi (mode testing)`
         }
       });

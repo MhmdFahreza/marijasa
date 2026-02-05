@@ -1,4 +1,4 @@
-// middleware.ts - VERSI DIPERBARUI
+// middleware.ts - VERSI DIPERBAIKI
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -34,6 +34,7 @@ const publicMitraRoutes = ["/mitra/login", "/mitra/daftar"];
 
 /**
  * Create a redirect response with loading page
+ * Used for cases where we want to show a loading indicator
  */
 function createLoadingRedirect(targetUrl: string, request: NextRequest, message: string = "Redirecting...") {
   const loadingPageUrl = new URL("/loading", request.url);
@@ -51,6 +52,15 @@ function createLoadingRedirect(targetUrl: string, request: NextRequest, message:
   });
   
   return response;
+}
+
+/**
+ * Create a direct redirect response without loading page
+ * Used for simple redirects like authenticated user accessing login page
+ */
+function createDirectRedirect(targetUrl: string, request: NextRequest) {
+  const redirectUrl = new URL(targetUrl, request.url);
+  return NextResponse.redirect(redirectUrl);
 }
 
 export async function middleware(request: NextRequest) {
@@ -72,10 +82,12 @@ export async function middleware(request: NextRequest) {
       // If already logged in, redirect to dashboard
       const adminSessionId = request.cookies.get('admin_session_id')?.value;
       const adminAccessToken = request.cookies.get('admin_access_token')?.value;
+      const adminRefreshToken = request.cookies.get('admin_refresh_token')?.value;
 
-      if (adminSessionId && adminAccessToken) {
+      if (adminSessionId && (adminAccessToken || adminRefreshToken)) {
         console.log('[Middleware] Admin already authenticated, redirecting to dashboard');
-        return createLoadingRedirect("/admin/dashboard", request, "Loading admin dashboard...");
+        // PERBAIKAN: Gunakan direct redirect untuk admin yang sudah login
+        return createDirectRedirect("/admin/dashboard", request);
       }
       
       return NextResponse.next();
@@ -131,18 +143,22 @@ export async function middleware(request: NextRequest) {
 
   // =============== MITRA ROUTES ===============
   if (pathname.startsWith('/mitra/')) {
+    // Get mitra tokens early for checking
+    const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
+    const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
+    const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
+
     // Allow access to public mitra routes (login, daftar)
     if (publicMitraRoutes.some(route => pathname === route)) {
       // If accessing login and already logged in, redirect to dashboard
       if (pathname === '/mitra/login') {
-        const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
-        const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
-        const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
-
         // Only redirect if has valid session and either access or refresh token
         if (mitraSessionId && (mitraAccessToken || mitraRefreshToken)) {
-          console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
-          return createLoadingRedirect("/mitra/dashboard", request, "Loading mitra dashboard...");
+          console.log('[Middleware] Mitra already authenticated, redirecting directly to dashboard');
+          
+          // PERBAIKAN UTAMA: Gunakan direct redirect tanpa halaman loading
+          // Ini akan langsung redirect ke dashboard tanpa melalui /loading
+          return createDirectRedirect("/mitra/dashboard", request);
         }
       }
       
@@ -152,10 +168,6 @@ export async function middleware(request: NextRequest) {
     }
 
     // Protected mitra routes - require authentication
-    const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
-    const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
-    const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
-
     // Must have session and at least one token (access or refresh)
     if (!mitraSessionId || (!mitraAccessToken && !mitraRefreshToken)) {
       console.log('[Middleware] Mitra not authenticated, redirecting to login');
@@ -247,7 +259,8 @@ export async function middleware(request: NextRequest) {
   if (authRoutes.some((route) => pathname === route)) {
     if (isAuthenticated) {
       console.log("[Middleware] Authenticated user trying to access auth route, redirecting to home");
-      return createLoadingRedirect("/", request, "Redirecting to home...");
+      // PERBAIKAN: Gunakan direct redirect untuk user yang sudah login
+      return createDirectRedirect("/", request);
     }
   }
 
