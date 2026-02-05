@@ -229,8 +229,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (response.ok) {
-        console.log("[Auth] ✅ Token refreshed");
-        await fetchCurrentUser(true);
+        const data = await response.json();
+        console.log("[Auth] ✅ Token refreshed:", data.message);
+        
+        // Only fetch user if token was actually refreshed
+        if (data.tokenRefreshed) {
+          await fetchCurrentUser(true);
+        }
+        
         return true;
       }
       
@@ -258,7 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }, TOKEN_REFRESH_INTERVAL);
 
-    console.log("[Auth] ✅ Auto-refresh enabled");
+    console.log("[Auth] ✅ Auto-refresh enabled (every 45 minutes)");
   }, [refreshAccessToken, isMitraRoute, isAdminRoute]);
 
   const clearTokenRefresh = useCallback(() => {
@@ -331,9 +337,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session, clearTokenRefresh, router, cacheUser]);
 
-  // Refresh user
+  // Refresh user - PUBLIC API untuk NotificationContext
   const refreshUser = useCallback(async () => {
-    console.log("[Auth] 🔄 Refreshing user data");
+    console.log("[Auth] 🔄 Refreshing user data (public API)");
     await fetchCurrentUser(true);
   }, [fetchCurrentUser]);
 

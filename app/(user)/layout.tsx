@@ -71,9 +71,6 @@ function NavbarSkeleton() {
 }
 
 export default function UserLayout({ children }: { children: ReactNode }) {
-  // CRITICAL: Set isMounted to true immediately in state
-  // This prevents the initial render showing completely empty content
-  const [isMounted, setIsMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -102,15 +99,8 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const userAvatar = user?.avatar || defaultAvatar;
   const userEmail = user?.email || "";
 
-  // CRITICAL FIX: Set mounted immediately on first render
-  useEffect(() => {
-    setIsMounted(true);
-  }, []); // Empty deps = run once after mount
-
   // Close notification dropdown when clicking outside
   useEffect(() => {
-    if (!isMounted) return;
-
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
 
@@ -134,7 +124,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isNotificationOpen, isMounted]);
+  }, [isNotificationOpen]);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -292,30 +282,21 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     );
   }, [notifications, handleNotificationClick, getNotificationIcon, deleteNotification]);
 
-  // IMPROVED LOGIC: Better render state determination
-  // Show skeleton ONLY when auth is actively loading AND not yet initialized
+  // ============================================
+  // FIXED RENDER STATE LOGIC
+  // ============================================
+  
+  // Show skeleton ONLY when:
+  // 1. Auth is loading AND not yet initialized
   const showSkeleton = authLoading && !isInitialized;
   
-  // Show authenticated UI when we have a user (regardless of initialization state)
+  // Show authenticated UI when:
+  // 1. We have a user (takes priority - instant render)
   const showAuthenticatedUI = isAuthenticated && user;
   
-  // Show guest UI when not authenticated and initialized
+  // Show guest UI when:
+  // 1. Not authenticated AND initialized (confirmed not logged in)
   const showGuestUI = !isAuthenticated && isInitialized;
-
-  // Enhanced logging - only in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log("[Layout] Render state:", {
-      isMounted,
-      isInitialized,
-      isAuthenticated,
-      hasUser: !!user,
-      authLoading,
-      showSkeleton,
-      showAuthenticatedUI,
-      showGuestUI,
-      userEmail: user?.email || 'none'
-    });
-  }
 
   // Render navbar content based on auth state
   const renderNavbarContent = () => {

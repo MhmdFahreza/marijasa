@@ -49,18 +49,20 @@ const NotificationContext = createContext<NotificationContextType | undefined>(
   undefined
 );
 
-// ⚡ REAL-TIME POLLING: Fast 5-second updates untuk notifikasi instant
-const FAST_POLLING_INTERVAL = 5000; // 5 seconds - untuk real-time experience
-const SLOW_POLLING_INTERVAL = 30000; // 30 seconds - saat tab tidak aktif
+// ⚡ OPTIMIZED POLLING: Smart intervals with exponential backoff
+const FAST_POLLING_INTERVAL = 5000; // 5 seconds - when tab is visible
+const SLOW_POLLING_INTERVAL = 30000; // 30 seconds - when tab is hidden
 const MAX_RETRY_ATTEMPTS = 3;
-const RETRY_DELAY = 2000; // 2 seconds
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds
+const MAX_RETRY_DELAY = 30000; // 30 seconds
+const FETCH_TIMEOUT = 10000; // 10 seconds timeout
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, refreshUser } = useAuth();
   
-  // Refs untuk optimization
+  // Refs for optimization
   const audioContextRef = useRef<AudioContext | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastNotificationIdsRef = useRef<Set<string>>(new Set());
@@ -71,6 +73,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const retryCountRef = useRef<number>(0);
   const isTabVisibleRef = useRef<boolean>(true);
+  const consecutiveErrorsRef = useRef<number>(0);
+  const lastSuccessTimestampRef = useRef<number>(Date.now());
+  const backoffDelayRef = useRef<number>(INITIAL_RETRY_DELAY);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -185,17 +190,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // ============================================
   useEffect(() => {
     const handleVisibilityChange = () => {
+      const wasVisible = isTabVisibleRef.current;
       isTabVisibleRef.current = !document.hidden;
       
       console.log(
         `[Notification] Tab visibility: ${isTabVisibleRef.current ? "VISIBLE" : "HIDDEN"}`
       );
 
-      // Restart polling dengan interval yang sesuai
-      if (isTabVisibleRef.current && isAuthenticated && user) {
+      // If tab becomes visible, reset backoff and fetch immediately
+      if (!wasVisible && isTabVisibleRef.current && isAuthenticated && user) {
+        console.log("[Notification] Tab became visible - resetting errors and fetching");
+        consecutiveErrorsRef.current = 0;
+        backoffDelayRef.current = INITIAL_RETRY_DELAY;
+        
+        // Immediate fetch when tab becomes visible
+        fetchNotifications();
+        
+        // Setup fast polling
         setupPolling(FAST_POLLING_INTERVAL);
       } else if (!isTabVisibleRef.current) {
-        // Slow down polling saat tab hidden
+        // Slow down polling when tab is hidden
         setupPolling(SLOW_POLLING_INTERVAL);
       }
     };
@@ -208,24 +222,104 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, user]);
 
   // ============================================
-  // FETCH NOTIFICATIONS - Optimized dengan Abort Controller
+  // TOKEN REFRESH HELPER - Critical for AFK scenarios
+  // ============================================
+  const ensureValidToken = useCallback(async (): Promise<boolean> => {
+    try {
+      console.log("[Notification] Ensuring valid token...");
+      
+      // Call refresh endpoint to ensure token is valid
+      const refreshResponse = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      });
+
+      if (refreshResponse.ok) {
+        const refreshData = await refreshResponse.json();
+        console.log("[Notification] Token validation success:", refreshData.message);
+        
+        // If token was refreshed, update user context
+        if (refreshData.tokenRefreshed) {
+          console.log("[Notification] Token was refreshed, updating user context");
+          await refreshUser();
+        }
+        
+        return true;
+      } else {
+        const errorData = await refreshResponse.json();
+        console.error("[Notification] Token validation failed:", errorData.message);
+        
+        // If we should logout, don't retry
+        if (errorData.shouldLogout) {
+          console.log("[Notification] Session expired, stopping polling");
+          return false;
+        }
+        
+        return false;
+      }
+    } catch (error) {
+      console.error("[Notification] Token validation error:", error);
+      return false;
+    }
+  }, [refreshUser]);
+
+  // ============================================
+  // FETCH NOTIFICATIONS - Enhanced with Token Refresh & Retry Logic
   // ============================================
   const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated || !user || isFetchingRef.current) {
       return;
     }
 
-    // Cancel previous request jika masih running
+    // Cancel previous request if still running
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
-    // Create new abort controller
+    // Create new abort controller with timeout
     abortControllerRef.current = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortControllerRef.current?.abort();
+      console.log("[Notification] Fetch timeout - aborting");
+    }, FETCH_TIMEOUT);
+
     isFetchingRef.current = true;
 
     try {
       setIsLoading(true);
+
+      // CRITICAL: Ensure token is valid before fetching (especially after AFK)
+      const tokenValid = await ensureValidToken();
+      
+      if (!tokenValid) {
+        console.log("[Notification] Token invalid and cannot be refreshed");
+        
+        // Increase error count and backoff
+        consecutiveErrorsRef.current++;
+        
+        if (consecutiveErrorsRef.current >= MAX_RETRY_ATTEMPTS) {
+          console.log("[Notification] Max token refresh failures - stopping polling");
+          clearPolling();
+          return;
+        }
+        
+        // Apply exponential backoff
+        backoffDelayRef.current = Math.min(
+          backoffDelayRef.current * 2,
+          MAX_RETRY_DELAY
+        );
+        
+        console.log(
+          `[Notification] Will retry in ${backoffDelayRef.current}ms (${consecutiveErrorsRef.current}/${MAX_RETRY_ATTEMPTS})`
+        );
+        
+        return;
+      }
+
+      console.log("[Notification] Fetching notifications with valid token...");
 
       const response = await fetch("/api/notifications", {
         method: "GET",
@@ -236,6 +330,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         signal: abortControllerRef.current.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -243,7 +339,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       
       if (!data.notifications || !Array.isArray(data.notifications)) {
-        return;
+        throw new Error("Invalid response format");
       }
 
       const formattedNotifications = data.notifications.map((notif: any) => ({
@@ -294,14 +390,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       // Update tracking
       lastNotificationIdsRef.current = currentIds;
 
-      // Reset retry count on success
-      retryCountRef.current = 0;
+      // Reset error tracking on success
+      consecutiveErrorsRef.current = 0;
+      backoffDelayRef.current = INITIAL_RETRY_DELAY;
+      lastSuccessTimestampRef.current = Date.now();
 
       console.log(
         `[Notification] ✅ Fetched: ${formattedNotifications.length} | Unread: ${formattedNotifications.filter((n: Notification) => !n.read).length}`
       );
 
     } catch (error: any) {
+      clearTimeout(timeoutId);
+      
       // Handle abort (not an error)
       if (error.name === "AbortError") {
         console.log("[Notification] Request aborted (normal)");
@@ -311,32 +411,45 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       // Handle other errors with retry logic
       console.error("[Notification] Fetch error:", error.message);
 
-      retryCountRef.current++;
+      consecutiveErrorsRef.current++;
 
-      // Exponential backoff untuk retry
-      if (retryCountRef.current <= MAX_RETRY_ATTEMPTS) {
-        const delay = RETRY_DELAY * retryCountRef.current;
-        console.log(
-          `[Notification] Retry ${retryCountRef.current}/${MAX_RETRY_ATTEMPTS} in ${delay}ms`
-        );
-
-        setTimeout(() => {
-          if (mountedRef.current) {
-            fetchNotifications();
-          }
-        }, delay);
-      } else {
+      // Check if we should stop trying
+      const timeSinceLastSuccess = Date.now() - lastSuccessTimestampRef.current;
+      
+      if (
+        consecutiveErrorsRef.current >= MAX_RETRY_ATTEMPTS &&
+        timeSinceLastSuccess > 5 * 60 * 1000 // 5 minutes
+      ) {
         console.error(
-          "[Notification] Max retry attempts reached, will retry on next interval"
+          "[Notification] Too many consecutive errors - stopping polling"
         );
-        retryCountRef.current = 0;
+        clearPolling();
+        return;
       }
+
+      // Apply exponential backoff
+      backoffDelayRef.current = Math.min(
+        backoffDelayRef.current * 2,
+        MAX_RETRY_DELAY
+      );
+      
+      console.log(
+        `[Notification] Will retry in ${backoffDelayRef.current}ms (${consecutiveErrorsRef.current}/${MAX_RETRY_ATTEMPTS})`
+      );
+
+      // Schedule retry with backoff
+      setTimeout(() => {
+        if (mountedRef.current && isAuthenticated && user) {
+          fetchNotifications();
+        }
+      }, backoffDelayRef.current);
+
     } finally {
       setIsLoading(false);
       isFetchingRef.current = false;
       abortControllerRef.current = null;
     }
-  }, [isAuthenticated, user, playNotificationSound]);
+  }, [isAuthenticated, user, playNotificationSound, ensureValidToken, refreshUser]);
 
   // ============================================
   // NOTIFICATION ACTIONS - Optimized
@@ -426,7 +539,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
     lastNotificationIdsRef.current.clear();
     isInitialLoadRef.current = true;
-    retryCountRef.current = 0;
+    consecutiveErrorsRef.current = 0;
+    backoffDelayRef.current = INITIAL_RETRY_DELAY;
     console.log("[Notification] Reset complete");
   }, []);
 
@@ -449,23 +563,31 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   // ============================================
-  // SMART POLLING SETUP - Adaptive Interval
+  // SMART POLLING SETUP - Adaptive Interval with Auto-Restart
   // ============================================
-  const setupPolling = useCallback((interval: number) => {
-    // Clear existing interval
+  const clearPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+      console.log("[Notification] Polling stopped");
     }
+  }, []);
+
+  const setupPolling = useCallback((interval: number) => {
+    // Clear existing interval
+    clearPolling();
 
     // Setup new interval
     pollingIntervalRef.current = setInterval(() => {
-      fetchNotifications();
+      if (isAuthenticated && user && mountedRef.current) {
+        fetchNotifications();
+      }
     }, interval);
 
     console.log(
       `[Notification] ⚡ Polling setup: ${interval / 1000}s interval`
     );
-  }, [fetchNotifications]);
+  }, [fetchNotifications, isAuthenticated, user, clearPolling]);
 
   // Mounted tracking
   useEffect(() => {
@@ -476,16 +598,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ============================================
-  // MAIN POLLING EFFECT - Real-time Updates
+  // MAIN POLLING EFFECT - Real-time Updates with Auto-Recovery
   // ============================================
   useEffect(() => {
     if (isAuthenticated && user) {
       console.log("[Notification] 🚀 Starting REAL-TIME notifications");
 
+      // Reset error tracking
+      consecutiveErrorsRef.current = 0;
+      backoffDelayRef.current = INITIAL_RETRY_DELAY;
+
       // Initial fetch
       fetchNotifications();
 
-      // Setup fast polling (5 seconds) untuk real-time experience
+      // Setup polling based on visibility
       const interval = isTabVisibleRef.current
         ? FAST_POLLING_INTERVAL
         : SLOW_POLLING_INTERVAL;
@@ -493,20 +619,51 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setupPolling(interval);
 
       return () => {
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-        }
+        clearPolling();
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
         }
       };
     } else {
       resetNotifications();
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
+      clearPolling();
     }
-  }, [isAuthenticated, user, fetchNotifications, resetNotifications, setupPolling]);
+  }, [isAuthenticated, user, fetchNotifications, resetNotifications, setupPolling, clearPolling]);
+
+  // ============================================
+  // ONLINE/OFFLINE HANDLER - Auto-Restart on Reconnect
+  // ============================================
+  useEffect(() => {
+    const handleOnline = () => {
+      if (isAuthenticated && user && mountedRef.current) {
+        console.log("[Notification] Back online - restarting polling");
+        consecutiveErrorsRef.current = 0;
+        backoffDelayRef.current = INITIAL_RETRY_DELAY;
+        
+        // Immediate fetch
+        fetchNotifications();
+        
+        // Restart polling
+        const interval = isTabVisibleRef.current
+          ? FAST_POLLING_INTERVAL
+          : SLOW_POLLING_INTERVAL;
+        setupPolling(interval);
+      }
+    };
+
+    const handleOffline = () => {
+      console.log("[Notification] Gone offline - pausing polling");
+      clearPolling();
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [isAuthenticated, user, fetchNotifications, setupPolling, clearPolling]);
 
   const value: NotificationContextType = {
     notifications,
