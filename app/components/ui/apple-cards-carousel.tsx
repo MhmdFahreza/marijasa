@@ -14,7 +14,7 @@ import {
     IconX,
 } from "@tabler/icons-react";
 import { cn } from "@/app/components/lib/utils";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useOutsideClick } from "@/app/components/lib/hooks/use-outside-click";
 
 interface CarouselProps {

@@ -9,7 +9,7 @@ import {
 } from "@/app/components/ui/breadcrumb";
 import VendorCard from "@/app/components/ui/vendor-card";
 import SiteFooter from "@/app/(footer)/footer";
-import { motion, useReducedMotion, AnimatePresence } from "motion/react";
+import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderTwo } from "@/app/components/transition/loader";
 import {

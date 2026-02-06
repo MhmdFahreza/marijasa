@@ -2,7 +2,7 @@
 
 import React, { useRef, ReactNode, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useReducedMotion, AnimatePresence } from "motion/react";
+import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 
 import { IconUpload } from "@tabler/icons-react";

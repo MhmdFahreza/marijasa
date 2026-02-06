@@ -1,7 +1,7 @@
 // app/components/ui/placeholders-and-vanish-input.tsx
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { Search } from "lucide-react";

@@ -68,8 +68,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
-// Mock motion/react
-vi.mock('motion/react', () => ({
+// Mock framer-motion
+vi.mock('framer-motion', () => ({
   motion: {
     div: React.forwardRef((props: any, ref: any) => 
       React.createElement('div', { ...props, ref })

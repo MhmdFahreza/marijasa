@@ -1,7 +1,7 @@
 "use client";
 
 import React, { memo, ReactNode, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Carousel, Card } from "@/app/components/ui/apple-cards-carousel";
 import { InfiniteMovingCardsData } from "@/app/components/ui/infinite-moving-cards-data";
 import { cardData, type ContentSection } from "@/app/data/dataContent";
@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { ContainerTextFlip } from "@/app/components/ui/container-text-flip";
 import { LoaderTwo } from "@/app/components/transition/loader";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence } from "framer-motion";
 import Chatbot from "@/app/(user)/chatbot/Chatbot";
 
 type ContentCategoryProps = {

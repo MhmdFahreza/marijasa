@@ -14,7 +14,7 @@ import {
     IconBriefcase,
     IconChevronDown,
 } from "@tabler/icons-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion } from "framer-motion";
 import { LoaderTwo } from "@/app/components/transition/loader"; 
 import { toast } from "sonner";
 
