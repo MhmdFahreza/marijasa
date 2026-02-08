@@ -1,4 +1,4 @@
-// app/components/ui/login-form.tsx
+// app/components/ui/login-form.tsx - UPDATED WITH BETTER ERROR HANDLING
 "use client";
 
 import { cn } from "../lib/utils";
@@ -27,27 +27,54 @@ interface LoginFormProps extends React.ComponentProps<"div"> {
   onRegisterClick?: () => void;
 }
 
-// Error messages mapping
+// Enhanced error messages mapping
 const ERROR_MESSAGES: Record<string, string> = {
+  // Google OAuth specific errors
+  ACCESS_DENIED:
+    "❌ Login dibatalkan. Anda harus memberikan izin untuk melanjutkan. Silakan coba lagi dan klik 'Izinkan'.",
   USER_NOT_REGISTERED:
-    "Email Google Anda belum terdaftar. Silakan daftar terlebih dahulu.",
-  ACCOUNT_INACTIVE: "Akun Anda tidak aktif. Silakan hubungi admin.",
-  NO_EMAIL: "Tidak dapat mengambil email dari akun Google. Silakan coba lagi.",
-  NO_SESSION: "Tidak dapat membuat sesi. Silakan coba lagi.",
-  SESSION_ERROR: "Terjadi kesalahan pada sesi. Silakan coba lagi.",
-  CALLBACK_ERROR: "Terjadi kesalahan saat memproses login. Silakan coba lagi.",
+    "⚠️ Email Google Anda belum terdaftar di sistem kami. Silakan daftar terlebih dahulu menggunakan email yang sama.",
+  ACCOUNT_INACTIVE: 
+    "⚠️ Akun Anda tidak aktif. Silakan hubungi administrator untuk mengaktifkan kembali akun Anda.",
+  NO_EMAIL: 
+    "❌ Tidak dapat mengambil email dari akun Google. Pastikan email Anda terlihat di pengaturan Google.",
+  NO_SESSION: 
+    "❌ Tidak dapat membuat sesi login. Silakan coba lagi atau gunakan login email/phone.",
+  SESSION_ERROR: 
+    "❌ Terjadi kesalahan pada sesi. Silakan hapus cookies browser dan coba lagi.",
+  CALLBACK_ERROR: 
+    "❌ Terjadi kesalahan saat memproses login. Silakan coba lagi beberapa saat.",
   GOOGLE_SIGNIN_ERROR:
-    "Terjadi kesalahan saat login dengan Google. Silakan coba lagi.",
+    "❌ Terjadi kesalahan saat login dengan Google. Silakan periksa koneksi internet dan coba lagi.",
+  
+  // NextAuth standard errors
   OAuthAccountNotLinked:
-    "Email ini sudah terdaftar dengan metode login lain. Silakan gunakan metode login yang sesuai.",
+    "⚠️ Email ini sudah terdaftar dengan metode login lain. Silakan gunakan metode login yang sesuai (Email/Phone atau Google).",
   OAuthSignin:
-    "Terjadi kesalahan saat memulai login Google. Silakan coba lagi.",
+    "❌ Terjadi kesalahan saat memulai login Google. Silakan coba lagi.",
   OAuthCallback:
-    "Terjadi kesalahan saat memproses login Google. Silakan coba lagi.",
-  Callback: "Terjadi kesalahan saat memproses login. Silakan coba lagi.",
-  AccessDenied: "Akses ditolak. Silakan coba lagi.",
-  Configuration: "Terjadi kesalahan konfigurasi. Silakan hubungi admin.",
-  default: "Terjadi kesalahan. Silakan coba lagi.",
+    "❌ Terjadi kesalahan saat memproses login Google. Silakan coba lagi.",
+  Callback: 
+    "❌ Terjadi kesalahan saat memproses login. Silakan coba lagi.",
+  AccessDenied: 
+    "❌ Akses ditolak. Silakan berikan izin yang diperlukan untuk melanjutkan.",
+  Configuration: 
+    "❌ Terjadi kesalahan konfigurasi sistem. Silakan hubungi administrator.",
+  
+  // Credential login errors
+  EMAIL_NOT_REGISTERED:
+    "⚠️ Email belum terdaftar. Silakan daftar terlebih dahulu.",
+  PHONE_NOT_REGISTERED:
+    "⚠️ Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.",
+  GOOGLE_ACCOUNT:
+    "⚠️ Akun ini terdaftar melalui Google. Silakan gunakan tombol 'Login dengan Google'.",
+  EMAIL_NOT_VERIFIED:
+    "⚠️ Email belum diverifikasi. Silakan cek inbox/spam dan klik link verifikasi.",
+  INVALID_PASSWORD:
+    "❌ Password salah. Silakan periksa kembali password Anda.",
+  
+  // Default
+  default: "❌ Terjadi kesalahan. Silakan coba lagi.",
 };
 
 // User config
@@ -196,10 +223,12 @@ export function LoginForm({
     checkSession();
   }, [status, session, router, onSuccess, searchParams, userType, isAuthenticated, user, refreshUser]);
 
-  // Check for error from URL
+  // Check for error from URL with enhanced messages
   useEffect(() => {
     const errorParam = searchParams?.get("error");
     if (errorParam) {
+      console.log('[Login Form] Error from URL:', errorParam);
+      
       const errorMessage = ERROR_MESSAGES[errorParam] || ERROR_MESSAGES["default"];
       setError(errorMessage);
       setIsGoogleLoading(false);
@@ -220,12 +249,12 @@ export function LoginForm({
       console.log("[Login] Starting Google sign in...");
 
       await signIn("google", {
-        callbackUrl: "/api/auth/google/set-cookies",
+        callbackUrl: "/",
         redirect: true,
       });
     } catch (error) {
       console.error("Google sign in error:", error);
-      setError("Terjadi kesalahan saat login dengan Google. Silakan coba lagi.");
+      setError("❌ Terjadi kesalahan saat login dengan Google. Silakan coba lagi.");
       setIsGoogleLoading(false);
     }
   };
@@ -396,30 +425,9 @@ export function LoginForm({
       const data = await response.json();
 
       if (!response.ok) {
-        switch (data.errorType) {
-          case "EMAIL_NOT_REGISTERED":
-            setError("Email belum terdaftar. Silakan daftar terlebih dahulu.");
-            break;
-          case "PHONE_NOT_REGISTERED":
-            setError("Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.");
-            break;
-          case "GOOGLE_ACCOUNT":
-            setError("Akun ini terdaftar melalui Google. Silakan login dengan Google.");
-            break;
-          case "EMAIL_NOT_VERIFIED":
-            setError(
-              "Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu."
-            );
-            break;
-          case "ACCOUNT_INACTIVE":
-            setError("Akun Anda tidak aktif. Silakan hubungi admin.");
-            break;
-          case "INVALID_PASSWORD":
-            setError("Password salah. Silakan coba lagi.");
-            break;
-          default:
-            setError(data.message || "Terjadi kesalahan saat login");
-        }
+        // Use enhanced error messages
+        const errorMsg = ERROR_MESSAGES[data.errorType] || data.message || ERROR_MESSAGES["default"];
+        setError(errorMsg);
         setIsLoading(false);
         return;
       }
@@ -514,12 +522,15 @@ export function LoginForm({
         </CardHeader>
 
         <CardContent className="relative z-10 p-3 sm:p-4 md:p-5">
-          {/* Error Alert */}
+          {/* Error Alert - Enhanced styling */}
           {error && (
-            <div className="mb-3 sm:mb-4 md:mb-5 p-3 sm:p-4 bg-gradient-to-r from-red-50 to-red-50/50 dark:from-red-950/30 dark:to-red-950/10 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg sm:rounded-xl text-xs sm:text-sm flex items-start justify-between gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="mb-3 sm:mb-4 md:mb-5 p-3 sm:p-4 bg-gradient-to-r from-red-50 to-red-50/50 dark:from-red-950/30 dark:to-red-950/10 border-l-4 border-red-500 dark:border-red-600 text-red-700 dark:text-red-400 rounded-lg sm:rounded-xl text-xs sm:text-sm flex items-start justify-between gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
               <div className="flex items-start gap-2 sm:gap-3 flex-1">
                 <span className="text-base sm:text-lg font-bold flex-shrink-0 mt-0.5">⚠️</span>
-                <span className="pt-0.5">{error}</span>
+                <div className="pt-0.5 space-y-1">
+                  <p className="font-semibold">Gagal Login</p>
+                  <p className="text-xs sm:text-sm opacity-90">{error}</p>
+                </div>
               </div>
               <button
                 onClick={() => setError(null)}
