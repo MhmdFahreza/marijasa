@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts - FIXED VERSION
+// app/components/lib/auth.config.ts - PRODUCTION FIX
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -12,51 +12,20 @@ import {
   storeTokens,
 } from "@/app/components/lib/token-service";
 
-// Normalize phone number to +62 format
-function normalizePhone(phone: string): string {
-  let cleaned = phone.replace(/[\s-]/g, "");
-  if (cleaned.startsWith("08")) {
-    cleaned = "+62" + cleaned.substring(1);
-  } else if (cleaned.startsWith("62")) {
-    cleaned = "+" + cleaned;
-  } else if (!cleaned.startsWith("+62")) {
-    cleaned = "+62" + cleaned;
-  }
-  return cleaned;
-}
-
-// ============================================
-// PRODUCTION-SAFE: Get the correct base URL
-// ============================================
+// Get base URL - PRODUCTION SAFE
 function getBaseUrl(): string {
-  // 1. Production: NEXTAUTH_URL (MUST be set in Vercel)
+  // Production: use NEXTAUTH_URL or VERCEL_URL
   if (process.env.NEXTAUTH_URL) {
-    const url = process.env.NEXTAUTH_URL.trim();
-    console.log('[Auth Config] Using NEXTAUTH_URL:', url);
-    return url;
+    return process.env.NEXTAUTH_URL.trim().replace(/\/$/, '');
   }
-
-  // 2. Vercel auto-sets VERCEL_URL (production/preview deployments)
   if (process.env.VERCEL_URL) {
-    const url = `https://${process.env.VERCEL_URL}`;
-    console.log('[Auth Config] Using VERCEL_URL:', url);
-    return url;
+    return `https://${process.env.VERCEL_URL}`;
   }
-
-  // 3. Fallback for other deployments
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    const url = process.env.NEXT_PUBLIC_APP_URL.trim();
-    console.log('[Auth Config] Using NEXT_PUBLIC_APP_URL:', url);
-    return url;
-  }
-
-  // 4. Development fallback
-  const devUrl = "http://localhost:3000";
-  console.log('[Auth Config] Using development fallback:', devUrl);
-  return devUrl;
+  return "http://localhost:3000";
 }
 
 const BASE_URL = getBaseUrl();
+const isProduction = process.env.NODE_ENV === "production";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -68,6 +37,8 @@ export const authOptions: NextAuthOptions = {
           prompt: "consent",
           access_type: "offline",
           response_type: "code",
+          // FIX: Set redirect_uri in authorization params instead
+          redirect_uri: `${BASE_URL}/api/auth/callback/google`,
         },
       },
     }),
@@ -93,45 +64,32 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!user) {
-            throw new Error(
-              "Email belum terdaftar. Silakan daftar terlebih dahulu."
-            );
+            throw new Error("Email belum terdaftar. Silakan daftar terlebih dahulu.");
           }
         } else {
-          const normalizedPhone = normalizePhone(identifier);
-
+          const normalizedPhone = identifier.replace(/[\s-]/g, "");
           user = await prisma.user.findFirst({
-            where: { phone: normalizedPhone },
+            where: { phone: { contains: normalizedPhone } },
           });
 
           if (!user) {
-            throw new Error(
-              "Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu."
-            );
+            throw new Error("Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.");
           }
         }
 
         if (!user.password) {
-          throw new Error(
-            "Akun ini terdaftar melalui Google. Silakan login dengan Google."
-          );
+          throw new Error("Akun ini terdaftar melalui Google. Silakan login dengan Google.");
         }
 
         if (!user.email_verified) {
-          throw new Error(
-            "Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu."
-          );
+          throw new Error("Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.");
         }
 
         if (!user.is_active) {
           throw new Error("Akun Anda tidak aktif. Silakan hubungi admin.");
         }
 
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
         if (!isPasswordValid) {
           throw new Error("Password salah. Silakan coba lagi.");
         }
@@ -153,7 +111,6 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === "google") {
         try {
           const userEmail = user.email?.toLowerCase();
-
           if (!userEmail) {
             console.error("[Google OAuth] No email provided");
             return false;
@@ -161,20 +118,19 @@ export const authOptions: NextAuthOptions = {
 
           console.log(`[Google OAuth] Sign in attempt for: ${userEmail}`);
 
-          // Check if user is registered in database
+          // Check if user exists
           const existingUser = await prisma.user.findUnique({
             where: { email: userEmail },
           });
 
           if (!existingUser) {
             console.log(`[Google OAuth] User not registered: ${userEmail}`);
-            return `${BASE_URL}/login?error=USER_NOT_REGISTERED`;
+            return `/login?error=USER_NOT_REGISTERED`;
           }
 
-          // Check if account is active
           if (!existingUser.is_active) {
             console.log(`[Google OAuth] Account inactive: ${userEmail}`);
-            return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
+            return `/login?error=ACCOUNT_INACTIVE`;
           }
 
           // Update email_verified if not already
@@ -183,26 +139,23 @@ export const authOptions: NextAuthOptions = {
               where: { email: userEmail },
               data: { email_verified: true },
             });
-            console.log(`[Google OAuth] Email verified for: ${userEmail}`);
           }
 
-          // Only update avatar if user doesn't have one
+          // Update avatar if needed
           if (!existingUser.avatar && user.image) {
             await prisma.user.update({
               where: { email: userEmail },
               data: { avatar: user.image },
             });
-            console.log(`[Google OAuth] Avatar updated for: ${userEmail}`);
           }
 
           console.log(`[Google OAuth] ✅ Sign in successful for: ${userEmail}`);
           return true;
         } catch (error) {
           console.error("[Google OAuth] Error during sign in:", error);
-          return `${BASE_URL}/login?error=GOOGLE_SIGNIN_ERROR`;
+          return `/login?error=GOOGLE_SIGNIN_ERROR`;
         }
       }
-
       return true;
     },
 
@@ -221,10 +174,8 @@ export const authOptions: NextAuthOptions = {
             });
 
             if (dbUser) {
-              // Create session ID
               const sessionId = createSessionId();
 
-              // Store session in Redis
               await storeSession(sessionId, {
                 userId: dbUser.user_id,
                 email: dbUser.email,
@@ -233,7 +184,6 @@ export const authOptions: NextAuthOptions = {
                 lastActivity: Date.now(),
               });
 
-              // Generate tokens
               const accessToken = generateAccessToken({
                 userId: dbUser.user_id,
                 email: dbUser.email,
@@ -248,16 +198,13 @@ export const authOptions: NextAuthOptions = {
                 sessionId,
               });
 
-              // Store tokens in Redis
               await storeTokens(sessionId, accessToken, refreshToken);
 
-              // Store in token for later retrieval
               token.sessionId = sessionId;
               token.accessToken = accessToken;
               token.refreshToken = refreshToken;
-              token.customCookiesSet = false; // Flag to track if we've set cookies
 
-              console.log(`[Google OAuth] ✅ Session created: ${sessionId} for ${dbUser.email}`);
+              console.log(`[Google OAuth] ✅ Session created: ${sessionId}`);
             }
           } catch (error) {
             console.error("[Google OAuth] Error creating session:", error);
@@ -265,7 +212,7 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // For Google OAuth, refresh user data
+      // Refresh user data for Google OAuth
       if (account?.provider === "google" && token.email) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -295,7 +242,6 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).sessionId = token.sessionId as string;
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
-        (session.user as any).customCookiesSet = token.customCookiesSet as boolean;
         session.user.name = token.name as string;
         session.user.image = token.picture as string || "/profile.svg";
       }
@@ -305,49 +251,28 @@ export const authOptions: NextAuthOptions = {
     async redirect({ url, baseUrl }) {
       console.log('[Redirect Callback] url:', url, 'baseUrl:', baseUrl);
 
-      // CRITICAL FIX: Use BASE_URL constant instead of parameter
-      const CORRECT_BASE_URL = BASE_URL;
-
-      // Handle error redirects - always use correct base URL
+      // Handle error redirects
       if (url.includes("error=")) {
-        // If URL is already absolute with correct domain, use it
-        if (url.startsWith(CORRECT_BASE_URL)) {
-          console.log('[Redirect] Using error URL as-is:', url);
-          return url;
-        }
-        
-        // Extract error parameter and rebuild URL
-        const urlObj = new URL(url.startsWith('http') ? url : `${CORRECT_BASE_URL}${url}`);
-        const errorParam = urlObj.searchParams.get('error');
-        const errorUrl = `${CORRECT_BASE_URL}/login?error=${errorParam}`;
-        console.log('[Redirect] Redirecting to error page:', errorUrl);
-        return errorUrl;
+        return `${BASE_URL}${url}`;
       }
 
-      // CRITICAL FIX: For Google OAuth, redirect to custom callback page
-      // This page will handle setting cookies properly
-      if (url.includes('/api/auth/callback/google') || url === `${CORRECT_BASE_URL}/api/auth/signin/google`) {
-        const callbackUrl = `${CORRECT_BASE_URL}/auth/google-callback`;
-        console.log('[Redirect] Google OAuth - redirecting to custom callback:', callbackUrl);
-        return callbackUrl;
+      // For Google OAuth success, redirect to home
+      if (url.includes('/api/auth/callback/google')) {
+        return `${BASE_URL}/`;
       }
 
-      // If URL is absolute and starts with correct base URL, allow it
-      if (url.startsWith(CORRECT_BASE_URL)) {
-        console.log('[Redirect] URL starts with correct base, allowing:', url);
+      // Allow absolute URLs
+      if (url.startsWith('http')) {
         return url;
       }
 
-      // If URL is relative, resolve against correct base URL
-      if (url.startsWith("/")) {
-        const resolvedUrl = `${CORRECT_BASE_URL}${url}`;
-        console.log('[Redirect] Resolving relative URL:', resolvedUrl);
-        return resolvedUrl;
+      // Resolve relative URLs
+      if (url.startsWith('/')) {
+        return `${BASE_URL}${url}`;
       }
 
-      // Default: redirect to home
-      console.log('[Redirect] Defaulting to home:', CORRECT_BASE_URL);
-      return CORRECT_BASE_URL;
+      // Default to home
+      return `${BASE_URL}/`;
     },
   },
   pages: {
@@ -363,33 +288,29 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: isProduction ? "none" : "lax", // CRITICAL: "none" for production
         path: "/",
-        // CRITICAL: secure must be true in production
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction, // CRITICAL: true in production
+      },
+    },
+    callbackUrl: {
+      name: `next-auth.callback-url`,
+      options: {
+        sameSite: isProduction ? "none" : "lax",
+        path: "/",
+        secure: isProduction,
+      },
+    },
+    csrfToken: {
+      name: `next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: isProduction ? "none" : "lax",
+        path: "/",
+        secure: isProduction,
       },
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
-  logger: {
-    error(code, metadata) {
-      // Suppress deprecation warnings in production
-      if (code === "OAUTH_CALLBACK_HANDLER_ERROR" || code === "SIGNIN_OAUTH_ERROR") {
-        console.error("[NextAuth Error]", code, metadata);
-      } else if (!code.includes("DEP0169")) {
-        console.error("[NextAuth Error]", code, metadata);
-      }
-    },
-    warn(code) {
-      if (!code.includes("session") && !code.includes("DEP0169")) {
-        console.warn("[NextAuth Warning]", code);
-      }
-    },
-    debug: (code, metadata) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("[NextAuth Debug]", code, metadata);
-      }
-    },
-  },
 };
