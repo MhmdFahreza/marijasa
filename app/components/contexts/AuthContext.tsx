@@ -44,6 +44,14 @@ const STORAGE_KEY = "auth_user_cache";
 const STORAGE_TIMESTAMP_KEY = "auth_user_cache_ts";
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
+// Auth routes where login/register happens
+const AUTH_ROUTES = ["/login", "/register", "/verify"];
+
+function isAuthRoute(path: string | null): boolean {
+  if (!path) return false;
+  return AUTH_ROUTES.some((route) => path.startsWith(route));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,12 +68,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isLoggingOutRef = useRef(false);
   const mountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const hasInitializedRef = useRef(false);
+  const prevPathnameRef = useRef<string | null>(null);
 
   const isMitraRoute = pathname?.startsWith("/mitra") || false;
   const isAdminRoute = pathname?.startsWith("/admin") || false;
 
-  // Cache helpers
+  // ============================================
+  // CACHE HELPERS
+  // ============================================
   const cacheUser = useCallback((userData: User | null) => {
     if (typeof window === "undefined") return;
     try {
@@ -100,29 +110,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   }, []);
 
-  // Fetch current user
+  // ============================================
+  // FETCH CURRENT USER
+  // ============================================
   const fetchCurrentUser = useCallback(
     async (skipLoadingState = false): Promise<User | null> => {
       if (isMitraRoute || isAdminRoute || isLoggingOutRef.current) {
         return null;
       }
 
-      if (isFetchingRef.current) {
-        console.log("[Auth] Fetch already in progress");
-        return null;
+      // If already fetching, abort previous and start fresh
+      if (isFetchingRef.current && abortControllerRef.current) {
+        console.log("[Auth] Fetch in progress, aborting previous...");
+        abortControllerRef.current.abort();
+        // Small delay to let abort propagate
+        await new Promise((r) => setTimeout(r, 50));
       }
 
       isFetchingRef.current = true;
 
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-      abortControllerRef.current = new AbortController();
-      const timeoutId = setTimeout(
-        () => abortControllerRef.current?.abort(),
-        FETCH_TIMEOUT_MS
-      );
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
       try {
         console.log("[Auth] 🔍 Fetching user from /api/auth/me");
@@ -134,12 +144,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             "Cache-Control": "no-cache, no-store, must-revalidate",
             Pragma: "no-cache",
           },
-          signal: abortControllerRef.current.signal,
+          signal: controller.signal,
         });
 
         clearTimeout(timeoutId);
 
-        if (!mountedRef.current) return null;
+        // Check if component is still mounted (important for Strict Mode)
+        if (!mountedRef.current) {
+          console.log("[Auth] Component unmounted during fetch, ignoring result");
+          return null;
+        }
 
         if (response.ok) {
           const data = await response.json();
@@ -157,48 +171,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             setUser(userData);
             cacheUser(userData);
-            
-            if (!skipLoadingState) {
-              setIsLoading(false);
-              setIsInitialized(true);
-            }
-            
+            setIsLoading(false);
+            setIsInitialized(true);
+
             return userData;
           }
         }
 
         console.log("[Auth] ❌ Not authenticated");
-        setUser(null);
-        cacheUser(null);
-        
-        if (!skipLoadingState) {
+        if (mountedRef.current) {
+          setUser(null);
+          cacheUser(null);
           setIsLoading(false);
           setIsInitialized(true);
         }
-        
+
         return null;
       } catch (error) {
+        clearTimeout(timeoutId);
+
         if (error instanceof Error && error.name === "AbortError") {
           console.log("[Auth] Request aborted");
-        } else {
-          console.error("[Auth] Fetch error:", error);
+          // DON'T return early without setting state — check if we're still mounted
+          // and if no other fetch will run, we need to finalize
+          return null;
         }
-        
-        if (!skipLoadingState) {
+
+        console.error("[Auth] Fetch error:", error);
+
+        if (mountedRef.current) {
           setIsLoading(false);
           setIsInitialized(true);
         }
-        
+
         return null;
       } finally {
-        clearTimeout(timeoutId);
         isFetchingRef.current = false;
       }
     },
     [isMitraRoute, isAdminRoute, cacheUser]
   );
 
-  // Update user profile
+  // ============================================
+  // UPDATE USER PROFILE
+  // ============================================
   const updateUserProfile = useCallback(
     (updates: Partial<User>) => {
       setUser((prev) => {
@@ -211,7 +227,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [cacheUser]
   );
 
-  // Refresh access token
+  // ============================================
+  // TOKEN REFRESH
+  // ============================================
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     if (isMitraRoute || isAdminRoute || isLoggingOutRef.current || isRefreshingRef.current) {
       return false;
@@ -231,15 +249,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         console.log("[Auth] ✅ Token refreshed:", data.message);
-        
-        // Only fetch user if token was actually refreshed
+
         if (data.tokenRefreshed) {
           await fetchCurrentUser(true);
         }
-        
+
         return true;
       }
-      
+
       console.error("[Auth] ❌ Token refresh failed");
       return false;
     } catch (error) {
@@ -250,7 +267,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchCurrentUser, isMitraRoute, isAdminRoute]);
 
-  // Setup token refresh
   const setupTokenRefresh = useCallback(() => {
     if (isMitraRoute || isAdminRoute) return;
 
@@ -274,7 +290,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Login
+  // ============================================
+  // LOGIN
+  // ============================================
   const login = useCallback(
     (userData: User) => {
       console.log("[Auth] 🚀 User logged in:", userData.email);
@@ -286,7 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setupTokenRefresh();
 
-      // Background refresh
+      // Background refresh to get latest data from server
       setTimeout(() => {
         if (mountedRef.current && !isLoggingOutRef.current) {
           fetchCurrentUser(true).catch(console.error);
@@ -296,7 +314,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setupTokenRefresh, fetchCurrentUser, cacheUser]
   );
 
-  // Logout
+  // ============================================
+  // LOGOUT
+  // ============================================
   const logout = useCallback(async () => {
     try {
       console.log("[Auth] 🚪 Logging out");
@@ -337,29 +357,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session, clearTokenRefresh, router, cacheUser]);
 
-  // Refresh user - PUBLIC API untuk NotificationContext
+  // ============================================
+  // REFRESH USER (public API)
+  // ============================================
   const refreshUser = useCallback(async () => {
     console.log("[Auth] 🔄 Refreshing user data (public API)");
     await fetchCurrentUser(true);
   }, [fetchCurrentUser]);
 
-  // CRITICAL: Initial auth check - SIMPLIFIED VERSION
+  // ============================================
+  // EFFECT 1: Mounted tracking
+  //
+  // CRITICAL FIX for React Strict Mode:
+  // In dev, React mounts → unmounts → re-mounts components.
+  // We MUST set mountedRef = true on every mount, otherwise
+  // the second mount thinks we're unmounted and skips all state updates.
+  // ============================================
   useEffect(() => {
-    // Prevent duplicate initialization
-    if (hasInitializedRef.current) {
-      console.log("[Auth] Already initialized, skipping");
-      return;
-    }
+    mountedRef.current = true;
+    console.log("[Auth] Component mounted, mountedRef = true");
 
-    hasInitializedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      console.log("[Auth] Component unmounting, mountedRef = false");
+    };
+  }, []);
+
+  // ============================================
+  // EFFECT 2: Initial auth check
+  //
+  // CRITICAL FIX for React Strict Mode:
+  // Previously used hasInitializedRef which stayed true after
+  // strict mode cleanup, preventing re-initialization on re-mount.
+  // Now we reset it in cleanup so the second mount can re-init.
+  // ============================================
+  useEffect(() => {
+    // Track this specific effect instance
+    let effectCancelled = false;
 
     const initAuth = async () => {
-      // Skip for mitra/admin routes
       if (isMitraRoute || isAdminRoute) {
         console.log("[Auth] Skipping init for mitra/admin route");
-        setIsLoading(false);
-        setIsInitialized(true);
-        setUser(null);
+        if (!effectCancelled) {
+          setIsLoading(false);
+          setIsInitialized(true);
+          setUser(null);
+        }
         return;
       }
 
@@ -367,37 +410,118 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // STEP 1: Try cache first for instant UI
       const cachedUser = getCachedUser();
-      
-      if (cachedUser) {
+
+      if (cachedUser && !effectCancelled) {
         console.log("[Auth] ✅ Using cached user:", cachedUser.email);
         setUser(cachedUser);
         setIsLoading(false);
         setIsInitialized(true);
       }
 
-      // STEP 2: Fetch from API (will set isInitialized when done)
-      const fetchedUser = await fetchCurrentUser(!cachedUser);
-      
+      // STEP 2: Fetch from API to validate/update
+      const fetchedUser = await fetchCurrentUser(!!cachedUser);
+
+      // Check if this effect instance was cancelled (strict mode cleanup)
+      if (effectCancelled) {
+        console.log("[Auth] Init effect was cancelled, ignoring result");
+        return;
+      }
+
       if (fetchedUser) {
         console.log("[Auth] ✅ User validated:", fetchedUser.email);
         setupTokenRefresh();
       } else {
         console.log("[Auth] ❌ No user found");
         clearTokenRefresh();
+
+        // If we had a cached user but server says no, clear it
+        if (cachedUser) {
+          setUser(null);
+          cacheUser(null);
+          setIsLoading(false);
+          setIsInitialized(true);
+        }
       }
     };
+
+    // Initialize prevPathnameRef
+    prevPathnameRef.current = pathname;
 
     initAuth();
 
     return () => {
+      // Mark this effect instance as cancelled
+      effectCancelled = true;
+
       clearTokenRefresh();
+
+      // Abort any in-flight fetch
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
-    };
-  }, []); // Empty deps - run ONCE
 
-  // Sync with NextAuth
+      // Reset fetching state so next mount can fetch
+      isFetchingRef.current = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ============================================
+  // EFFECT 3: Re-fetch after navigating FROM auth routes
+  //
+  // Detects: /login → / (after login, cookies are set but
+  // AuthContext still has user=null from initial check)
+  // ============================================
+  useEffect(() => {
+    const prevPath = prevPathnameRef.current;
+    prevPathnameRef.current = pathname;
+
+    if (!isInitialized || isMitraRoute || isAdminRoute || isLoggingOutRef.current) {
+      return;
+    }
+
+    const wasOnAuth = isAuthRoute(prevPath);
+    const isOnAuth = isAuthRoute(pathname);
+
+    if (wasOnAuth && !isOnAuth && !user) {
+      console.log(
+        "[Auth] 🔄 Navigated from auth route (",
+        prevPath,
+        ") → (",
+        pathname,
+        ") — re-checking session..."
+      );
+
+      setIsLoading(true);
+
+      const timer = setTimeout(() => {
+        if (!mountedRef.current || isLoggingOutRef.current) return;
+
+        fetchCurrentUser(false)
+          .then((fetchedUser) => {
+            if (fetchedUser) {
+              console.log("[Auth] ✅ Session found after login redirect:", fetchedUser.email);
+              setupTokenRefresh();
+            } else {
+              console.log("[Auth] ❌ No session after login redirect");
+              clearTokenRefresh();
+            }
+          })
+          .catch((err) => {
+            console.error("[Auth] Error re-checking session:", err);
+            if (mountedRef.current) {
+              setIsLoading(false);
+            }
+          });
+      }, 150);
+
+      return () => clearTimeout(timer);
+    }
+  }, [pathname, isInitialized, isMitraRoute, isAdminRoute, user, fetchCurrentUser, setupTokenRefresh, clearTokenRefresh]);
+
+  // ============================================
+  // EFFECT 4: Sync with NextAuth session (Google OAuth)
+  // ============================================
   useEffect(() => {
     if (!isInitialized || isMitraRoute || isAdminRoute) return;
 
@@ -414,7 +538,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionStatus, session, isInitialized, isMitraRoute, isAdminRoute, user]);
 
-  // Visibility change handler
+  // ============================================
+  // EFFECT 5: Visibility change (tab focus)
+  // ============================================
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && user && !isLoggingOutRef.current) {
@@ -429,7 +555,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user, fetchCurrentUser]);
 
-  // Online handler
+  // ============================================
+  // EFFECT 6: Online handler
+  // ============================================
   useEffect(() => {
     const handleOnline = () => {
       if (user && !isLoggingOutRef.current) {
@@ -444,13 +572,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user, fetchCurrentUser]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
+  // ============================================
+  // CONTEXT VALUE
+  // ============================================
   const value = useMemo<AuthContextType>(
     () => ({
       user,

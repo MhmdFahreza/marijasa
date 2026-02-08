@@ -285,18 +285,19 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   // ============================================
   // FIXED RENDER STATE LOGIC
   // ============================================
-  
-  // Show skeleton ONLY when:
-  // 1. Auth is loading AND not yet initialized
-  const showSkeleton = authLoading && !isInitialized;
-  
-  // Show authenticated UI when:
-  // 1. We have a user (takes priority - instant render)
+
+  // Show authenticated UI when we have a user (takes highest priority)
   const showAuthenticatedUI = isAuthenticated && user;
-  
+
+  // Show skeleton when:
+  // - Auth is loading AND we don't have a user yet
+  // This covers: initial load, AND re-fetch after login redirect
+  const showSkeleton = authLoading && !user;
+
   // Show guest UI when:
-  // 1. Not authenticated AND initialized (confirmed not logged in)
-  const showGuestUI = !isAuthenticated && isInitialized;
+  // - Not authenticated AND fully initialized AND not loading
+  // - This ensures guest UI only shows when we've confirmed no session exists
+  const showGuestUI = !isAuthenticated && isInitialized && !authLoading;
 
   // Render navbar content based on auth state
   const renderNavbarContent = () => {
@@ -453,7 +454,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // PRIORITY 2: Show skeleton while loading
+    // PRIORITY 2: Show skeleton while loading (initial + re-fetch after login)
     if (showSkeleton) {
       return <NavbarSkeleton />;
     }
@@ -490,7 +491,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // FALLBACK: Show skeleton if we're in an unexpected state
+    // FALLBACK: Show skeleton if in unexpected state
     return <NavbarSkeleton />;
   };
 
