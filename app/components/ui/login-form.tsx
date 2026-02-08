@@ -1,4 +1,4 @@
-// app/components/ui/login-form.tsx - UPDATED WITH BETTER ERROR HANDLING
+// app/components/ui/login-form.tsx - UPDATED WITH COMPREHENSIVE ERROR HANDLING
 "use client";
 
 import { cn } from "../lib/utils";
@@ -27,54 +27,54 @@ interface LoginFormProps extends React.ComponentProps<"div"> {
   onRegisterClick?: () => void;
 }
 
-// Enhanced error messages mapping
+// Enhanced error messages mapping - COMPREHENSIVE
 const ERROR_MESSAGES: Record<string, string> = {
   // Google OAuth specific errors
-  ACCESS_DENIED:
-    "❌ Login dibatalkan. Anda harus memberikan izin untuk melanjutkan. Silakan coba lagi dan klik 'Izinkan'.",
+  NO_EMAIL:
+    "❌ Tidak dapat mengambil email dari akun Google Anda. Pastikan email terlihat di pengaturan Google dan coba lagi.",
   USER_NOT_REGISTERED:
-    "⚠️ Email Google Anda belum terdaftar di sistem kami. Silakan daftar terlebih dahulu menggunakan email yang sama.",
+    "⚠️ Email Google Anda belum terdaftar di sistem kami. Silakan daftar terlebih dahulu menggunakan email yang sama, lalu login dengan Google.",
   ACCOUNT_INACTIVE: 
     "⚠️ Akun Anda tidak aktif. Silakan hubungi administrator untuk mengaktifkan kembali akun Anda.",
-  NO_EMAIL: 
-    "❌ Tidak dapat mengambil email dari akun Google. Pastikan email Anda terlihat di pengaturan Google.",
   NO_SESSION: 
-    "❌ Tidak dapat membuat sesi login. Silakan coba lagi atau gunakan login email/phone.",
+    "❌ Tidak dapat membuat sesi login. Cookies mungkin diblokir oleh browser. Silakan aktifkan cookies dan coba lagi.",
   SESSION_ERROR: 
-    "❌ Terjadi kesalahan pada sesi. Silakan hapus cookies browser dan coba lagi.",
+    "❌ Terjadi kesalahan pada sesi login. Silakan hapus cookies browser (Ctrl+Shift+Delete) dan coba lagi.",
+  COOKIE_ERROR:
+    "❌ Gagal menyimpan sesi login. Pastikan browser Anda mengizinkan cookies dari situs ini.",
   CALLBACK_ERROR: 
-    "❌ Terjadi kesalahan saat memproses login. Silakan coba lagi beberapa saat.",
+    "❌ Terjadi kesalahan saat memproses login Google. Silakan coba beberapa saat lagi atau gunakan login email/phone.",
   GOOGLE_SIGNIN_ERROR:
-    "❌ Terjadi kesalahan saat login dengan Google. Silakan periksa koneksi internet dan coba lagi.",
+    "❌ Terjadi kesalahan pada sistem login Google. Silakan periksa koneksi internet dan coba lagi.",
   
   // NextAuth standard errors
   OAuthAccountNotLinked:
-    "⚠️ Email ini sudah terdaftar dengan metode login lain. Silakan gunakan metode login yang sesuai (Email/Phone atau Google).",
+    "⚠️ Email ini sudah terdaftar dengan metode login berbeda. Silakan gunakan metode login yang sesuai (Email/Phone atau Google).",
   OAuthSignin:
-    "❌ Terjadi kesalahan saat memulai login Google. Silakan coba lagi.",
+    "❌ Tidak dapat memulai proses login Google. Silakan coba lagi atau gunakan login email/phone.",
   OAuthCallback:
-    "❌ Terjadi kesalahan saat memproses login Google. Silakan coba lagi.",
+    "❌ Gagal memproses callback dari Google. Silakan coba lagi atau hubungi administrator jika masalah berlanjut.",
   Callback: 
     "❌ Terjadi kesalahan saat memproses login. Silakan coba lagi.",
   AccessDenied: 
-    "❌ Akses ditolak. Silakan berikan izin yang diperlukan untuk melanjutkan.",
+    "❌ Akses ditolak. Anda harus memberikan izin yang diperlukan untuk melanjutkan login dengan Google.",
   Configuration: 
     "❌ Terjadi kesalahan konfigurasi sistem. Silakan hubungi administrator.",
   
   // Credential login errors
   EMAIL_NOT_REGISTERED:
-    "⚠️ Email belum terdaftar. Silakan daftar terlebih dahulu.",
+    "⚠️ Email belum terdaftar. Silakan daftar terlebih dahulu atau gunakan login Google jika sudah mendaftar via Google.",
   PHONE_NOT_REGISTERED:
     "⚠️ Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.",
   GOOGLE_ACCOUNT:
-    "⚠️ Akun ini terdaftar melalui Google. Silakan gunakan tombol 'Login dengan Google'.",
+    "⚠️ Akun ini terdaftar melalui Google. Silakan gunakan tombol 'Login dengan Google' di bawah.",
   EMAIL_NOT_VERIFIED:
-    "⚠️ Email belum diverifikasi. Silakan cek inbox/spam dan klik link verifikasi.",
+    "⚠️ Email belum diverifikasi. Silakan cek inbox/spam email Anda dan klik link verifikasi.",
   INVALID_PASSWORD:
-    "❌ Password salah. Silakan periksa kembali password Anda.",
+    "❌ Password salah. Silakan periksa kembali password Anda atau reset password jika lupa.",
   
   // Default
-  default: "❌ Terjadi kesalahan. Silakan coba lagi.",
+  default: "❌ Terjadi kesalahan. Silakan coba lagi atau hubungi administrator jika masalah berlanjut.",
 };
 
 // User config
@@ -233,7 +233,7 @@ export function LoginForm({
       setError(errorMessage);
       setIsGoogleLoading(false);
 
-      // Clear error from URL
+      // Clear error from URL after showing it
       const url = new URL(window.location.href);
       url.searchParams.delete("error");
       window.history.replaceState({}, "", url.toString());
@@ -248,13 +248,20 @@ export function LoginForm({
 
       console.log("[Login] Starting Google sign in...");
 
+      // Trigger NextAuth Google sign in
       await signIn("google", {
         callbackUrl: "/",
         redirect: true,
       });
+
+      // Note: After this point, the browser redirects to Google
+      // When it comes back, it will hit /api/auth/callback/google
+      // which will redirect to /auth/google-callback
+      // which will set cookies and redirect to home
+      
     } catch (error) {
       console.error("Google sign in error:", error);
-      setError("❌ Terjadi kesalahan saat login dengan Google. Silakan coba lagi.");
+      setError(ERROR_MESSAGES["GOOGLE_SIGNIN_ERROR"]);
       setIsGoogleLoading(false);
     }
   };
@@ -529,7 +536,7 @@ export function LoginForm({
                 <span className="text-base sm:text-lg font-bold flex-shrink-0 mt-0.5">⚠️</span>
                 <div className="pt-0.5 space-y-1">
                   <p className="font-semibold">Gagal Login</p>
-                  <p className="text-xs sm:text-sm opacity-90">{error}</p>
+                  <p className="text-xs sm:text-sm opacity-90 leading-relaxed">{error}</p>
                 </div>
               </div>
               <button

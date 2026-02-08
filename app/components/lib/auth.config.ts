@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts - FIXED VERSION
+// app/components/lib/auth.config.ts - FIXED VERSION WITH BETTER ERROR HANDLING
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -152,14 +152,19 @@ export const authOptions: NextAuthOptions = {
       // Handle Google OAuth
       if (account?.provider === "google") {
         try {
+          console.log("[Google OAuth signIn] ========== START ==========");
+          
           const userEmail = user.email?.toLowerCase();
 
+          // CRITICAL FIX: Instead of returning false (which causes access_denied),
+          // we throw an error or redirect to error page
           if (!userEmail) {
-            console.error("[Google OAuth] No email provided");
-            return false;
+            console.error("[Google OAuth signIn] ❌ No email provided from Google");
+            // Throw error instead of returning false
+            throw new Error("NO_EMAIL");
           }
 
-          console.log(`[Google OAuth] Sign in attempt for: ${userEmail}`);
+          console.log(`[Google OAuth signIn] Processing login for: ${userEmail}`);
 
           // Check if user is registered in database
           const existingUser = await prisma.user.findUnique({
@@ -167,14 +172,15 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!existingUser) {
-            console.log(`[Google OAuth] User not registered: ${userEmail}`);
-            return `${BASE_URL}/login?error=USER_NOT_REGISTERED`;
+            console.log(`[Google OAuth signIn] ❌ User not registered: ${userEmail}`);
+            // Throw error instead of returning redirect URL
+            throw new Error("USER_NOT_REGISTERED");
           }
 
           // Check if account is active
           if (!existingUser.is_active) {
-            console.log(`[Google OAuth] Account inactive: ${userEmail}`);
-            return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
+            console.log(`[Google OAuth signIn] ❌ Account inactive: ${userEmail}`);
+            throw new Error("ACCOUNT_INACTIVE");
           }
 
           // Update email_verified if not already
@@ -183,7 +189,7 @@ export const authOptions: NextAuthOptions = {
               where: { email: userEmail },
               data: { email_verified: true },
             });
-            console.log(`[Google OAuth] Email verified for: ${userEmail}`);
+            console.log(`[Google OAuth signIn] ✅ Email verified for: ${userEmail}`);
           }
 
           // Only update avatar if user doesn't have one
@@ -192,14 +198,26 @@ export const authOptions: NextAuthOptions = {
               where: { email: userEmail },
               data: { avatar: user.image },
             });
-            console.log(`[Google OAuth] Avatar updated for: ${userEmail}`);
+            console.log(`[Google OAuth signIn] ✅ Avatar updated for: ${userEmail}`);
           }
 
-          console.log(`[Google OAuth] ✅ Sign in successful for: ${userEmail}`);
+          console.log(`[Google OAuth signIn] ✅ Sign in successful for: ${userEmail}`);
+          console.log("[Google OAuth signIn] ========== SUCCESS ==========");
+          
           return true;
         } catch (error) {
-          console.error("[Google OAuth] Error during sign in:", error);
-          return `${BASE_URL}/login?error=GOOGLE_SIGNIN_ERROR`;
+          console.error("[Google OAuth signIn] ========== ERROR ==========");
+          console.error("[Google OAuth signIn] Error:", error);
+          
+          // Convert error to redirect URL
+          const errorMessage = error instanceof Error ? error.message : "GOOGLE_SIGNIN_ERROR";
+          const errorUrl = `${BASE_URL}/login?error=${errorMessage}`;
+          
+          console.log("[Google OAuth signIn] Redirecting to error URL:", errorUrl);
+          
+          // Return redirect URL for error page
+          // This prevents the access_denied error
+          return errorUrl;
         }
       }
 
@@ -216,11 +234,15 @@ export const authOptions: NextAuthOptions = {
         // For Google OAuth, create session and tokens
         if (account?.provider === "google") {
           try {
+            console.log("[Google OAuth jwt] ========== START ==========");
+            
             const dbUser = await prisma.user.findUnique({
               where: { email: user.email!.toLowerCase() },
             });
 
             if (dbUser) {
+              console.log(`[Google OAuth jwt] Creating session for: ${dbUser.email}`);
+              
               // Create session ID
               const sessionId = createSessionId();
 
@@ -257,10 +279,14 @@ export const authOptions: NextAuthOptions = {
               token.refreshToken = refreshToken;
               token.customCookiesSet = false; // Flag to track if we've set cookies
 
-              console.log(`[Google OAuth] ✅ Session created: ${sessionId} for ${dbUser.email}`);
+              console.log(`[Google OAuth jwt] ✅ Session created: ${sessionId.substring(0, 8)}... for ${dbUser.email}`);
+              console.log("[Google OAuth jwt] ========== SUCCESS ==========");
+            } else {
+              console.error("[Google OAuth jwt] ❌ User not found in database");
             }
           } catch (error) {
-            console.error("[Google OAuth] Error creating session:", error);
+            console.error("[Google OAuth jwt] ========== ERROR ==========");
+            console.error("[Google OAuth jwt] Error creating session:", error);
           }
         }
       }
@@ -303,13 +329,17 @@ export const authOptions: NextAuthOptions = {
     },
 
     async redirect({ url, baseUrl }) {
-      console.log('[Redirect Callback] url:', url, 'baseUrl:', baseUrl);
+      console.log('[Redirect Callback] ========== START ==========');
+      console.log('[Redirect Callback] url:', url);
+      console.log('[Redirect Callback] baseUrl:', baseUrl);
 
       // CRITICAL FIX: Use BASE_URL constant instead of parameter
       const CORRECT_BASE_URL = BASE_URL;
 
       // Handle error redirects - always use correct base URL
       if (url.includes("error=")) {
+        console.log('[Redirect] Detected error in URL');
+        
         // If URL is already absolute with correct domain, use it
         if (url.startsWith(CORRECT_BASE_URL)) {
           console.log('[Redirect] Using error URL as-is:', url);
@@ -317,11 +347,16 @@ export const authOptions: NextAuthOptions = {
         }
         
         // Extract error parameter and rebuild URL
-        const urlObj = new URL(url.startsWith('http') ? url : `${CORRECT_BASE_URL}${url}`);
-        const errorParam = urlObj.searchParams.get('error');
-        const errorUrl = `${CORRECT_BASE_URL}/login?error=${errorParam}`;
-        console.log('[Redirect] Redirecting to error page:', errorUrl);
-        return errorUrl;
+        try {
+          const urlObj = new URL(url.startsWith('http') ? url : `${CORRECT_BASE_URL}${url}`);
+          const errorParam = urlObj.searchParams.get('error');
+          const errorUrl = `${CORRECT_BASE_URL}/login?error=${errorParam}`;
+          console.log('[Redirect] Redirecting to error page:', errorUrl);
+          return errorUrl;
+        } catch (e) {
+          console.error('[Redirect] Error parsing URL:', e);
+          return `${CORRECT_BASE_URL}/login?error=CALLBACK_ERROR`;
+        }
       }
 
       // CRITICAL FIX: For Google OAuth, redirect to custom callback page
@@ -352,7 +387,7 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: "/login",
-    error: "/login",
+    error: "/login", // Redirect errors to login page
   },
   session: {
     strategy: "jwt",
@@ -373,22 +408,30 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
   logger: {
-    error(code, metadata) {
-      // Suppress deprecation warnings in production
-      if (code === "OAUTH_CALLBACK_HANDLER_ERROR" || code === "SIGNIN_OAUTH_ERROR") {
-        console.error("[NextAuth Error]", code, metadata);
-      } else if (!code.includes("DEP0169")) {
-        console.error("[NextAuth Error]", code, metadata);
+    error(code, ...message) {
+      // Filter out deprecation warnings
+      const codeStr = String(code);
+      if (codeStr.includes("DEP0169")) {
+        return; // Suppress deprecation warning
+      }
+      
+      // Log OAuth errors with better context
+      if (codeStr === "OAUTH_CALLBACK_HANDLER_ERROR" || codeStr === "SIGNIN_OAUTH_ERROR") {
+        console.error("[NextAuth Error]", code, ...message);
+      } else {
+        console.error("[NextAuth Error]", code, ...message);
       }
     },
-    warn(code) {
-      if (!code.includes("session") && !code.includes("DEP0169")) {
-        console.warn("[NextAuth Warning]", code);
+    warn(code, ...message) {
+      const codeStr = String(code);
+      // Filter out session warnings and deprecation warnings
+      if (!codeStr.includes("session") && !codeStr.includes("DEP0169")) {
+        console.warn("[NextAuth Warning]", code, ...message);
       }
     },
-    debug: (code, metadata) => {
+    debug: (code, ...message) => {
       if (process.env.NODE_ENV === "development") {
-        console.log("[NextAuth Debug]", code, metadata);
+        console.log("[NextAuth Debug]", code, ...message);
       }
     },
   },
