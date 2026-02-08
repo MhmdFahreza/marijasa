@@ -27,27 +27,37 @@ function normalizePhone(phone: string): string {
 
 // ============================================
 // PRODUCTION-SAFE: Get the correct base URL
-// Priority: NEXTAUTH_URL > VERCEL_URL > localhost fallback
+// FIXED: Prioritas yang lebih jelas dan fallback yang aman
 // ============================================
 function getBaseUrl(): string {
-  // 1. Explicit NEXTAUTH_URL (should always be set)
+  // 1. Production: NEXTAUTH_URL (MUST be set in Vercel)
   if (process.env.NEXTAUTH_URL) {
-    return process.env.NEXTAUTH_URL;
+    const url = process.env.NEXTAUTH_URL.trim();
+    console.log('[Auth Config] Using NEXTAUTH_URL:', url);
+    return url;
   }
 
-  // 2. Vercel auto-sets VERCEL_URL (without protocol)
+  // 2. Vercel auto-sets VERCEL_URL (production/preview deployments)
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+    const url = `https://${process.env.VERCEL_URL}`;
+    console.log('[Auth Config] Using VERCEL_URL:', url);
+    return url;
   }
 
-  // 3. NEXT_PUBLIC_APP_URL as fallback
+  // 3. Fallback for other deployments
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL;
+    const url = process.env.NEXT_PUBLIC_APP_URL.trim();
+    console.log('[Auth Config] Using NEXT_PUBLIC_APP_URL:', url);
+    return url;
   }
 
-  // 4. Localhost fallback for development
-  return "http://localhost:3000";
+  // 4. Development fallback
+  const devUrl = "http://localhost:3000";
+  console.log('[Auth Config] Using development fallback:', devUrl);
+  return devUrl;
 }
+
+const BASE_URL = getBaseUrl();
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -150,7 +160,7 @@ export const authOptions: NextAuthOptions = {
             return false;
           }
 
-          console.log(`[Google OAuth] Attempting sign in for: ${userEmail}`);
+          console.log(`[Google OAuth] Sign in attempt for: ${userEmail}`);
 
           // Check if user is registered in database
           const existingUser = await prisma.user.findUnique({
@@ -159,13 +169,13 @@ export const authOptions: NextAuthOptions = {
 
           if (!existingUser) {
             console.log(`[Google OAuth] User not registered: ${userEmail}`);
-            return "/login?error=USER_NOT_REGISTERED";
+            return `${BASE_URL}/login?error=USER_NOT_REGISTERED`;
           }
 
           // Check if account is active
           if (!existingUser.is_active) {
             console.log(`[Google OAuth] Account inactive: ${userEmail}`);
-            return "/login?error=ACCOUNT_INACTIVE";
+            return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
           }
 
           // Update email_verified if not already
@@ -183,20 +193,17 @@ export const authOptions: NextAuthOptions = {
               where: { email: userEmail },
               data: { avatar: user.image },
             });
-            console.log(`[Google OAuth] Avatar updated from Google for: ${userEmail}`);
-          } else if (existingUser.avatar) {
-            console.log(`[Google OAuth] Keeping existing database avatar for: ${userEmail}`);
+            console.log(`[Google OAuth] Avatar updated for: ${userEmail}`);
           }
 
-          console.log(`[Google OAuth] Sign in successful for: ${userEmail}`);
+          console.log(`[Google OAuth] ✅ Sign in successful for: ${userEmail}`);
           return true;
         } catch (error) {
           console.error("[Google OAuth] Error during sign in:", error);
-          return "/login?error=GOOGLE_SIGNIN_ERROR";
+          return `${BASE_URL}/login?error=GOOGLE_SIGNIN_ERROR`;
         }
       }
 
-      // For credentials provider
       return true;
     },
 
@@ -250,7 +257,7 @@ export const authOptions: NextAuthOptions = {
               token.accessToken = accessToken;
               token.refreshToken = refreshToken;
 
-              console.log(`[Google OAuth] Created session: ${sessionId} for ${dbUser.email}`);
+              console.log(`[Google OAuth] ✅ Session created: ${sessionId} for ${dbUser.email}`);
             }
           } catch (error) {
             console.error("[Google OAuth] Error creating session:", error);
@@ -258,7 +265,7 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // For Google OAuth, get FRESH user data from database every time
+      // For Google OAuth, refresh user data
       if (account?.provider === "google" && token.email) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -295,23 +302,44 @@ export const authOptions: NextAuthOptions = {
     },
 
     async redirect({ url, baseUrl }) {
-      // Handle error redirects
+      console.log('[Redirect Callback] url:', url, 'baseUrl:', baseUrl);
+
+      // CRITICAL FIX: Use BASE_URL instead of baseUrl parameter
+      // baseUrl parameter might be wrong in production (internal Vercel hostname)
+      const CORRECT_BASE_URL = BASE_URL;
+
+      // Handle error redirects - always use correct base URL
       if (url.includes("error=")) {
+        // If URL is already absolute with correct domain, use it
+        if (url.startsWith(CORRECT_BASE_URL)) {
+          console.log('[Redirect] Using error URL as-is:', url);
+          return url;
+        }
+        
+        // Extract error parameter and rebuild URL
+        const urlObj = new URL(url.startsWith('http') ? url : `${CORRECT_BASE_URL}${url}`);
+        const errorParam = urlObj.searchParams.get('error');
+        const errorUrl = `${CORRECT_BASE_URL}/login?error=${errorParam}`;
+        console.log('[Redirect] Redirecting to error page:', errorUrl);
+        return errorUrl;
+      }
+
+      // If URL is absolute and starts with correct base URL, allow it
+      if (url.startsWith(CORRECT_BASE_URL)) {
+        console.log('[Redirect] URL starts with correct base, allowing:', url);
         return url;
       }
 
-      // If URL starts with baseUrl, allow redirect
-      if (url.startsWith(baseUrl)) {
-        return url;
-      }
-
-      // If relative URL, resolve against baseUrl
+      // If URL is relative, resolve against correct base URL
       if (url.startsWith("/")) {
-        return `${baseUrl}${url}`;
+        const resolvedUrl = `${CORRECT_BASE_URL}${url}`;
+        console.log('[Redirect] Resolving relative URL:', resolvedUrl);
+        return resolvedUrl;
       }
 
-      // Default to baseUrl (home page)
-      return baseUrl;
+      // Default: redirect to home
+      console.log('[Redirect] Defaulting to home:', CORRECT_BASE_URL);
+      return CORRECT_BASE_URL;
     },
   },
   pages: {
@@ -329,15 +357,16 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        // CRITICAL: secure must be true in production (HTTPS)
+        // CRITICAL: secure must be true in production
         secure: process.env.NODE_ENV === "production",
       },
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: false,
+  debug: process.env.NODE_ENV === "development", // Enable debug in development
   logger: {
     error(code, metadata) {
+      // Suppress common non-critical errors
       if (
         code === "CLIENT_FETCH_ERROR" &&
         typeof metadata?.message === "string" &&
@@ -351,6 +380,10 @@ export const authOptions: NextAuthOptions = {
       if (code.includes("session")) return;
       console.warn("[NextAuth Warning]", code);
     },
-    debug: () => {},
+    debug: (code, metadata) => {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[NextAuth Debug]", code, metadata);
+      }
+    },
   },
 };

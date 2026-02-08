@@ -1,4 +1,4 @@
-// middleware.ts - VERSI DIPERBAIKI
+// middleware.ts - FIXED VERSION
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -18,9 +18,11 @@ export const config = {
 
 // Route yang TIDAK memerlukan autentikasi (PUBLIC)
 const publicRoutes = [
-  "/api/payments/xendit/webhook",        // ⬅️ WEBHOOK XENDIT
-  "/api/payments/xendit/simulate",       // Simulasi pembayaran
-  "/api/payments/xendit/webhook/route",  // Alternatif path
+  "/api/payments/xendit/webhook",
+  "/api/payments/xendit/simulate",
+  "/api/payments/xendit/webhook/route",
+  "/api/auth/callback/google", // CRITICAL: Allow Google OAuth callback
+  "/api/auth/google/set-cookies", // CRITICAL: Allow cookie setting
 ];
 
 // Protected routes that require authentication
@@ -67,10 +69,10 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // =============== PUBLIC ROUTES ===============
-  // Allow access to public routes WITHOUT authentication
+  // CRITICAL: Allow Google OAuth callback and cookie setting routes
   for (const route of publicRoutes) {
-    if (pathname.startsWith(route)) {
-      console.log(`[Middleware] Allowing public access to: ${pathname}`);
+    if (pathname.startsWith(route) || pathname === route) {
+      console.log(`[Middleware] ✅ Allowing public access to: ${pathname}`);
       return NextResponse.next();
     }
   }
@@ -79,14 +81,12 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/admin/')) {
     // Allow access to login page
     if (pathname === '/admin/login') {
-      // If already logged in, redirect to dashboard
       const adminSessionId = request.cookies.get('admin_session_id')?.value;
       const adminAccessToken = request.cookies.get('admin_access_token')?.value;
       const adminRefreshToken = request.cookies.get('admin_refresh_token')?.value;
 
       if (adminSessionId && (adminAccessToken || adminRefreshToken)) {
         console.log('[Middleware] Admin already authenticated, redirecting to dashboard');
-        // PERBAIKAN: Gunakan direct redirect untuk admin yang sudah login
         return createDirectRedirect("/admin/dashboard", request);
       }
       
@@ -104,13 +104,12 @@ export async function middleware(request: NextRequest) {
     }
 
     // If access token is missing but refresh token exists, allow through
-    // The client will handle token refresh
     if (!adminAccessToken && adminRefreshToken) {
       console.log('[Middleware] Admin access token missing, allowing through for refresh');
       return NextResponse.next();
     }
 
-    // Verify admin access token by calling verify API
+    // Verify admin access token
     try {
       const verifyUrl = new URL('/api/admin/verify', request.url);
       const verifyResponse = await fetch(verifyUrl.toString(), {
@@ -123,7 +122,6 @@ export async function middleware(request: NextRequest) {
       const verifyData = await verifyResponse.json();
 
       if (!verifyResponse.ok) {
-        // If token expired, check if we should refresh
         if (verifyData.shouldRefresh && adminRefreshToken) {
           console.log('[Middleware] Admin token expired, allowing through for refresh');
           return NextResponse.next();
@@ -143,7 +141,6 @@ export async function middleware(request: NextRequest) {
 
   // =============== MITRA ROUTES ===============
   if (pathname.startsWith('/mitra/')) {
-    // Get mitra tokens early for checking
     const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
     const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
     const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
@@ -152,36 +149,29 @@ export async function middleware(request: NextRequest) {
     if (publicMitraRoutes.some(route => pathname === route)) {
       // If accessing login and already logged in, redirect to dashboard
       if (pathname === '/mitra/login') {
-        // Only redirect if has valid session and either access or refresh token
         if (mitraSessionId && (mitraAccessToken || mitraRefreshToken)) {
-          console.log('[Middleware] Mitra already authenticated, redirecting directly to dashboard');
-          
-          // PERBAIKAN UTAMA: Gunakan direct redirect tanpa halaman loading
-          // Ini akan langsung redirect ke dashboard tanpa melalui /loading
+          console.log('[Middleware] Mitra already authenticated, redirecting to dashboard');
           return createDirectRedirect("/mitra/dashboard", request);
         }
       }
       
-      // Allow access to /mitra/daftar without authentication
-      console.log(`[Middleware] Allowing access to public mitra route: ${pathname}`);
+      console.log(`[Middleware] ✅ Allowing access to public mitra route: ${pathname}`);
       return NextResponse.next();
     }
 
     // Protected mitra routes - require authentication
-    // Must have session and at least one token (access or refresh)
     if (!mitraSessionId || (!mitraAccessToken && !mitraRefreshToken)) {
       console.log('[Middleware] Mitra not authenticated, redirecting to login');
       return createLoadingRedirect("/mitra/login", request, "Please login to continue...");
     }
 
     // If access token is missing but refresh token exists, allow through
-    // The page will handle token refresh via /api/mitra/me
     if (!mitraAccessToken && mitraRefreshToken) {
       console.log('[Middleware] Mitra access token missing but has refresh, allowing through');
       return NextResponse.next();
     }
 
-    // Verify mitra access token by calling verify API
+    // Verify mitra access token
     try {
       const verifyUrl = new URL('/api/mitra/verify', request.url);
       const verifyResponse = await fetch(verifyUrl.toString(), {
@@ -194,7 +184,6 @@ export async function middleware(request: NextRequest) {
       const verifyData = await verifyResponse.json();
 
       if (!verifyResponse.ok) {
-        // If should refresh and has refresh token, allow through
         if (verifyData.shouldRefresh && mitraRefreshToken) {
           console.log('[Middleware] Mitra token expired, allowing through for refresh');
           return NextResponse.next();
@@ -209,7 +198,6 @@ export async function middleware(request: NextRequest) {
     } catch (error) {
       console.error('[Middleware] Error verifying mitra token:', error);
       
-      // If has refresh token, allow through to try refresh
       if (mitraRefreshToken) {
         console.log('[Middleware] Error but has refresh token, allowing through');
         return NextResponse.next();
@@ -232,34 +220,35 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  // Simple check: user is authenticated if has session OR sessionToken
+  // Check if user is authenticated
   let isAuthenticated = false;
 
   // Check NextAuth session first (for Google OAuth)
   if (sessionToken) {
-    console.log("[Middleware] User authenticated via NextAuth");
+    console.log("[Middleware] ✅ User authenticated via NextAuth");
     isAuthenticated = true;
   }
   // Check custom auth (session + access/refresh token)
   else if (sessionId && (accessToken || refreshToken)) {
-    console.log("[Middleware] User authenticated via JWT session");
+    console.log("[Middleware] ✅ User authenticated via JWT session");
     isAuthenticated = true;
   }
 
   // Check if accessing protected route without auth
   if (protectedRoutes.some((route) => pathname.startsWith(route))) {
     if (!isAuthenticated) {
-      console.log("[Middleware] Unauthenticated user trying to access protected route:", pathname);
+      console.log("[Middleware] ❌ Unauthenticated user accessing protected route:", pathname);
       const loginUrl = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
       return createLoadingRedirect(loginUrl, request, "Please login to access this page...");
     }
   }
 
   // Check if accessing auth routes while authenticated
+  // CRITICAL FIX: Use direct redirect instead of loading page
   if (authRoutes.some((route) => pathname === route)) {
     if (isAuthenticated) {
-      console.log("[Middleware] Authenticated user trying to access auth route, redirecting to home");
-      // PERBAIKAN: Gunakan direct redirect untuk user yang sudah login
+      console.log("[Middleware] ⚠️ Authenticated user accessing auth route, redirecting to home");
+      // IMPORTANT: Direct redirect to avoid infinite loops
       return createDirectRedirect("/", request);
     }
   }
