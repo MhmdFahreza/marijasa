@@ -1,4 +1,4 @@
-// middleware.ts - FIXED VERSION
+// middleware.ts - FIXED VERSION with Google Callback Support
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -13,6 +13,7 @@ export const config = {
     "/register/otp",
     "/mitra/:path*",
     "/admin/:path*",
+    "/auth/google-callback", // Add custom Google callback page
   ],
 };
 
@@ -22,7 +23,8 @@ const publicRoutes = [
   "/api/payments/xendit/simulate",
   "/api/payments/xendit/webhook/route",
   "/api/auth/callback/google", // CRITICAL: Allow Google OAuth callback
-  "/api/auth/google/set-cookies", // CRITICAL: Allow cookie setting
+  "/api/auth/google/set-cookies", // CRITICAL: Allow cookie setting (POST)
+  "/auth/google-callback", // CRITICAL: Allow custom Google callback page
 ];
 
 // Protected routes that require authentication

@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts
+// app/components/lib/auth.config.ts - FIXED VERSION
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -27,7 +27,6 @@ function normalizePhone(phone: string): string {
 
 // ============================================
 // PRODUCTION-SAFE: Get the correct base URL
-// FIXED: Prioritas yang lebih jelas dan fallback yang aman
 // ============================================
 function getBaseUrl(): string {
   // 1. Production: NEXTAUTH_URL (MUST be set in Vercel)
@@ -252,10 +251,11 @@ export const authOptions: NextAuthOptions = {
               // Store tokens in Redis
               await storeTokens(sessionId, accessToken, refreshToken);
 
-              // Add to token for cookie creation
+              // Store in token for later retrieval
               token.sessionId = sessionId;
               token.accessToken = accessToken;
               token.refreshToken = refreshToken;
+              token.customCookiesSet = false; // Flag to track if we've set cookies
 
               console.log(`[Google OAuth] ✅ Session created: ${sessionId} for ${dbUser.email}`);
             }
@@ -295,6 +295,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).sessionId = token.sessionId as string;
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
+        (session.user as any).customCookiesSet = token.customCookiesSet as boolean;
         session.user.name = token.name as string;
         session.user.image = token.picture as string || "/profile.svg";
       }
@@ -304,8 +305,7 @@ export const authOptions: NextAuthOptions = {
     async redirect({ url, baseUrl }) {
       console.log('[Redirect Callback] url:', url, 'baseUrl:', baseUrl);
 
-      // CRITICAL FIX: Use BASE_URL instead of baseUrl parameter
-      // baseUrl parameter might be wrong in production (internal Vercel hostname)
+      // CRITICAL FIX: Use BASE_URL constant instead of parameter
       const CORRECT_BASE_URL = BASE_URL;
 
       // Handle error redirects - always use correct base URL
@@ -322,6 +322,14 @@ export const authOptions: NextAuthOptions = {
         const errorUrl = `${CORRECT_BASE_URL}/login?error=${errorParam}`;
         console.log('[Redirect] Redirecting to error page:', errorUrl);
         return errorUrl;
+      }
+
+      // CRITICAL FIX: For Google OAuth, redirect to custom callback page
+      // This page will handle setting cookies properly
+      if (url.includes('/api/auth/callback/google') || url === `${CORRECT_BASE_URL}/api/auth/signin/google`) {
+        const callbackUrl = `${CORRECT_BASE_URL}/auth/google-callback`;
+        console.log('[Redirect] Google OAuth - redirecting to custom callback:', callbackUrl);
+        return callbackUrl;
       }
 
       // If URL is absolute and starts with correct base URL, allow it
@@ -363,22 +371,20 @@ export const authOptions: NextAuthOptions = {
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === "development", // Enable debug in development
+  debug: process.env.NODE_ENV === "development",
   logger: {
     error(code, metadata) {
-      // Suppress common non-critical errors
-      if (
-        code === "CLIENT_FETCH_ERROR" &&
-        typeof metadata?.message === "string" &&
-        metadata.message.includes("No session found")
-      ) {
-        return;
+      // Suppress deprecation warnings in production
+      if (code === "OAUTH_CALLBACK_HANDLER_ERROR" || code === "SIGNIN_OAUTH_ERROR") {
+        console.error("[NextAuth Error]", code, metadata);
+      } else if (!code.includes("DEP0169")) {
+        console.error("[NextAuth Error]", code, metadata);
       }
-      console.error("[NextAuth Error]", code, metadata);
     },
     warn(code) {
-      if (code.includes("session")) return;
-      console.warn("[NextAuth Warning]", code);
+      if (!code.includes("session") && !code.includes("DEP0169")) {
+        console.warn("[NextAuth Warning]", code);
+      }
     },
     debug: (code, metadata) => {
       if (process.env.NODE_ENV === "development") {
