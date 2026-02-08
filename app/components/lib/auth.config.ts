@@ -25,6 +25,30 @@ function normalizePhone(phone: string): string {
   return cleaned;
 }
 
+// ============================================
+// PRODUCTION-SAFE: Get the correct base URL
+// Priority: NEXTAUTH_URL > VERCEL_URL > localhost fallback
+// ============================================
+function getBaseUrl(): string {
+  // 1. Explicit NEXTAUTH_URL (should always be set)
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+
+  // 2. Vercel auto-sets VERCEL_URL (without protocol)
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  // 3. NEXT_PUBLIC_APP_URL as fallback
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+
+  // 4. Localhost fallback for development
+  return "http://localhost:3000";
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -107,7 +131,7 @@ export const authOptions: NextAuthOptions = {
           id: user.user_id,
           email: user.email,
           name: user.name,
-          image: user.avatar || "/profile.svg", // CRITICAL: Use database avatar, not default
+          image: user.avatar || "/profile.svg",
           role: user.role,
           phone: user.phone,
         };
@@ -153,8 +177,7 @@ export const authOptions: NextAuthOptions = {
             console.log(`[Google OAuth] Email verified for: ${userEmail}`);
           }
 
-          // CRITICAL FIX: Don't update avatar from Google if user already has one in database
-          // Only update avatar if user doesn't have one AND wants to use Google avatar
+          // Only update avatar if user doesn't have one
           if (!existingUser.avatar && user.image) {
             await prisma.user.update({
               where: { email: userEmail },
@@ -236,7 +259,6 @@ export const authOptions: NextAuthOptions = {
       }
 
       // For Google OAuth, get FRESH user data from database every time
-      // CRITICAL FIX: Always fetch from database to get updated avatar
       if (account?.provider === "google" && token.email) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -247,10 +269,8 @@ export const authOptions: NextAuthOptions = {
             token.id = dbUser.user_id;
             token.role = dbUser.role;
             token.phone = dbUser.phone;
-            token.name = dbUser.name; // Fresh from database
-            
-            // CRITICAL: Always use avatar from database, not from Google
-            token.picture = dbUser.avatar || "/profile.svg"; // Fresh from database
+            token.name = dbUser.name;
+            token.picture = dbUser.avatar || "/profile.svg";
           }
         } catch (error) {
           console.error("[JWT Callback] Error fetching user:", error);
@@ -269,8 +289,6 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
         session.user.name = token.name as string;
-        
-        // CRITICAL: Always use avatar from token (which comes from database)
         session.user.image = token.picture as string || "/profile.svg";
       }
       return session;
@@ -287,7 +305,7 @@ export const authOptions: NextAuthOptions = {
         return url;
       }
 
-      // If relative URL
+      // If relative URL, resolve against baseUrl
       if (url.startsWith("/")) {
         return `${baseUrl}${url}`;
       }
@@ -309,30 +327,30 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production'
-      }
+        sameSite: "lax",
+        path: "/",
+        // CRITICAL: secure must be true in production (HTTPS)
+        secure: process.env.NODE_ENV === "production",
+      },
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: false, // IMPORTANT: Disable debug to suppress errors
+  debug: false,
   logger: {
-    // Custom logger to suppress "No session found" errors
     error(code, metadata) {
-      // Suppress specific NextAuth errors that are expected
-      if (code === "CLIENT_FETCH_ERROR" && typeof metadata?.message === "string" && metadata.message.includes("No session found")) {
-        // This is expected when user is not logged in, don't log it
+      if (
+        code === "CLIENT_FETCH_ERROR" &&
+        typeof metadata?.message === "string" &&
+        metadata.message.includes("No session found")
+      ) {
         return;
       }
-      // Log other errors normally
       console.error("[NextAuth Error]", code, metadata);
     },
     warn(code) {
-      // Suppress warnings too
       if (code.includes("session")) return;
       console.warn("[NextAuth Warning]", code);
     },
-    debug: () => {}, // Disable debug logs
+    debug: () => {},
   },
 };
