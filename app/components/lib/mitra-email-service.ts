@@ -17,7 +17,7 @@ export async function sendMitraApprovalEmail(
   notes?: string
 ): Promise<SendMitraEmailResult> {
   const subject = status === "approved" 
-    ? `🎉 Selamat! Pendaftaran Mitra ${APP_NAME} Anda Disetujui`
+    ? `🎉 Selamat! Pendaftaran Mitra ${APP_NAME} Anda telah Disetujui`
     : `Pemberitahuan Pendaftaran Mitra ${APP_NAME}`;
   
   const html = status === "approved"
