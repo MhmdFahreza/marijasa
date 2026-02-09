@@ -1,0 +1,665 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum VendorStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum ServicePriceType {
+  FIXED
+  HOURLY
+  UNIT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+  FILE
+}
+
+enum PartnerType {
+  INDIVIDU
+  PERUSAHAAN
+}
+
+enum ActivityType {
+  USER_REGISTER
+  USER_LOGIN
+  USER_LOGOUT
+  USER_UPDATE_PROFILE
+  USER_CREATE_BOOKING
+  USER_CANCEL_BOOKING
+  USER_ADD_FAVORITE
+  USER_SEND_MESSAGE
+  MITRA_REGISTER
+  MITRA_LOGIN
+  MITRA_LOGOUT
+  MITRA_UPDATE_PROFILE
+  MITRA_ACCEPT_BOOKING
+  MITRA_START_WORK
+  MITRA_COMPLETE_WORK
+  MITRA_SEND_MESSAGE
+  ADMIN_LOGIN
+  ADMIN_APPROVE_MITRA
+  ADMIN_REJECT_MITRA
+  ANONYMOUS_PAGE_VIEW
+  ANONYMOUS_SEARCH
+  ANONYMOUS_VIEW_VENDOR
+}
+
+enum AdditionalServiceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CallStatus {
+  INITIATING
+  RINGING
+  ANSWERED
+  ENDED
+  MISSED
+  REJECTED
+  BUSY
+  FAILED
+}
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+model Call {
+  call_id    String @id @default(uuid()) @db.Uuid
+  session_id String @db.Uuid
+
+  caller_id     String @db.Uuid
+  caller_type   String @db.VarChar(10)
+  receiver_id   String @db.Uuid
+  receiver_type String @db.VarChar(10)
+
+  call_type CallType   @default(VOICE)
+  status    CallStatus @default(INITIATING)
+
+  offer                   Json?
+  answer                  Json?
+  ice_candidates_caller   Json?
+  ice_candidates_receiver Json?
+
+  started_at  DateTime  @default(now())
+  answered_at DateTime?
+  ended_at    DateTime?
+  duration    Int?
+
+  end_reason String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  session ChatSession  @relation(fields: [session_id], references: [session_id], onDelete: Cascade)
+  signals CallSignal[]
+
+  @@index([session_id])
+  @@index([caller_id])
+  @@index([receiver_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("calls")
+}
+
+model CallSignal {
+  signal_id String @id @default(uuid()) @db.Uuid
+  call_id   String @db.Uuid
+
+  sender_id   String @db.Uuid
+  sender_type String @db.VarChar(10)
+
+  signal_type String
+  signal_data Json
+
+  is_processed Boolean @default(false)
+
+  created_at DateTime @default(now())
+
+  call Call @relation(fields: [call_id], references: [call_id], onDelete: Cascade)
+
+  @@index([call_id])
+  @@index([sender_id])
+  @@index([is_processed])
+  @@index([created_at])
+  @@map("call_signals")
+}
+
+model City {
+  city_id    String  @id @default(uuid()) @db.Uuid
+  name       String  @unique
+  province   String
+  is_active  Boolean @default(true)
+  sort_order Int     @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([name])
+  @@index([province])
+  @@index([is_active])
+  @@map("cities")
+}
+
+model Category {
+  category_id String  @id @default(uuid()) @db.Uuid
+  slug        String  @unique
+  name        String
+  description String? @db.Text
+  icon        String?
+  is_active   Boolean @default(true)
+  sort_order  Int     @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([slug])
+  @@index([is_active])
+  @@map("categories")
+}
+
+model User {
+  user_id        String   @id @default(uuid()) @db.Uuid
+  email          String   @unique
+  name           String
+  phone          String?  @unique
+  password       String?
+  avatar         String?  @default("/profile.svg")
+  role           UserRole @default(USER)
+  email_verified Boolean  @default(false)
+  is_active      Boolean  @default(true)
+  is_online      Boolean  @default(false)
+
+  address  String? @db.Text
+  gps_link String? @db.Text
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  bookings      Booking[]
+  reviews       Review[]
+  favorites     UserFavorite[]
+  chat_sessions ChatSession[]
+  notifications UserNotification[]
+
+  @@index([email])
+  @@index([phone])
+  @@map("users")
+}
+
+model UserNotification {
+  notification_id String  @id @default(uuid()) @db.Uuid
+  user_id         String  @db.Uuid
+  title           String
+  message         String  @db.Text
+  type            String
+  order_id        String? @db.Uuid
+  is_read         Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user    User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  booking Booking? @relation(fields: [order_id], references: [booking_id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([is_read])
+  @@index([created_at])
+  @@map("user_notifications")
+}
+
+model AdminNotification {
+  notification_id String  @id @default(uuid()) @db.Uuid
+  title           String
+  message         String  @db.Text
+  type            String
+  request_id      String? @db.Uuid
+  order_id        String? @db.Uuid
+  is_read         Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  additional_service_request AdditionalServiceRequest? @relation(fields: [request_id], references: [request_id], onDelete: SetNull)
+
+  @@index([is_read])
+  @@index([created_at])
+  @@map("admin_notifications")
+}
+
+model ActivityLog {
+  activity_id String       @id @default(uuid()) @db.Uuid
+  type        ActivityType
+
+  user_id   String? @db.Uuid
+  vendor_id String? @db.Uuid
+  admin_id  String? @db.Uuid
+
+  action      String
+  description String? @db.Text
+  metadata    Json?
+
+  ip_address String?
+  user_agent String? @db.Text
+  page       String?
+
+  created_at DateTime @default(now())
+
+  @@index([type])
+  @@index([user_id])
+  @@index([vendor_id])
+  @@index([admin_id])
+  @@index([created_at])
+  @@map("activity_logs")
+}
+
+model UserFavorite {
+  favorite_id String @id @default(uuid()) @db.Uuid
+  user_id     String @db.Uuid
+  vendor_id   String @db.Uuid
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user   User   @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@unique([user_id, vendor_id])
+  @@index([user_id])
+  @@index([vendor_id])
+  @@map("user_favorites")
+}
+
+model Admin {
+  admin_id  String  @id @default(uuid()) @db.Uuid
+  email     String  @unique
+  name      String
+  password  String
+  avatar    String?
+  is_active Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([email])
+  @@map("admins")
+}
+
+model Withdrawal {
+  withdrawal_id  String           @id @default(uuid()) @db.Uuid
+  vendor_id      String           @db.Uuid
+  amount         Float
+  method         String
+  account_number String
+  status         WithdrawalStatus @default(PENDING)
+  reference      String           @unique
+  admin_fee      Float            @default(2500)
+
+  notes        String?   @db.Text
+  processed_at DateTime?
+  completed_at DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@index([status])
+  @@index([reference])
+  @@map("withdrawals")
+}
+
+model Vendor {
+  vendor_id   String  @id @default(uuid()) @db.Uuid
+  email       String  @unique
+  password    String
+  name        String
+  phone       String
+  avatar      String? @default("https://i.pravatar.cc/120")
+  description String  @db.Text
+  is_online   Boolean @default(false)
+
+  verified Boolean      @default(false)
+  status   VendorStatus @default(PENDING)
+
+  rating       Float @default(0)
+  review_count Int   @default(0)
+
+  service_areas String[]
+  specialties   String[]
+  tags          String[]
+  category      String?
+
+  address      String?     @db.Text
+  partner_type PartnerType @default(INDIVIDU)
+
+  join_date  DateTime @default(now())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  services      Service[]
+  gallery       VendorGallery[]
+  bookings      Booking[]
+  reviews       Review[]
+  favorited_by  UserFavorite[]
+  withdrawals   Withdrawal[]
+  chat_sessions ChatSession[]
+  documents     VendorDocument[]
+
+  @@index([email])
+  @@index([status])
+  @@index([category])
+  @@map("vendors")
+}
+
+model VendorDocument {
+  document_id   String @id @default(uuid()) @db.Uuid
+  vendor_id     String @db.Uuid
+  document_type String
+  file_url      String @db.Text
+  file_name     String
+  file_type     String
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@index([document_type])
+  @@map("vendor_documents")
+}
+
+model Service {
+  service_id     String           @id @default(uuid()) @db.Uuid
+  vendor_id      String           @db.Uuid
+  name           String
+  description    String           @db.Text
+  price          Float
+  price_type     ServicePriceType @default(FIXED)
+  estimated_time String?
+  is_active      Boolean          @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  vendor                           Vendor                         @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  booking_items                    BookingItem[]
+  additional_service_request_items AdditionalServiceRequestItem[]
+
+  @@index([vendor_id])
+  @@index([is_active])
+  @@map("services")
+}
+
+model VendorGallery {
+  gallery_id String  @id @default(uuid()) @db.Uuid
+  vendor_id  String  @db.Uuid
+  image_url  String
+  caption    String?
+  sort_order Int     @default(0)
+
+  created_at DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@map("vendor_gallery")
+}
+
+model Booking {
+  booking_id     String @id @default(uuid()) @db.Uuid
+  booking_number String @unique
+
+  user_id   String @db.Uuid
+  vendor_id String @db.Uuid
+
+  scheduled_date DateTime
+  scheduled_time String   @db.VarChar(5)
+  location       String
+  notes          String?  @db.Text
+
+  status         BookingStatus @default(PENDING)
+  payment_status PaymentStatus @default(PENDING)
+  payment_method String?
+
+  subtotal        Float
+  service_fee     Float @default(0)
+  transaction_fee Float @default(0)
+  total           Float
+
+  payment_metadata Json?
+
+  rating         Int?
+  rating_comment String?   @db.Text
+  rating_photos  String[]
+  is_anonymous   Boolean   @default(false)
+  rated_at       DateTime?
+
+  cancellation_reason String?   @db.Text
+  cancelled_by        String?
+  cancelled_at        DateTime?
+
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  completed_at DateTime?
+
+  user                        User                       @relation(fields: [user_id], references: [user_id])
+  vendor                      Vendor                     @relation(fields: [vendor_id], references: [vendor_id])
+  items                       BookingItem[]
+  review                      Review?
+  additional_service_requests AdditionalServiceRequest[]
+  notifications               UserNotification[]
+  order_history               BookingHistory[]
+
+  @@index([user_id])
+  @@index([vendor_id])
+  @@index([status])
+  @@index([booking_number])
+  @@map("bookings")
+}
+
+model BookingItem {
+  booking_item_id String @id @default(uuid()) @db.Uuid
+  booking_id      String @db.Uuid
+  service_id      String @db.Uuid
+  quantity        Int    @default(1)
+  price           Float
+  subtotal        Float
+
+  booking Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+  service Service @relation(fields: [service_id], references: [service_id])
+
+  @@index([booking_id])
+  @@index([service_id])
+  @@map("booking_items")
+}
+
+model BookingHistory {
+  history_id String  @id @default(uuid()) @db.Uuid
+  booking_id String  @db.Uuid
+  status     String
+  reason     String? @db.Text
+
+  created_at DateTime @default(now())
+
+  booking Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+
+  @@index([booking_id])
+  @@index([created_at])
+  @@map("booking_history")
+}
+
+model AdditionalServiceRequest {
+  request_id    String                  @id @default(uuid()) @db.Uuid
+  booking_id    String                  @db.Uuid
+  vendor_id     String                  @db.Uuid
+  customer_name String
+  description   String                  @db.Text
+  total_price   Float
+  reason        String                  @db.Text
+  images        String[]
+  status        AdditionalServiceStatus @default(PENDING)
+
+  payment_method   String?
+  payment_status   String?   @default("PENDING")
+  transaction_fee  Float?    @default(0)
+  service_fee      Float?    @default(10000)
+  paid_at          DateTime?
+  payment_metadata Json?
+
+  rejection_reason String?   @db.Text
+  approved_at      DateTime?
+  rejected_at      DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  booking             Booking                        @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+  items               AdditionalServiceRequestItem[]
+  admin_notifications AdminNotification[]
+
+  @@index([booking_id])
+  @@index([vendor_id])
+  @@index([status])
+  @@index([payment_status])
+  @@index([created_at])
+  @@map("additional_service_requests")
+}
+
+model AdditionalServiceRequestItem {
+  item_id    String @id @default(uuid()) @db.Uuid
+  request_id String @db.Uuid
+  service_id String @db.Uuid
+  quantity   Int    @default(1)
+  price      Float
+  subtotal   Float
+
+  request AdditionalServiceRequest @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+  service Service                  @relation(fields: [service_id], references: [service_id])
+
+  @@index([request_id])
+  @@index([service_id])
+  @@map("additional_service_request_items")
+}
+
+model Review {
+  review_id  String @id @default(uuid()) @db.Uuid
+  booking_id String @unique @db.Uuid
+  user_id    String @db.Uuid
+  vendor_id  String @db.Uuid
+
+  rating  Int     @db.SmallInt
+  comment String? @db.Text
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  booking Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [user_id])
+  vendor  Vendor  @relation(fields: [vendor_id], references: [vendor_id])
+
+  @@index([vendor_id])
+  @@index([user_id])
+  @@map("reviews")
+}
+
+model ChatSession {
+  session_id String @id @default(uuid()) @db.Uuid
+  user_id    String @db.Uuid
+  vendor_id  String @db.Uuid
+
+  last_message       String?  @db.Text
+  last_message_time  DateTime @default(now())
+  user_unread_count  Int      @default(0)
+  mitra_unread_count Int      @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user     User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  vendor   Vendor    @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  messages Message[]
+  calls    Call[]
+
+  @@unique([user_id, vendor_id])
+  @@index([user_id])
+  @@index([vendor_id])
+  @@index([last_message_time])
+  @@map("chat_sessions")
+}
+
+model Message {
+  message_id  String @id @default(uuid()) @db.Uuid
+  session_id  String @db.Uuid
+  sender_id   String @db.Uuid
+  sender_type String @db.VarChar(10)
+
+  text         String?     @db.Text
+  message_type MessageType @default(TEXT)
+
+  file_url  String?
+  file_name String?
+  file_type String?
+  file_size Int?
+  thumbnail String?
+  duration  Int?
+
+  is_read Boolean   @default(false)
+  read_at DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  session ChatSession @relation(fields: [session_id], references: [session_id], onDelete: Cascade)
+
+  @@index([session_id])
+  @@index([sender_id])
+  @@index([created_at])
+  @@index([is_read])
+  @@map("messages")
+}
