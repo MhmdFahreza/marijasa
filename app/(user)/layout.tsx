@@ -1,4 +1,4 @@
-// app/(user)/layout.tsx
+// app/(user)/layout.tsx - SIMPLIFIED GOOGLE OAUTH
 "use client";
 
 import { useEffect, useState, useRef, type ReactNode, useCallback, useMemo } from "react";
@@ -40,6 +40,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/components/contexts/AuthContext";
 import { useNotification } from "@/app/components/contexts/NotificationContext";
 import { useLanguage } from "@/app/components/contexts/LanguageContext";
+import { useSession } from "next-auth/react";
 
 interface Notification {
   id: string;
@@ -60,7 +61,6 @@ interface Notification {
   orderId?: string;
 }
 
-// Skeleton component for navbar loading state
 function NavbarSkeleton() {
   return (
     <div className="flex items-center gap-4 animate-pulse">
@@ -81,7 +81,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   // Contexts
-  const { user, isAuthenticated, isLoading: authLoading, isInitialized, logout } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, isInitialized, logout, refreshUser } = useAuth();
   const {
     notifications,
     unreadCount,
@@ -92,18 +92,38 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     resetNotifications,
   } = useNotification();
   const { language: selectedLanguage, setLanguage } = useLanguage();
+  
+  // NextAuth session for Google OAuth
+  const { data: session, status: sessionStatus } = useSession();
 
-  // Derived state
   const defaultAvatar = "/profile.svg";
   const userName = user?.name || "User";
   const userAvatar = user?.avatar || defaultAvatar;
   const userEmail = user?.email || "";
 
-  // Close notification dropdown when clicking outside
+  // ✅ SIMPLIFIED: Sync Google OAuth session with AuthContext
+  useEffect(() => {
+    const syncGoogleSession = async () => {
+      // Only for authenticated Google sessions
+      if (sessionStatus === "authenticated" && session?.user && !isAuthenticated) {
+        const sessionUser = session.user as any;
+        
+        console.log("[Layout] Syncing Google OAuth session to AuthContext");
+        
+        // Sync to AuthContext if not already synced
+        if (sessionUser.email && refreshUser) {
+          await refreshUser();
+        }
+      }
+    };
+
+    syncGoogleSession();
+  }, [session, sessionStatus, isAuthenticated, refreshUser]);
+
+  // Close notification dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-
       const isOutsideDesktop =
         notificationRef.current && !notificationRef.current.contains(target);
       const isOutsideMobile =
@@ -131,7 +151,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // Handlers
   const handleSelectLanguage = useCallback(
     async (language: string) => {
       try {
@@ -215,7 +234,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     [markAsRead, router]
   );
 
-  // Memoized notification list
   const notificationList = useMemo(() => {
     if (notifications.length === 0) {
       return (
@@ -282,26 +300,17 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     );
   }, [notifications, handleNotificationClick, getNotificationIcon, deleteNotification]);
 
-  // ============================================
-  // FIXED RENDER STATE LOGIC
-  // ============================================
+  // ✅ SIMPLIFIED RENDER LOGIC
+  // Show authenticated UI if: user exists OR NextAuth session exists
+  const showAuthenticatedUI = (isAuthenticated && user) || (sessionStatus === "authenticated" && session?.user);
+  
+  // Show skeleton when: loading and no user data yet
+  const showSkeleton = (authLoading || sessionStatus === "loading") && !user && !session?.user;
+  
+  // Show guest UI when: confirmed not authenticated
+  const showGuestUI = !isAuthenticated && isInitialized && !authLoading && sessionStatus !== "loading" && !session;
 
-  // Show authenticated UI when we have a user (takes highest priority)
-  const showAuthenticatedUI = isAuthenticated && user;
-
-  // Show skeleton when:
-  // - Auth is loading AND we don't have a user yet
-  // This covers: initial load, AND re-fetch after login redirect
-  const showSkeleton = authLoading && !user;
-
-  // Show guest UI when:
-  // - Not authenticated AND fully initialized AND not loading
-  // - This ensures guest UI only shows when we've confirmed no session exists
-  const showGuestUI = !isAuthenticated && isInitialized && !authLoading;
-
-  // Render navbar content based on auth state
   const renderNavbarContent = () => {
-    // PRIORITY 1: If we have user data, show authenticated UI immediately
     if (showAuthenticatedUI) {
       return (
         <div className="flex items-center gap-4">
@@ -310,7 +319,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
             onSelectLanguage={handleSelectLanguage}
           />
 
-          {/* Desktop Notification Bell */}
+          {/* Notification Bell */}
           <div className="relative hidden md:block" ref={notificationRef}>
             <button
               onClick={toggleNotification}
@@ -325,7 +334,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
               )}
             </button>
 
-            {/* Desktop Notification Dropdown */}
+            {/* Notification Dropdown */}
             {isNotificationOpen && (
               <div className="absolute right-0 top-full mt-2 w-80 md:w-96 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="p-4 border-b border-gray-200 dark:border-neutral-700">
@@ -454,12 +463,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // PRIORITY 2: Show skeleton while loading (initial + re-fetch after login)
     if (showSkeleton) {
       return <NavbarSkeleton />;
     }
 
-    // PRIORITY 3: Show guest UI when confirmed not authenticated
     if (showGuestUI) {
       return (
         <div className="flex items-center gap-4">
@@ -491,13 +498,10 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // FALLBACK: Show skeleton if in unexpected state
     return <NavbarSkeleton />;
   };
 
-  // Render mobile menu content
   const renderMobileMenuContent = () => {
-    // PRIORITY 1: Authenticated UI
     if (showAuthenticatedUI) {
       return (
         <div className="space-y-6">
@@ -580,7 +584,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // PRIORITY 2: Loading skeleton
     if (showSkeleton) {
       return (
         <div className="space-y-4 p-4">
@@ -593,7 +596,6 @@ export default function UserLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // PRIORITY 3: Guest UI
     return (
       <div className="space-y-6">
         <div className="space-y-3">

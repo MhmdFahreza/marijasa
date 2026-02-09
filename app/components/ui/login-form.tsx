@@ -1,4 +1,4 @@
-// app/components/ui/login-form.tsx - UPDATED WITH COMPREHENSIVE ERROR HANDLING
+// app/components/ui/login-form.tsx - SIMPLIFIED GOOGLE OAUTH
 "use client";
 
 import { cn } from "../lib/utils";
@@ -27,57 +27,31 @@ interface LoginFormProps extends React.ComponentProps<"div"> {
   onRegisterClick?: () => void;
 }
 
-// Enhanced error messages mapping - COMPREHENSIVE
+// Enhanced error messages
 const ERROR_MESSAGES: Record<string, string> = {
-  // Google OAuth specific errors
-  NO_EMAIL:
-    "❌ Tidak dapat mengambil email dari akun Google Anda. Pastikan email terlihat di pengaturan Google dan coba lagi.",
-  USER_NOT_REGISTERED:
-    "⚠️ Email Google Anda belum terdaftar di sistem kami. Silakan daftar terlebih dahulu menggunakan email yang sama, lalu login dengan Google.",
-  ACCOUNT_INACTIVE: 
-    "⚠️ Akun Anda tidak aktif. Silakan hubungi administrator untuk mengaktifkan kembali akun Anda.",
-  NO_SESSION: 
-    "❌ Tidak dapat membuat sesi login. Cookies mungkin diblokir oleh browser. Silakan aktifkan cookies dan coba lagi.",
-  SESSION_ERROR: 
-    "❌ Terjadi kesalahan pada sesi login. Silakan hapus cookies browser (Ctrl+Shift+Delete) dan coba lagi.",
-  COOKIE_ERROR:
-    "❌ Gagal menyimpan sesi login. Pastikan browser Anda mengizinkan cookies dari situs ini.",
-  CALLBACK_ERROR: 
-    "❌ Terjadi kesalahan saat memproses login Google. Silakan coba beberapa saat lagi atau gunakan login email/phone.",
-  GOOGLE_SIGNIN_ERROR:
-    "❌ Terjadi kesalahan pada sistem login Google. Silakan periksa koneksi internet dan coba lagi.",
+  // Google OAuth errors
+  NO_EMAIL: "❌ Tidak dapat mengambil email dari Google. Coba lagi atau gunakan login email/phone.",
+  USER_NOT_REGISTERED: "⚠️ Email Google belum terdaftar. Silakan daftar terlebih dahulu.",
+  ACCOUNT_INACTIVE: "⚠️ Akun tidak aktif. Hubungi administrator.",
   
-  // NextAuth standard errors
-  OAuthAccountNotLinked:
-    "⚠️ Email ini sudah terdaftar dengan metode login berbeda. Silakan gunakan metode login yang sesuai (Email/Phone atau Google).",
-  OAuthSignin:
-    "❌ Tidak dapat memulai proses login Google. Silakan coba lagi atau gunakan login email/phone.",
-  OAuthCallback:
-    "❌ Gagal memproses callback dari Google. Silakan coba lagi atau hubungi administrator jika masalah berlanjut.",
-  Callback: 
-    "❌ Terjadi kesalahan saat memproses login. Silakan coba lagi.",
-  AccessDenied: 
-    "❌ Akses ditolak. Anda harus memberikan izin yang diperlukan untuk melanjutkan login dengan Google.",
-  Configuration: 
-    "❌ Terjadi kesalahan konfigurasi sistem. Silakan hubungi administrator.",
+  // NextAuth errors
+  OAuthAccountNotLinked: "⚠️ Email sudah terdaftar dengan metode berbeda. Gunakan metode login yang sesuai.",
+  OAuthSignin: "❌ Gagal memulai login Google. Coba lagi.",
+  OAuthCallback: "❌ Gagal memproses callback Google. Coba lagi.",
+  Callback: "❌ Terjadi kesalahan saat login. Coba lagi.",
+  AccessDenied: "❌ Akses ditolak. Berikan izin yang diperlukan untuk login dengan Google.",
+  Configuration: "❌ Kesalahan konfigurasi. Hubungi administrator.",
   
-  // Credential login errors
-  EMAIL_NOT_REGISTERED:
-    "⚠️ Email belum terdaftar. Silakan daftar terlebih dahulu atau gunakan login Google jika sudah mendaftar via Google.",
-  PHONE_NOT_REGISTERED:
-    "⚠️ Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.",
-  GOOGLE_ACCOUNT:
-    "⚠️ Akun ini terdaftar melalui Google. Silakan gunakan tombol 'Login dengan Google' di bawah.",
-  EMAIL_NOT_VERIFIED:
-    "⚠️ Email belum diverifikasi. Silakan cek inbox/spam email Anda dan klik link verifikasi.",
-  INVALID_PASSWORD:
-    "❌ Password salah. Silakan periksa kembali password Anda atau reset password jika lupa.",
+  // Credential errors
+  EMAIL_NOT_REGISTERED: "⚠️ Email belum terdaftar. Silakan daftar terlebih dahulu.",
+  PHONE_NOT_REGISTERED: "⚠️ Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.",
+  GOOGLE_ACCOUNT: "⚠️ Akun terdaftar via Google. Gunakan tombol 'Login dengan Google'.",
+  EMAIL_NOT_VERIFIED: "⚠️ Email belum diverifikasi. Cek inbox/spam Anda.",
+  INVALID_PASSWORD: "❌ Password salah. Coba lagi atau reset password.",
   
-  // Default
-  default: "❌ Terjadi kesalahan. Silakan coba lagi atau hubungi administrator jika masalah berlanjut.",
+  default: "❌ Terjadi kesalahan. Silakan coba lagi.",
 };
 
-// User config
 const userConfig = {
   user: {
     title: "Selamat Datang Kembali",
@@ -125,7 +99,7 @@ export function LoginForm({
 
   const config = userConfig[userType];
 
-  // Validation functions
+  // Validation
   const validateEmail = useCallback((email: string) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(email);
@@ -152,31 +126,31 @@ export function LoginForm({
     return input.includes("@");
   }, []);
 
-  // Check for existing session on mount - ONLY FOR USER TYPE
+  // Check existing session - ONLY FOR USER TYPE
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // Skip session check for mitra and admin - they use different auth
-        if (userType === "mitra" || userType === "admin") {
+        // Skip for mitra/admin
+        if (userType !== "user") {
           setIsCheckingSession(false);
           return;
         }
 
-        // Wait for session status to be determined
+        // Wait for status
         if (status === "loading") {
           return;
         }
 
-        // Check for error from URL (OAuth error)
+        // Check for error
         const errorParam = searchParams?.get("error");
         if (errorParam) {
           setIsCheckingSession(false);
           return;
         }
 
-        // If already authenticated via AuthContext, redirect
+        // Already authenticated via AuthContext
         if (isAuthenticated && user) {
-          console.log("[Login] Already authenticated via AuthContext, redirecting...");
+          console.log("[Login] Already authenticated, redirecting...");
           if (onSuccess) {
             onSuccess(user.email);
           } else {
@@ -186,31 +160,24 @@ export function LoginForm({
           return;
         }
 
-        // If authenticated via NextAuth session (Google OAuth) - only for user type
+        // Authenticated via NextAuth (Google)
         if (status === "authenticated" && session?.user && userType === "user") {
           const userEmail = session.user.email;
           const userId = (session.user as any).id;
 
-          console.log("[Login] NextAuth session found for user:", {
-            email: userEmail,
-            userId: userId,
-          });
+          console.log("[Login] NextAuth session found:", userEmail);
 
-          if (!userEmail || !userId) {
-            setIsCheckingSession(false);
+          if (userEmail && userId) {
+            await refreshUser();
+            
+            if (onSuccess) {
+              onSuccess(userEmail);
+            } else {
+              router.push("/");
+              router.refresh();
+            }
             return;
           }
-
-          // Sync with AuthContext
-          await refreshUser();
-
-          if (onSuccess) {
-            onSuccess(userEmail);
-          } else {
-            router.push("/");
-            router.refresh();
-          }
-          return;
         }
 
         setIsCheckingSession(false);
@@ -223,24 +190,24 @@ export function LoginForm({
     checkSession();
   }, [status, session, router, onSuccess, searchParams, userType, isAuthenticated, user, refreshUser]);
 
-  // Check for error from URL with enhanced messages
+  // Check for error from URL
   useEffect(() => {
     const errorParam = searchParams?.get("error");
     if (errorParam) {
-      console.log('[Login Form] Error from URL:', errorParam);
+      console.log('[Login] Error from URL:', errorParam);
       
       const errorMessage = ERROR_MESSAGES[errorParam] || ERROR_MESSAGES["default"];
       setError(errorMessage);
       setIsGoogleLoading(false);
 
-      // Clear error from URL after showing it
+      // Clear error from URL
       const url = new URL(window.location.href);
       url.searchParams.delete("error");
       window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams]);
 
-  // Google Sign In handler - only for user type
+  // Google Sign In - SIMPLIFIED
   const handleGoogleSignIn = async () => {
     try {
       setIsGoogleLoading(true);
@@ -248,20 +215,15 @@ export function LoginForm({
 
       console.log("[Login] Starting Google sign in...");
 
-      // Trigger NextAuth Google sign in
+      // ✅ SIMPLIFIED: Just call signIn and let NextAuth + middleware handle the rest
       await signIn("google", {
         callbackUrl: "/",
         redirect: true,
       });
-
-      // Note: After this point, the browser redirects to Google
-      // When it comes back, it will hit /api/auth/callback/google
-      // which will redirect to /auth/google-callback
-      // which will set cookies and redirect to home
       
     } catch (error) {
       console.error("Google sign in error:", error);
-      setError(ERROR_MESSAGES["GOOGLE_SIGNIN_ERROR"]);
+      setError(ERROR_MESSAGES["OAuthSignin"]);
       setIsGoogleLoading(false);
     }
   };
@@ -273,25 +235,20 @@ export function LoginForm({
     const trimmedIdentifier = identifier.trim();
     const isEmail = isEmailInput(trimmedIdentifier);
 
-    // Validation for user type
+    // Validation
     if (userType === "user") {
       if (isEmail) {
         if (!validateEmail(trimmedIdentifier)) {
-          setError(
-            "Format email tidak valid. Gunakan format email yang benar (contoh: user@example.com)"
-          );
+          setError("Format email tidak valid.");
           return;
         }
       } else {
         if (!validatePhone(trimmedIdentifier)) {
-          setError(
-            "Format nomor telepon tidak valid. Gunakan format Indonesia (contoh: 081234567890)"
-          );
+          setError("Format nomor telepon tidak valid.");
           return;
         }
       }
     } else {
-      // For admin and mitra, must be email
       if (!validateEmail(trimmedIdentifier)) {
         setError("Format email tidak valid.");
         return;
@@ -308,13 +265,9 @@ export function LoginForm({
       setIsLoading(true);
 
       try {
-        console.log("[Admin Login] Attempting login for:", trimmedIdentifier);
-
         const response = await fetch("/api/admin/login", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
             email: trimmedIdentifier.toLowerCase(),
@@ -330,24 +283,16 @@ export function LoginForm({
           return;
         }
 
-        console.log("[Admin Login] Login successful:", {
-          id: data.admin.id,
-          name: data.admin.name,
-          email: data.admin.email,
-        });
-
         if (onSuccess) {
           onSuccess(trimmedIdentifier);
           setIsLoading(false);
           return;
         }
 
-        // Redirect to dashboard
-        console.log("[Admin Login] Redirecting to dashboard...");
         window.location.href = "/admin/dashboard";
       } catch (error) {
         console.error("Admin login error:", error);
-        setError("Terjadi kesalahan saat login. Silakan coba lagi.");
+        setError("Terjadi kesalahan. Silakan coba lagi.");
         setIsLoading(false);
       }
 
@@ -359,13 +304,9 @@ export function LoginForm({
       setIsLoading(true);
 
       try {
-        console.log("[Mitra Login] Attempting login for:", trimmedIdentifier);
-
         const response = await fetch("/api/mitra/login", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
             email: trimmedIdentifier,
@@ -381,31 +322,23 @@ export function LoginForm({
           return;
         }
 
-        console.log("[Mitra Login] Login successful:", {
-          id: data.vendor.id,
-          name: data.vendor.name,
-          email: data.vendor.email,
-        });
-
         if (onSuccess) {
           onSuccess(trimmedIdentifier);
           setIsLoading(false);
           return;
         }
 
-        // Redirect to dashboard
-        console.log("[Mitra Login] Redirecting to dashboard...");
         window.location.href = "/mitra/dashboard";
       } catch (error) {
         console.error("Mitra login error:", error);
-        setError("Terjadi kesalahan saat login. Silakan coba lagi.");
+        setError("Terjadi kesalahan. Silakan coba lagi.");
         setIsLoading(false);
       }
 
       return;
     }
 
-    // User login via API (only for user type)
+    // User login
     setIsLoading(true);
 
     try {
@@ -414,13 +347,9 @@ export function LoginForm({
         normalizedIdentifier = normalizePhone(trimmedIdentifier);
       }
 
-      console.log("[Login] Attempting login for:", normalizedIdentifier);
-
       const response = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           identifier: isEmail ? normalizedIdentifier.toLowerCase() : normalizedIdentifier,
@@ -432,32 +361,24 @@ export function LoginForm({
       const data = await response.json();
 
       if (!response.ok) {
-        // Use enhanced error messages
         const errorMsg = ERROR_MESSAGES[data.errorType] || data.message || ERROR_MESSAGES["default"];
         setError(errorMsg);
         setIsLoading(false);
         return;
       }
 
-      // Login successful
-      console.log("[Login] Login successful for:", data.user?.email);
-
-      // CRITICAL: Immediately update AuthContext with user data
+      // Update AuthContext
       if (data.user) {
-        const userData = {
+        authLogin({
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
           phone: data.user.phone,
           avatar: data.user.avatar || "/profile.svg",
           role: data.user.role,
-        };
-        
-        // This immediately updates the navbar
-        authLogin(userData);
+        });
       }
 
-      // Small delay to ensure state is propagated
       await new Promise(resolve => setTimeout(resolve, 100));
 
       if (onSuccess) {
@@ -466,13 +387,12 @@ export function LoginForm({
         return;
       }
 
-      // Navigate to home and refresh
       router.push("/");
       router.refresh();
       
     } catch (error) {
       console.error("Login error:", error);
-      setError("Terjadi kesalahan saat login. Silakan coba lagi.");
+      setError("Terjadi kesalahan. Silakan coba lagi.");
       setIsLoading(false);
     }
   };
@@ -486,7 +406,7 @@ export function LoginForm({
     }
   };
 
-  // Show loading while checking session - ONLY FOR USER TYPE
+  // Show loading while checking session
   if (isCheckingSession && userType === "user") {
     return (
       <div className="flex flex-col gap-4 sm:gap-6">
@@ -508,7 +428,7 @@ export function LoginForm({
   return (
     <div className={cn("flex flex-col gap-4 sm:gap-5", className)} {...props}>
       <Card className="relative shadow-2xl overflow-hidden border-0 bg-gradient-to-br from-white to-slate-50 dark:from-neutral-900 dark:to-neutral-950">
-        {/* Decorative gradient background */}
+        {/* Decorative gradient */}
         <div className="absolute top-0 right-0 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-gradient-to-br from-[#7CE0A8]/5 to-transparent rounded-full -z-0 blur-3xl" />
         <div className="absolute -bottom-24 -left-24 sm:-bottom-32 sm:-left-32 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-gradient-to-tr from-[#7CE0A8]/5 to-transparent rounded-full -z-0 blur-3xl" />
 
@@ -529,7 +449,7 @@ export function LoginForm({
         </CardHeader>
 
         <CardContent className="relative z-10 p-3 sm:p-4 md:p-5">
-          {/* Error Alert - Enhanced styling */}
+          {/* Error Alert */}
           {error && (
             <div className="mb-3 sm:mb-4 md:mb-5 p-3 sm:p-4 bg-gradient-to-r from-red-50 to-red-50/50 dark:from-red-950/30 dark:to-red-950/10 border-l-4 border-red-500 dark:border-red-600 text-red-700 dark:text-red-400 rounded-lg sm:rounded-xl text-xs sm:text-sm flex items-start justify-between gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
               <div className="flex items-start gap-2 sm:gap-3 flex-1">
@@ -542,7 +462,7 @@ export function LoginForm({
               <button
                 onClick={() => setError(null)}
                 className="ml-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex-shrink-0 hover:bg-red-100 dark:hover:bg-red-900/30 p-1 rounded-full transition-colors"
-                aria-label="Tutup pesan error"
+                aria-label="Tutup"
               >
                 ✕
               </button>
@@ -551,7 +471,7 @@ export function LoginForm({
 
           <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4 md:space-y-5">
             <FieldGroup className="space-y-3 sm:space-y-4 md:space-y-5">
-              {/* Email/Phone Field */}
+              {/* Email/Phone */}
               <Field className="space-y-1.5 sm:space-y-2">
                 <FieldLabel
                   htmlFor="identifier"
@@ -588,15 +508,9 @@ export function LoginForm({
                     )}
                   />
                 </div>
-                {userType === "user" && (
-                  <p className="text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-500 flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-2">
-                    <span>ℹ️</span>
-                    Gunakan email atau nomor telepon yang terdaftar
-                  </p>
-                )}
               </Field>
 
-              {/* Password Field */}
+              {/* Password */}
               <Field className="space-y-1.5 sm:space-y-2">
                 <div className="flex items-center justify-between">
                   <FieldLabel
@@ -606,7 +520,7 @@ export function LoginForm({
                     <span className="text-sm sm:text-base">🔐</span>
                     Password
                   </FieldLabel>
-                  {userType !== "admin" && userType !== "mitra" && (
+                  {userType === "user" && (
                     <a
                       href="/forget-password"
                       className="inline-block text-[10px] sm:text-xs md:text-sm text-[#7CE0A8] hover:text-[#6bcb96] underline-offset-4 hover:underline transition-colors font-medium"
@@ -640,18 +554,14 @@ export function LoginForm({
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-2.5 sm:right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors p-1 sm:p-1.5"
-                    aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+                    aria-label={showPassword ? "Sembunyikan" : "Tampilkan"}
                   >
                     <span className="text-sm sm:text-base">{showPassword ? "👁️" : "👁️‍🗨️"}</span>
                   </button>
                 </div>
-                <p className="text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-500 flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-2">
-                  <span>ℹ️</span>
-                  Password harus minimal 8 karakter
-                </p>
               </Field>
 
-              {/* Submit Button */}
+              {/* Submit */}
               <Field className="pt-1 sm:pt-2">
                 <Button
                   type="submit"
@@ -678,7 +588,7 @@ export function LoginForm({
                   )}
                 </Button>
 
-                {/* Divider - Google Login */}
+                {/* Google Login */}
                 {userType === "user" && (
                   <>
                     <div className="relative my-4 sm:my-5 md:my-6">
@@ -708,7 +618,7 @@ export function LoginForm({
                       {isGoogleLoading ? (
                         <>
                           <div className="h-4 w-4 sm:h-5 sm:w-5 border-2 border-[#7CE0A8] border-t-transparent rounded-full animate-spin" />
-                          <span className="text-xs sm:text-sm">Menghubungkan ke Google...</span>
+                          <span className="text-xs sm:text-sm">Menghubungkan...</span>
                         </>
                       ) : (
                         <>
@@ -756,7 +666,7 @@ export function LoginForm({
         </CardContent>
       </Card>
 
-      {/* Security Info Footer */}
+      {/* Security Info */}
       <div className="mt-3 sm:mt-4 md:mt-6 pt-3 sm:pt-4 border-t border-neutral-200 dark:border-neutral-800">
         <div className="flex flex-col xs:flex-row items-center justify-center gap-2 text-center">
           <div className="flex items-center gap-1 sm:gap-1.5">

@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts - FIXED VERSION WITH BETTER ERROR HANDLING
+// app/components/lib/auth.config.ts - FIXED & SIMPLIFIED
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -29,34 +29,44 @@ function normalizePhone(phone: string): string {
 // PRODUCTION-SAFE: Get the correct base URL
 // ============================================
 function getBaseUrl(): string {
-  // 1. Production: NEXTAUTH_URL (MUST be set in Vercel)
+  // 1. Production: NEXTAUTH_URL (set in Vercel)
   if (process.env.NEXTAUTH_URL) {
-    const url = process.env.NEXTAUTH_URL.trim();
-    console.log('[Auth Config] Using NEXTAUTH_URL:', url);
-    return url;
+    return process.env.NEXTAUTH_URL.trim();
   }
 
-  // 2. Vercel auto-sets VERCEL_URL (production/preview deployments)
+  // 2. Vercel auto-sets VERCEL_URL
   if (process.env.VERCEL_URL) {
-    const url = `https://${process.env.VERCEL_URL}`;
-    console.log('[Auth Config] Using VERCEL_URL:', url);
-    return url;
+    return `https://${process.env.VERCEL_URL}`;
   }
 
-  // 3. Fallback for other deployments
+  // 3. Fallback
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    const url = process.env.NEXT_PUBLIC_APP_URL.trim();
-    console.log('[Auth Config] Using NEXT_PUBLIC_APP_URL:', url);
-    return url;
+    return process.env.NEXT_PUBLIC_APP_URL.trim();
   }
 
-  // 4. Development fallback
-  const devUrl = "http://localhost:3000";
-  console.log('[Auth Config] Using development fallback:', devUrl);
-  return devUrl;
+  // 4. Development
+  return "http://localhost:3000";
 }
 
 const BASE_URL = getBaseUrl();
+
+// Store session data temporarily for cookie setting
+const pendingGoogleSessions = new Map<string, {
+  sessionId: string;
+  accessToken: string;
+  refreshToken: string;
+  timestamp: number;
+}>();
+
+// Cleanup old pending sessions every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of pendingGoogleSessions.entries()) {
+    if (now - data.timestamp > 5 * 60 * 1000) { // 5 minutes
+      pendingGoogleSessions.delete(email);
+    }
+  }
+}, 5 * 60 * 1000);
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -156,52 +166,83 @@ export const authOptions: NextAuthOptions = {
           
           const userEmail = user.email?.toLowerCase();
 
-          // CRITICAL FIX: Instead of returning false (which causes access_denied),
-          // we throw an error or redirect to error page
           if (!userEmail) {
-            console.error("[Google OAuth signIn] ❌ No email provided from Google");
-            // Throw error instead of returning false
-            throw new Error("NO_EMAIL");
+            console.error("[Google OAuth signIn] ❌ No email from Google");
+            return `${BASE_URL}/login?error=NO_EMAIL`;
           }
 
-          console.log(`[Google OAuth signIn] Processing login for: ${userEmail}`);
+          console.log(`[Google OAuth signIn] Processing: ${userEmail}`);
 
-          // Check if user is registered in database
+          // Check if user registered
           const existingUser = await prisma.user.findUnique({
             where: { email: userEmail },
           });
 
           if (!existingUser) {
-            console.log(`[Google OAuth signIn] ❌ User not registered: ${userEmail}`);
-            // Throw error instead of returning redirect URL
-            throw new Error("USER_NOT_REGISTERED");
+            console.log(`[Google OAuth signIn] ❌ Not registered: ${userEmail}`);
+            return `${BASE_URL}/login?error=USER_NOT_REGISTERED`;
           }
 
-          // Check if account is active
           if (!existingUser.is_active) {
-            console.log(`[Google OAuth signIn] ❌ Account inactive: ${userEmail}`);
-            throw new Error("ACCOUNT_INACTIVE");
+            console.log(`[Google OAuth signIn] ❌ Inactive: ${userEmail}`);
+            return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
           }
 
-          // Update email_verified if not already
+          // Update email_verified
           if (!existingUser.email_verified) {
             await prisma.user.update({
               where: { email: userEmail },
               data: { email_verified: true },
             });
-            console.log(`[Google OAuth signIn] ✅ Email verified for: ${userEmail}`);
           }
 
-          // Only update avatar if user doesn't have one
+          // Update avatar if needed
           if (!existingUser.avatar && user.image) {
             await prisma.user.update({
               where: { email: userEmail },
               data: { avatar: user.image },
             });
-            console.log(`[Google OAuth signIn] ✅ Avatar updated for: ${userEmail}`);
           }
 
-          console.log(`[Google OAuth signIn] ✅ Sign in successful for: ${userEmail}`);
+          // ✅ CREATE SESSION AND TOKENS HERE
+          const sessionId = createSessionId();
+
+          // Store session in Redis
+          await storeSession(sessionId, {
+            userId: existingUser.user_id,
+            email: existingUser.email,
+            role: existingUser.role,
+            createdAt: Date.now(),
+            lastActivity: Date.now(),
+          });
+
+          // Generate tokens
+          const accessToken = generateAccessToken({
+            userId: existingUser.user_id,
+            email: existingUser.email,
+            role: existingUser.role,
+            sessionId,
+          });
+
+          const refreshToken = generateRefreshToken({
+            userId: existingUser.user_id,
+            email: existingUser.email,
+            role: existingUser.role,
+            sessionId,
+          });
+
+          // Store tokens in Redis
+          await storeTokens(sessionId, accessToken, refreshToken);
+
+          // Store in temporary map for cookie setting
+          pendingGoogleSessions.set(userEmail, {
+            sessionId,
+            accessToken,
+            refreshToken,
+            timestamp: Date.now(),
+          });
+
+          console.log(`[Google OAuth signIn] ✅ Success: ${userEmail}`);
           console.log("[Google OAuth signIn] ========== SUCCESS ==========");
           
           return true;
@@ -209,89 +250,41 @@ export const authOptions: NextAuthOptions = {
           console.error("[Google OAuth signIn] ========== ERROR ==========");
           console.error("[Google OAuth signIn] Error:", error);
           
-          // Convert error to redirect URL
           const errorMessage = error instanceof Error ? error.message : "GOOGLE_SIGNIN_ERROR";
-          const errorUrl = `${BASE_URL}/login?error=${errorMessage}`;
-          
-          console.log("[Google OAuth signIn] Redirecting to error URL:", errorUrl);
-          
-          // Return redirect URL for error page
-          // This prevents the access_denied error
-          return errorUrl;
+          return `${BASE_URL}/login?error=${errorMessage}`;
         }
       }
 
       return true;
     },
 
-    async jwt({ token, user, account, trigger }) {
+    async jwt({ token, user, account }) {
       // Initial sign in
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
         token.phone = (user as any).phone;
 
-        // For Google OAuth, create session and tokens
-        if (account?.provider === "google") {
-          try {
-            console.log("[Google OAuth jwt] ========== START ==========");
+        // For Google OAuth, get session data from pending map
+        if (account?.provider === "google" && user.email) {
+          const sessionData = pendingGoogleSessions.get(user.email.toLowerCase());
+          
+          if (sessionData) {
+            token.sessionId = sessionData.sessionId;
+            token.accessToken = sessionData.accessToken;
+            token.refreshToken = sessionData.refreshToken;
             
-            const dbUser = await prisma.user.findUnique({
-              where: { email: user.email!.toLowerCase() },
-            });
-
-            if (dbUser) {
-              console.log(`[Google OAuth jwt] Creating session for: ${dbUser.email}`);
-              
-              // Create session ID
-              const sessionId = createSessionId();
-
-              // Store session in Redis
-              await storeSession(sessionId, {
-                userId: dbUser.user_id,
-                email: dbUser.email,
-                role: dbUser.role,
-                createdAt: Date.now(),
-                lastActivity: Date.now(),
-              });
-
-              // Generate tokens
-              const accessToken = generateAccessToken({
-                userId: dbUser.user_id,
-                email: dbUser.email,
-                role: dbUser.role,
-                sessionId,
-              });
-
-              const refreshToken = generateRefreshToken({
-                userId: dbUser.user_id,
-                email: dbUser.email,
-                role: dbUser.role,
-                sessionId,
-              });
-
-              // Store tokens in Redis
-              await storeTokens(sessionId, accessToken, refreshToken);
-
-              // Store in token for later retrieval
-              token.sessionId = sessionId;
-              token.accessToken = accessToken;
-              token.refreshToken = refreshToken;
-              token.customCookiesSet = false; // Flag to track if we've set cookies
-
-              console.log(`[Google OAuth jwt] ✅ Session created: ${sessionId.substring(0, 8)}... for ${dbUser.email}`);
-              console.log("[Google OAuth jwt] ========== SUCCESS ==========");
-            } else {
-              console.error("[Google OAuth jwt] ❌ User not found in database");
-            }
-          } catch (error) {
-            console.error("[Google OAuth jwt] ========== ERROR ==========");
-            console.error("[Google OAuth jwt] Error creating session:", error);
+            // Clean up
+            pendingGoogleSessions.delete(user.email.toLowerCase());
+            
+            console.log(`[JWT] Retrieved session for Google user: ${user.email}`);
+          } else {
+            console.warn(`[JWT] No pending session found for: ${user.email}`);
           }
         }
       }
 
-      // For Google OAuth, refresh user data
+      // Refresh user data for Google OAuth
       if (account?.provider === "google" && token.email) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -306,7 +299,7 @@ export const authOptions: NextAuthOptions = {
             token.picture = dbUser.avatar || "/profile.svg";
           }
         } catch (error) {
-          console.error("[JWT Callback] Error fetching user:", error);
+          console.error("[JWT] Error fetching user:", error);
         }
       }
 
@@ -321,7 +314,6 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).sessionId = token.sessionId as string;
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
-        (session.user as any).customCookiesSet = token.customCookiesSet as boolean;
         session.user.name = token.name as string;
         session.user.image = token.picture as string || "/profile.svg";
       }
@@ -329,65 +321,52 @@ export const authOptions: NextAuthOptions = {
     },
 
     async redirect({ url, baseUrl }) {
-      console.log('[Redirect Callback] ========== START ==========');
-      console.log('[Redirect Callback] url:', url);
-      console.log('[Redirect Callback] baseUrl:', baseUrl);
+      console.log('[Redirect] url:', url);
+      console.log('[Redirect] baseUrl:', baseUrl);
 
-      // CRITICAL FIX: Use BASE_URL constant instead of parameter
       const CORRECT_BASE_URL = BASE_URL;
 
-      // Handle error redirects - always use correct base URL
+      // Handle errors
       if (url.includes("error=")) {
-        console.log('[Redirect] Detected error in URL');
+        console.log('[Redirect] Error detected');
         
-        // If URL is already absolute with correct domain, use it
         if (url.startsWith(CORRECT_BASE_URL)) {
-          console.log('[Redirect] Using error URL as-is:', url);
           return url;
         }
         
-        // Extract error parameter and rebuild URL
         try {
           const urlObj = new URL(url.startsWith('http') ? url : `${CORRECT_BASE_URL}${url}`);
           const errorParam = urlObj.searchParams.get('error');
-          const errorUrl = `${CORRECT_BASE_URL}/login?error=${errorParam}`;
-          console.log('[Redirect] Redirecting to error page:', errorUrl);
-          return errorUrl;
+          return `${CORRECT_BASE_URL}/login?error=${errorParam}`;
         } catch (e) {
-          console.error('[Redirect] Error parsing URL:', e);
           return `${CORRECT_BASE_URL}/login?error=CALLBACK_ERROR`;
         }
       }
 
-      // CRITICAL FIX: For Google OAuth, redirect to custom callback page
-      // This page will handle setting cookies properly
-      if (url.includes('/api/auth/callback/google') || url === `${CORRECT_BASE_URL}/api/auth/signin/google`) {
-        const callbackUrl = `${CORRECT_BASE_URL}/auth/google-callback`;
-        console.log('[Redirect] Google OAuth - redirecting to custom callback:', callbackUrl);
-        return callbackUrl;
+      // ✅ SIMPLIFIED: Direct redirect to home for Google OAuth
+      // No intermediate callback page needed
+      if (url.includes('/api/auth/callback/google')) {
+        console.log('[Redirect] Google callback - redirecting to home');
+        return CORRECT_BASE_URL;
       }
 
-      // If URL is absolute and starts with correct base URL, allow it
+      // URL starts with correct base
       if (url.startsWith(CORRECT_BASE_URL)) {
-        console.log('[Redirect] URL starts with correct base, allowing:', url);
         return url;
       }
 
-      // If URL is relative, resolve against correct base URL
+      // Relative URL
       if (url.startsWith("/")) {
-        const resolvedUrl = `${CORRECT_BASE_URL}${url}`;
-        console.log('[Redirect] Resolving relative URL:', resolvedUrl);
-        return resolvedUrl;
+        return `${CORRECT_BASE_URL}${url}`;
       }
 
-      // Default: redirect to home
-      console.log('[Redirect] Defaulting to home:', CORRECT_BASE_URL);
+      // Default
       return CORRECT_BASE_URL;
     },
   },
   pages: {
     signIn: "/login",
-    error: "/login", // Redirect errors to login page
+    error: "/login",
   },
   session: {
     strategy: "jwt",
@@ -400,7 +379,6 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        // CRITICAL: secure must be true in production
         secure: process.env.NODE_ENV === "production",
       },
     },
@@ -409,22 +387,14 @@ export const authOptions: NextAuthOptions = {
   debug: process.env.NODE_ENV === "development",
   logger: {
     error(code, ...message) {
-      // Filter out deprecation warnings
       const codeStr = String(code);
       if (codeStr.includes("DEP0169")) {
         return; // Suppress deprecation warning
       }
-      
-      // Log OAuth errors with better context
-      if (codeStr === "OAUTH_CALLBACK_HANDLER_ERROR" || codeStr === "SIGNIN_OAUTH_ERROR") {
-        console.error("[NextAuth Error]", code, ...message);
-      } else {
-        console.error("[NextAuth Error]", code, ...message);
-      }
+      console.error("[NextAuth Error]", code, ...message);
     },
     warn(code, ...message) {
       const codeStr = String(code);
-      // Filter out session warnings and deprecation warnings
       if (!codeStr.includes("session") && !codeStr.includes("DEP0169")) {
         console.warn("[NextAuth Warning]", code, ...message);
       }
