@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const prevPathnameRef = useRef<string | null>(null);
+  const googleSyncAttemptedRef = useRef(false);
 
   const isMitraRoute = pathname?.startsWith("/mitra") || false;
   const isAdminRoute = pathname?.startsWith("/admin") || false;
@@ -149,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         clearTimeout(timeoutId);
 
-        // Check if component is still mounted (important for Strict Mode)
+        // Check if component is still mounted
         if (!mountedRef.current) {
           console.log("[Auth] Component unmounted during fetch, ignoring result");
           return null;
@@ -192,8 +193,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (error instanceof Error && error.name === "AbortError") {
           console.log("[Auth] Request aborted");
-          // DON'T return early without setting state — check if we're still mounted
-          // and if no other fetch will run, we need to finalize
           return null;
         }
 
@@ -231,7 +230,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // TOKEN REFRESH
   // ============================================
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
-    if (isMitraRoute || isAdminRoute || isLoggingOutRef.current || isRefreshingRef.current) {
+    if (
+      isMitraRoute ||
+      isAdminRoute ||
+      isLoggingOutRef.current ||
+      isRefreshingRef.current
+    ) {
       return false;
     }
 
@@ -327,6 +331,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cacheUser(null);
       clearTokenRefresh();
 
+      // Reset Google sync flag
+      googleSyncAttemptedRef.current = false;
+
       if (session) {
         try {
           await nextAuthSignOut({ redirect: false });
@@ -367,11 +374,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ============================================
   // EFFECT 1: Mounted tracking
-  //
-  // CRITICAL FIX for React Strict Mode:
-  // In dev, React mounts → unmounts → re-mounts components.
-  // We MUST set mountedRef = true on every mount, otherwise
-  // the second mount thinks we're unmounted and skips all state updates.
   // ============================================
   useEffect(() => {
     mountedRef.current = true;
@@ -385,14 +387,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ============================================
   // EFFECT 2: Initial auth check
-  //
-  // CRITICAL FIX for React Strict Mode:
-  // Previously used hasInitializedRef which stayed true after
-  // strict mode cleanup, preventing re-initialization on re-mount.
-  // Now we reset it in cleanup so the second mount can re-init.
   // ============================================
   useEffect(() => {
-    // Track this specific effect instance
     let effectCancelled = false;
 
     const initAuth = async () => {
@@ -421,7 +417,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // STEP 2: Fetch from API to validate/update
       const fetchedUser = await fetchCurrentUser(!!cachedUser);
 
-      // Check if this effect instance was cancelled (strict mode cleanup)
       if (effectCancelled) {
         console.log("[Auth] Init effect was cancelled, ignoring result");
         return;
@@ -444,39 +439,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Initialize prevPathnameRef
     prevPathnameRef.current = pathname;
-
     initAuth();
 
     return () => {
-      // Mark this effect instance as cancelled
       effectCancelled = true;
-
       clearTokenRefresh();
 
-      // Abort any in-flight fetch
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
 
-      // Reset fetching state so next mount can fetch
       isFetchingRef.current = false;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============================================
   // EFFECT 3: Re-fetch after navigating FROM auth routes
-  //
-  // Detects: /login → / (after login, cookies are set but
-  // AuthContext still has user=null from initial check)
   // ============================================
   useEffect(() => {
     const prevPath = prevPathnameRef.current;
     prevPathnameRef.current = pathname;
 
-    if (!isInitialized || isMitraRoute || isAdminRoute || isLoggingOutRef.current) {
+    if (
+      !isInitialized ||
+      isMitraRoute ||
+      isAdminRoute ||
+      isLoggingOutRef.current
+    ) {
       return;
     }
 
@@ -500,7 +491,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchCurrentUser(false)
           .then((fetchedUser) => {
             if (fetchedUser) {
-              console.log("[Auth] ✅ Session found after login redirect:", fetchedUser.email);
+              console.log(
+                "[Auth] ✅ Session found after login redirect:",
+                fetchedUser.email
+              );
               setupTokenRefresh();
             } else {
               console.log("[Auth] ❌ No session after login redirect");
@@ -517,33 +511,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return () => clearTimeout(timer);
     }
-  }, [pathname, isInitialized, isMitraRoute, isAdminRoute, user, fetchCurrentUser, setupTokenRefresh, clearTokenRefresh]);
+  }, [
+    pathname,
+    isInitialized,
+    isMitraRoute,
+    isAdminRoute,
+    user,
+    fetchCurrentUser,
+    setupTokenRefresh,
+    clearTokenRefresh,
+  ]);
 
   // ============================================
   // EFFECT 4: Sync with NextAuth session (Google OAuth)
+  // ✅ IMPROVED: Better sync logic with debounce
   // ============================================
   useEffect(() => {
     if (!isInitialized || isMitraRoute || isAdminRoute) return;
+    if (isLoggingOutRef.current) return;
 
-    if (sessionStatus === "authenticated" && session?.user?.email) {
-      console.log("[Auth] NextAuth session:", session.user.email);
+    // When NextAuth session becomes authenticated and we don't have a user
+    if (
+      sessionStatus === "authenticated" &&
+      session?.user?.email &&
+      !user
+    ) {
+      // Prevent multiple sync attempts
+      if (googleSyncAttemptedRef.current) return;
+      googleSyncAttemptedRef.current = true;
 
-      if (!user || user.email !== session.user.email) {
-        fetchCurrentUser(true).then((fetchedUser) => {
+      console.log("[Auth] 🔄 NextAuth session detected, syncing:", session.user.email);
+
+      // Small delay to allow middleware to set cookies first
+      const timer = setTimeout(() => {
+        if (!mountedRef.current || isLoggingOutRef.current) return;
+
+        fetchCurrentUser(false).then((fetchedUser) => {
           if (fetchedUser) {
+            console.log("[Auth] ✅ Google OAuth user synced:", fetchedUser.email);
             setupTokenRefresh();
+          } else {
+            console.log("[Auth] ⚠️ Google OAuth sync: user not found via /api/auth/me, retrying...");
+            
+            // Retry once after a longer delay (cookies might not be set yet)
+            setTimeout(() => {
+              if (!mountedRef.current || isLoggingOutRef.current) return;
+              
+              fetchCurrentUser(false).then((retryUser) => {
+                if (retryUser) {
+                  console.log("[Auth] ✅ Google OAuth user synced on retry:", retryUser.email);
+                  setupTokenRefresh();
+                } else {
+                  console.log("[Auth] ❌ Google OAuth sync failed after retry");
+                  googleSyncAttemptedRef.current = false; // Allow future attempts
+                }
+              });
+            }, 1500);
           }
         });
-      }
+      }, 300);
+
+      return () => clearTimeout(timer);
     }
-  }, [sessionStatus, session, isInitialized, isMitraRoute, isAdminRoute, user]);
+
+    // Reset sync flag when session is unauthenticated
+    if (sessionStatus === "unauthenticated") {
+      googleSyncAttemptedRef.current = false;
+    }
+  }, [
+    sessionStatus,
+    session,
+    isInitialized,
+    isMitraRoute,
+    isAdminRoute,
+    user,
+    fetchCurrentUser,
+    setupTokenRefresh,
+  ]);
 
   // ============================================
   // EFFECT 5: Visibility change (tab focus)
   // ============================================
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && user && !isLoggingOutRef.current) {
+      if (
+        document.visibilityState === "visible" &&
+        user &&
+        !isLoggingOutRef.current
+      ) {
         console.log("[Auth] Tab visible, validating");
         fetchCurrentUser(true).catch(console.error);
       }

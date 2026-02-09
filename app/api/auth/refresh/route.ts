@@ -6,6 +6,8 @@ import {
   getSession,
   updateSessionActivity,
 } from "@/app/components/lib/token-service";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/components/lib/auth.config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,35 +36,93 @@ export async function POST(request: NextRequest) {
 
     console.log("[Refresh] Cookies present:", {
       sessionId: !!sessionId,
-      sessionIdValue: sessionId?.substring(0, 8) + "...",
+      sessionIdValue: sessionId ? sessionId.substring(0, 8) + "..." : "none",
       accessToken: !!accessToken,
       refreshToken: !!refreshToken,
     });
 
-    // Must have session ID
-    if (!sessionId) {
-      console.error("[Refresh] Missing session ID");
-      const response = NextResponse.json(
-        { success: false, message: "Session tidak ditemukan" },
-        { status: 401 }
-      );
-      clearAuthCookies(response);
-      return response;
-    }
+    // ============================================
+    // If no custom cookies, check if NextAuth session exists
+    // This handles the case where Google OAuth just completed
+    // but custom cookies haven't been set yet
+    // ============================================
+    if (!sessionId || !refreshToken) {
+      const nextAuthToken = request.cookies.get("next-auth.session-token")?.value;
 
-    // Must have refresh token
-    if (!refreshToken) {
-      console.error("[Refresh] Missing refresh token");
-      const response = NextResponse.json(
-        { success: false, message: "Refresh token tidak ditemukan" },
-        { status: 401 }
-      );
-      clearAuthCookies(response);
-      return response;
+      if (nextAuthToken) {
+        console.log("[Refresh] No custom cookies, but NextAuth token exists - checking session...");
+
+        try {
+          const nextAuthSession = await getServerSession(authOptions);
+
+          if (nextAuthSession?.user?.email) {
+            const sessionUser = nextAuthSession.user as any;
+
+            // If NextAuth session has custom tokens, set cookies and return
+            if (sessionUser.sessionId && sessionUser.accessToken && sessionUser.refreshToken) {
+              console.log("[Refresh] ✅ Found tokens in NextAuth session, setting cookies");
+
+              const response = NextResponse.json(
+                {
+                  success: true,
+                  message: "Session synced from NextAuth",
+                  tokenRefreshed: true,
+                },
+                { status: 200 }
+              );
+
+              response.cookies.set("session_id", sessionUser.sessionId, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 30 * 24 * 60 * 60,
+                path: "/",
+              });
+
+              response.cookies.set("access_token", sessionUser.accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 60 * 60,
+                path: "/",
+              });
+
+              response.cookies.set("refresh_token", sessionUser.refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 30 * 24 * 60 * 60,
+                path: "/",
+              });
+
+              return response;
+            }
+          }
+        } catch (error) {
+          console.log("[Refresh] NextAuth session check failed:", error);
+        }
+      }
+
+      // No session at all
+      if (!sessionId) {
+        console.log("[Refresh] ❌ No session ID and no NextAuth fallback");
+        return NextResponse.json(
+          { success: false, message: "Session tidak ditemukan" },
+          { status: 401 }
+        );
+      }
+
+      if (!refreshToken) {
+        console.log("[Refresh] ❌ No refresh token");
+        return NextResponse.json(
+          { success: false, message: "Refresh token tidak ditemukan" },
+          { status: 401 }
+        );
+      }
     }
 
     // Verify session still exists in Redis
-    const session = await getSession(sessionId);
+    const session = await getSession(sessionId!);
     if (!session) {
       console.error("[Refresh] Session not found in Redis:", sessionId);
       const response = NextResponse.json(
@@ -80,11 +140,10 @@ export async function POST(request: NextRequest) {
       const tokenPayload = verifyToken(accessToken);
       if (tokenPayload && tokenPayload.sessionId === sessionId) {
         console.log("[Refresh] Access token still valid, extending session");
-        
+
         // Update session activity
-        await updateSessionActivity(sessionId);
-        
-        // Return success without creating new token
+        await updateSessionActivity(sessionId!);
+
         return NextResponse.json(
           {
             success: true,
@@ -103,16 +162,16 @@ export async function POST(request: NextRequest) {
 
     // Access token expired or invalid, refresh it
     console.log("[Refresh] Access token expired/invalid, refreshing...");
-    
-    const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+
+    const refreshResult = await refreshAccessToken(sessionId!, refreshToken!);
 
     if (!refreshResult.success || !refreshResult.accessToken) {
       console.error("[Refresh] Failed to refresh:", refreshResult.error);
       const response = NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           message: refreshResult.error || "Gagal refresh token",
-          shouldLogout: true
+          shouldLogout: true,
         },
         { status: 401 }
       );
@@ -133,9 +192,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Update session activity
-    await updateSessionActivity(sessionId);
+    await updateSessionActivity(sessionId!);
 
-    console.log("[Refresh] ✅ Successfully refreshed token for user:", newTokenPayload.userId);
+    console.log(
+      "[Refresh] ✅ Successfully refreshed token for user:",
+      newTokenPayload.userId
+    );
 
     // Create response with new token
     const response = NextResponse.json(
@@ -149,11 +211,11 @@ export async function POST(request: NextRequest) {
         },
         tokenRefreshed: true,
       },
-      { 
+      {
         status: 200,
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
-        }
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
       }
     );
 
@@ -169,13 +231,12 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("[Refresh] Unexpected error:", error);
-    
+
     const response = NextResponse.json(
       { success: false, message: "Terjadi kesalahan server" },
       { status: 500 }
     );
-    
-    // Don't clear cookies on server error - might be temporary
+
     return response;
   }
 }
@@ -212,13 +273,13 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { 
-        valid: true, 
+      {
+        valid: true,
         user: {
           id: tokenPayload.userId,
           email: tokenPayload.email,
           role: tokenPayload.role,
-        }
+        },
       },
       { status: 200 }
     );

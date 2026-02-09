@@ -1,4 +1,4 @@
-// middleware.ts - SIMPLIFIED VERSION
+// middleware.ts - FIXED FOR VERCEL PRODUCTION
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -35,20 +35,24 @@ const authRoutes = ["/login", "/register", "/register/otp"];
 // Public mitra routes
 const publicMitraRoutes = ["/mitra/login", "/mitra/daftar"];
 
-function createLoadingRedirect(targetUrl: string, request: NextRequest, message: string = "Redirecting...") {
+function createLoadingRedirect(
+  targetUrl: string,
+  request: NextRequest,
+  message: string = "Redirecting..."
+) {
   const loadingPageUrl = new URL("/loading", request.url);
   loadingPageUrl.searchParams.set("redirect", targetUrl);
   loadingPageUrl.searchParams.set("message", message);
-  
+
   const response = NextResponse.redirect(loadingPageUrl);
-  
+
   response.cookies.set("redirect_target", targetUrl, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 60,
   });
-  
+
   return response;
 }
 
@@ -57,11 +61,67 @@ function createDirectRedirect(targetUrl: string, request: NextRequest) {
   return NextResponse.redirect(redirectUrl);
 }
 
+// Helper: Set custom auth cookies from NextAuth token data
+function setCustomCookiesFromToken(
+  response: NextResponse,
+  sessionToken: {
+    sessionId?: string;
+    accessToken?: string;
+    refreshToken?: string;
+  },
+  existingCookies: {
+    sessionId?: string;
+    accessToken?: string;
+    refreshToken?: string;
+  }
+) {
+  const isProduction = process.env.NODE_ENV === "production";
+  let cookiesSet = false;
+
+  if (sessionToken.sessionId && !existingCookies.sessionId) {
+    response.cookies.set("session_id", sessionToken.sessionId as string, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: "/",
+    });
+    cookiesSet = true;
+  }
+
+  if (sessionToken.accessToken && !existingCookies.accessToken) {
+    response.cookies.set("access_token", sessionToken.accessToken as string, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "lax",
+      maxAge: 60 * 60, // 1 hour
+      path: "/",
+    });
+    cookiesSet = true;
+  }
+
+  if (sessionToken.refreshToken && !existingCookies.refreshToken) {
+    response.cookies.set("refresh_token", sessionToken.refreshToken as string, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: "/",
+    });
+    cookiesSet = true;
+  }
+
+  if (cookiesSet) {
+    console.log("[Middleware] ✅ Custom cookies set from NextAuth token");
+  }
+
+  return cookiesSet;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // =============== PUBLIC ROUTES ===============
-  // Allow all NextAuth routes
   for (const route of publicRoutes) {
     if (pathname.startsWith(route) || pathname === route) {
       console.log(`[Middleware] ✅ Public route: ${pathname}`);
@@ -70,25 +130,29 @@ export async function middleware(request: NextRequest) {
   }
 
   // =============== ADMIN ROUTES ===============
-  if (pathname.startsWith('/admin/')) {
-    if (pathname === '/admin/login') {
-      const adminSessionId = request.cookies.get('admin_session_id')?.value;
-      const adminAccessToken = request.cookies.get('admin_access_token')?.value;
-      const adminRefreshToken = request.cookies.get('admin_refresh_token')?.value;
+  if (pathname.startsWith("/admin/")) {
+    if (pathname === "/admin/login") {
+      const adminSessionId = request.cookies.get("admin_session_id")?.value;
+      const adminAccessToken = request.cookies.get("admin_access_token")?.value;
+      const adminRefreshToken = request.cookies.get("admin_refresh_token")?.value;
 
       if (adminSessionId && (adminAccessToken || adminRefreshToken)) {
         return createDirectRedirect("/admin/dashboard", request);
       }
-      
+
       return NextResponse.next();
     }
 
-    const adminSessionId = request.cookies.get('admin_session_id')?.value;
-    const adminAccessToken = request.cookies.get('admin_access_token')?.value;
-    const adminRefreshToken = request.cookies.get('admin_refresh_token')?.value;
+    const adminSessionId = request.cookies.get("admin_session_id")?.value;
+    const adminAccessToken = request.cookies.get("admin_access_token")?.value;
+    const adminRefreshToken = request.cookies.get("admin_refresh_token")?.value;
 
     if (!adminSessionId || (!adminAccessToken && !adminRefreshToken)) {
-      return createLoadingRedirect("/admin/login", request, "Please login to continue...");
+      return createLoadingRedirect(
+        "/admin/login",
+        request,
+        "Please login to continue..."
+      );
     }
 
     if (!adminAccessToken && adminRefreshToken) {
@@ -96,11 +160,11 @@ export async function middleware(request: NextRequest) {
     }
 
     try {
-      const verifyUrl = new URL('/api/admin/verify', request.url);
+      const verifyUrl = new URL("/api/admin/verify", request.url);
       const verifyResponse = await fetch(verifyUrl.toString(), {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Cookie': `admin_session_id=${adminSessionId}; admin_access_token=${adminAccessToken}`,
+          Cookie: `admin_session_id=${adminSessionId}; admin_access_token=${adminAccessToken}`,
         },
       });
 
@@ -110,24 +174,32 @@ export async function middleware(request: NextRequest) {
         if (verifyData.shouldRefresh && adminRefreshToken) {
           return NextResponse.next();
         }
-        return createLoadingRedirect("/admin/login", request, "Session expired...");
+        return createLoadingRedirect(
+          "/admin/login",
+          request,
+          "Session expired..."
+        );
       }
 
       return NextResponse.next();
     } catch (error) {
-      console.error('[Middleware] Admin verify error:', error);
-      return createLoadingRedirect("/admin/login", request, "Authentication error...");
+      console.error("[Middleware] Admin verify error:", error);
+      return createLoadingRedirect(
+        "/admin/login",
+        request,
+        "Authentication error..."
+      );
     }
   }
 
   // =============== MITRA ROUTES ===============
-  if (pathname.startsWith('/mitra/')) {
-    const mitraSessionId = request.cookies.get('mitra_session_id')?.value;
-    const mitraAccessToken = request.cookies.get('mitra_access_token')?.value;
-    const mitraRefreshToken = request.cookies.get('mitra_refresh_token')?.value;
+  if (pathname.startsWith("/mitra/")) {
+    const mitraSessionId = request.cookies.get("mitra_session_id")?.value;
+    const mitraAccessToken = request.cookies.get("mitra_access_token")?.value;
+    const mitraRefreshToken = request.cookies.get("mitra_refresh_token")?.value;
 
-    if (publicMitraRoutes.some(route => pathname === route)) {
-      if (pathname === '/mitra/login') {
+    if (publicMitraRoutes.some((route) => pathname === route)) {
+      if (pathname === "/mitra/login") {
         if (mitraSessionId && (mitraAccessToken || mitraRefreshToken)) {
           return createDirectRedirect("/mitra/dashboard", request);
         }
@@ -144,11 +216,11 @@ export async function middleware(request: NextRequest) {
     }
 
     try {
-      const verifyUrl = new URL('/api/mitra/verify', request.url);
+      const verifyUrl = new URL("/api/mitra/verify", request.url);
       const verifyResponse = await fetch(verifyUrl.toString(), {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Cookie': `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken}; mitra_refresh_token=${mitraRefreshToken || ''}`,
+          Cookie: `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken}; mitra_refresh_token=${mitraRefreshToken || ""}`,
         },
       });
 
@@ -158,76 +230,62 @@ export async function middleware(request: NextRequest) {
         if (verifyData.shouldRefresh && mitraRefreshToken) {
           return NextResponse.next();
         }
-        return createLoadingRedirect("/mitra/login", request, "Session expired...");
+        return createLoadingRedirect(
+          "/mitra/login",
+          request,
+          "Session expired..."
+        );
       }
 
       return NextResponse.next();
     } catch (error) {
-      console.error('[Middleware] Mitra verify error:', error);
+      console.error("[Middleware] Mitra verify error:", error);
       if (mitraRefreshToken) {
         return NextResponse.next();
       }
-      return createLoadingRedirect("/mitra/login", request, "Authentication error...");
+      return createLoadingRedirect(
+        "/mitra/login",
+        request,
+        "Authentication error..."
+      );
     }
   }
 
   // =============== USER ROUTES ===============
-  
+
   const sessionId = request.cookies.get("session_id")?.value;
   const accessToken = request.cookies.get("access_token")?.value;
   const refreshToken = request.cookies.get("refresh_token")?.value;
 
-  // Get NextAuth session
-  const sessionToken = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  // Get NextAuth JWT token
+  let sessionToken: any = null;
+  try {
+    sessionToken = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+  } catch (error) {
+    console.error("[Middleware] getToken error:", error);
+  }
 
   let isAuthenticated = false;
+  let needsCustomCookies = false;
 
   // Check NextAuth (Google OAuth)
   if (sessionToken) {
-    console.log("[Middleware] ✅ NextAuth authenticated");
+    console.log("[Middleware] ✅ NextAuth token found");
     isAuthenticated = true;
-    
-    // ✅ SET CUSTOM COOKIES FROM NEXTAUTH SESSION
-    // This happens automatically after Google OAuth login
-    if (sessionToken.sessionId && sessionToken.accessToken && sessionToken.refreshToken) {
-      const response = NextResponse.next();
-      
-      // Only set if not already set
-      if (!sessionId) {
-        response.cookies.set("session_id", sessionToken.sessionId as string, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 30 * 24 * 60 * 60,
-          path: "/",
-        });
+
+    // ✅ Check if custom cookies need to be set from NextAuth token
+    if (
+      sessionToken.sessionId &&
+      sessionToken.accessToken &&
+      sessionToken.refreshToken
+    ) {
+      // If ANY of the custom cookies are missing, we need to set them
+      if (!sessionId || !accessToken || !refreshToken) {
+        needsCustomCookies = true;
       }
-      
-      if (!accessToken) {
-        response.cookies.set("access_token", sessionToken.accessToken as string, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 60 * 60,
-          path: "/",
-        });
-      }
-      
-      if (!refreshToken) {
-        response.cookies.set("refresh_token", sessionToken.refreshToken as string, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 30 * 24 * 60 * 60,
-          path: "/",
-        });
-      }
-      
-      console.log("[Middleware] ✅ Custom cookies set from NextAuth");
-      return response;
     }
   }
   // Check custom auth
@@ -243,6 +301,17 @@ export async function middleware(request: NextRequest) {
       const loginUrl = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
       return createLoadingRedirect(loginUrl, request, "Please login...");
     }
+
+    // If authenticated via NextAuth and needs custom cookies, set them
+    if (needsCustomCookies && sessionToken) {
+      const response = NextResponse.next();
+      setCustomCookiesFromToken(
+        response,
+        sessionToken,
+        { sessionId, accessToken, refreshToken }
+      );
+      return response;
+    }
   }
 
   // Auth routes (redirect if logged in)
@@ -251,6 +320,17 @@ export async function middleware(request: NextRequest) {
       console.log("[Middleware] ⚠️ Already authenticated, redirecting");
       return createDirectRedirect("/", request);
     }
+  }
+
+  // For any other matched route, if we need to set custom cookies, do it
+  if (needsCustomCookies && sessionToken) {
+    const response = NextResponse.next();
+    setCustomCookiesFromToken(
+      response,
+      sessionToken,
+      { sessionId, accessToken, refreshToken }
+    );
+    return response;
   }
 
   return NextResponse.next();

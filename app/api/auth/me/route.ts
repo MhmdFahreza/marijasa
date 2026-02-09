@@ -55,11 +55,11 @@ function createUserResponse(user: {
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     console.log("[Auth Me] 🔍 Processing authentication check...");
 
-    // Get cookies early to avoid race conditions
+    // Get cookies early
     const sessionId = request.cookies.get("session_id")?.value;
     const accessToken = request.cookies.get("access_token")?.value;
     const refreshToken = request.cookies.get("refresh_token")?.value;
@@ -70,15 +70,156 @@ export async function GET(request: NextRequest) {
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
       hasNextAuthToken: !!nextAuthToken,
-      sessionIdPreview: sessionId?.substring(0, 8) + "...",
+      sessionIdPreview: sessionId
+        ? sessionId.substring(0, 8) + "..."
+        : "none",
     });
 
-    // FIRST: Check for NextAuth session (Google OAuth) - Quick check
+    // ============================================
+    // STRATEGY 1: Check custom JWT session FIRST
+    // (This is faster than getServerSession)
+    // ============================================
+    if (sessionId && (accessToken || refreshToken)) {
+      console.log("[Auth Me] Checking custom JWT session...");
+
+      // Verify session exists in Redis
+      const session = await getSession(sessionId);
+
+      if (session) {
+        console.log("[Auth Me] ✅ Redis session found for user:", session.userId);
+
+        let currentAccessToken = accessToken;
+        let tokenWasRefreshed = false;
+
+        // Handle token scenarios
+        if (accessToken) {
+          const tokenPayload = verifyToken(accessToken);
+
+          if (tokenPayload && tokenPayload.sessionId === sessionId) {
+            console.log("[Auth Me] ✅ Access token valid");
+          } else if (refreshToken) {
+            console.log("[Auth Me] 🔄 Access token invalid, refreshing...");
+
+            const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+
+            if (refreshResult.success && refreshResult.accessToken) {
+              currentAccessToken = refreshResult.accessToken;
+              tokenWasRefreshed = true;
+              console.log("[Auth Me] ✅ Access token refreshed");
+            } else {
+              console.log("[Auth Me] ❌ Refresh failed:", refreshResult.error);
+              const response = NextResponse.json(
+                { message: "Session expired", authenticated: false, user: null },
+                { status: 401, headers: NO_CACHE_HEADERS }
+              );
+              clearAuthCookies(response);
+              return response;
+            }
+          } else {
+            console.log("[Auth Me] ❌ Token invalid and no refresh token");
+            const response = NextResponse.json(
+              { message: "Token expired", authenticated: false, user: null },
+              { status: 401, headers: NO_CACHE_HEADERS }
+            );
+            clearAuthCookies(response);
+            return response;
+          }
+        } else if (refreshToken) {
+          console.log("[Auth Me] 🔄 No access token, using refresh token...");
+
+          const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+
+          if (refreshResult.success && refreshResult.accessToken) {
+            currentAccessToken = refreshResult.accessToken;
+            tokenWasRefreshed = true;
+            console.log("[Auth Me] ✅ Access token created from refresh token");
+          } else {
+            console.log("[Auth Me] ❌ Refresh failed:", refreshResult.error);
+            const response = NextResponse.json(
+              { message: "Session expired", authenticated: false, user: null },
+              { status: 401, headers: NO_CACHE_HEADERS }
+            );
+            clearAuthCookies(response);
+            return response;
+          }
+        }
+
+        // Get fresh user data from database
+        const user = await prisma.user.findUnique({
+          where: { user_id: session.userId },
+          select: {
+            user_id: true,
+            email: true,
+            name: true,
+            phone: true,
+            avatar: true,
+            role: true,
+            is_active: true,
+          },
+        });
+
+        if (!user || !user.is_active) {
+          console.log("[Auth Me] ❌ User not found or inactive");
+          const response = NextResponse.json(
+            { message: "User not found or inactive", authenticated: false, user: null },
+            { status: 404, headers: NO_CACHE_HEADERS }
+          );
+          clearAuthCookies(response);
+          return response;
+        }
+
+        // Update session activity (fire and forget)
+        updateSessionActivity(sessionId).catch(console.error);
+
+        console.log(
+          "[Auth Me] ✅ Authentication successful:",
+          user.email,
+          `(${Date.now() - startTime}ms)`
+        );
+
+        const response = NextResponse.json(
+          {
+            authenticated: true,
+            user: createUserResponse(user),
+            refreshed: tokenWasRefreshed,
+            authMethod: "jwt",
+          },
+          { status: 200, headers: NO_CACHE_HEADERS }
+        );
+
+        // Set new access token if refreshed
+        if (tokenWasRefreshed && currentAccessToken) {
+          response.cookies.set("access_token", currentAccessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 60 * 60, // 1 hour
+            path: "/",
+          });
+          console.log("[Auth Me] ✅ New access token cookie set");
+        }
+
+        return response;
+      } else {
+        console.log("[Auth Me] ⚠️ Session not found in Redis:", sessionId?.substring(0, 8));
+        // Don't clear cookies yet - fall through to NextAuth check
+      }
+    }
+
+    // ============================================
+    // STRATEGY 2: Check NextAuth session (Google OAuth)
+    // ============================================
     if (nextAuthToken) {
       try {
+        console.log("[Auth Me] Checking NextAuth session...");
+
         const nextAuthSession = await getServerSession(authOptions);
+
         if (nextAuthSession?.user?.email) {
-          console.log("[Auth Me] NextAuth session found for:", nextAuthSession.user.email);
+          console.log(
+            "[Auth Me] NextAuth session found for:",
+            nextAuthSession.user.email
+          );
 
           // Get fresh user data from database
           const user = await prisma.user.findUnique({
@@ -95,21 +236,58 @@ export async function GET(request: NextRequest) {
           });
 
           if (user && user.is_active) {
-            console.log("[Auth Me] ✅ NextAuth user found:", user.email, `(${Date.now() - startTime}ms)`);
+            console.log(
+              "[Auth Me] ✅ NextAuth user found:",
+              user.email,
+              `(${Date.now() - startTime}ms)`
+            );
 
-            return NextResponse.json(
+            // ✅ Also try to set custom cookies if NextAuth session has token data
+            const sessionUser = nextAuthSession.user as any;
+            const response = NextResponse.json(
               {
                 authenticated: true,
                 user: createUserResponse(user),
                 authMethod: "nextauth",
               },
-              {
-                status: 200,
-                headers: NO_CACHE_HEADERS,
-              }
+              { status: 200, headers: NO_CACHE_HEADERS }
             );
+
+            // If NextAuth session has custom session data but cookies are missing,
+            // set them now
+            if (sessionUser.sessionId && !sessionId) {
+              response.cookies.set("session_id", sessionUser.sessionId, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 30 * 24 * 60 * 60,
+                path: "/",
+              });
+            }
+            if (sessionUser.accessToken && !accessToken) {
+              response.cookies.set("access_token", sessionUser.accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 60 * 60,
+                path: "/",
+              });
+            }
+            if (sessionUser.refreshToken && !refreshToken) {
+              response.cookies.set("refresh_token", sessionUser.refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 30 * 24 * 60 * 60,
+                path: "/",
+              });
+            }
+
+            return response;
           } else {
-            console.log("[Auth Me] ⚠️ NextAuth user not found or inactive in database");
+            console.log(
+              "[Auth Me] ⚠️ NextAuth user not found or inactive in database"
+            );
           }
         }
       } catch (error) {
@@ -117,153 +295,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // SECOND: Check custom JWT session
-    // No session ID = not authenticated
-    if (!sessionId) {
-      console.log("[Auth Me] ❌ No session ID found");
-      return NextResponse.json(
-        { message: "No session found", authenticated: false, user: null },
-        { status: 401, headers: NO_CACHE_HEADERS }
-      );
-    }
+    // ============================================
+    // NO VALID SESSION FOUND
+    // ============================================
+    console.log("[Auth Me] ❌ No valid session found");
 
-    // Verify session exists in Redis
-    const session = await getSession(sessionId);
-    if (!session) {
-      console.log("[Auth Me] ❌ Session not found in Redis:", sessionId);
-      const response = NextResponse.json(
-        { message: "Session expired", authenticated: false, user: null },
-        { status: 401, headers: NO_CACHE_HEADERS }
-      );
-      clearAuthCookies(response);
-      return response;
-    }
-
-    console.log("[Auth Me] ✅ Redis session found for user:", session.userId);
-
-    let currentAccessToken = accessToken;
-    let tokenWasRefreshed = false;
-
-    // Handle token scenarios
-    if (accessToken) {
-      // Verify existing access token
-      const tokenPayload = verifyToken(accessToken);
-      
-      if (tokenPayload && tokenPayload.sessionId === sessionId) {
-        // Token is valid
-        console.log("[Auth Me] ✅ Access token valid");
-      } else if (refreshToken) {
-        // Token invalid/expired, try refresh
-        console.log("[Auth Me] 🔄 Access token invalid, attempting refresh...");
-        
-        const refreshResult = await refreshAccessToken(sessionId, refreshToken);
-        
-        if (refreshResult.success && refreshResult.accessToken) {
-          currentAccessToken = refreshResult.accessToken;
-          tokenWasRefreshed = true;
-          console.log("[Auth Me] ✅ Access token refreshed");
-        } else {
-          console.log("[Auth Me] ❌ Refresh failed:", refreshResult.error);
-          const response = NextResponse.json(
-            { message: "Session expired", authenticated: false, user: null },
-            { status: 401, headers: NO_CACHE_HEADERS }
-          );
-          clearAuthCookies(response);
-          return response;
-        }
-      } else {
-        // No refresh token available
-        console.log("[Auth Me] ❌ Token invalid and no refresh token");
-        const response = NextResponse.json(
-          { message: "Token expired", authenticated: false, user: null },
-          { status: 401, headers: NO_CACHE_HEADERS }
-        );
-        clearAuthCookies(response);
-        return response;
-      }
-    } else if (refreshToken) {
-      // No access token but have refresh token
-      console.log("[Auth Me] 🔄 No access token, using refresh token...");
-      
-      const refreshResult = await refreshAccessToken(sessionId, refreshToken);
-      
-      if (refreshResult.success && refreshResult.accessToken) {
-        currentAccessToken = refreshResult.accessToken;
-        tokenWasRefreshed = true;
-        console.log("[Auth Me] ✅ Access token created from refresh token");
-      } else {
-        console.log("[Auth Me] ❌ Refresh failed:", refreshResult.error);
-        const response = NextResponse.json(
-          { message: "Session expired", authenticated: false, user: null },
-          { status: 401, headers: NO_CACHE_HEADERS }
-        );
-        clearAuthCookies(response);
-        return response;
-      }
-    } else {
-      // No tokens at all
-      console.log("[Auth Me] ❌ No tokens found");
-      const response = NextResponse.json(
-        { message: "No tokens found", authenticated: false, user: null },
-        { status: 401, headers: NO_CACHE_HEADERS }
-      );
-      clearAuthCookies(response);
-      return response;
-    }
-
-    // Get fresh user data from database
-    const user = await prisma.user.findUnique({
-      where: { user_id: session.userId },
-      select: {
-        user_id: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatar: true,
-        role: true,
-        is_active: true,
-      },
-    });
-
-    if (!user || !user.is_active) {
-      console.log("[Auth Me] ❌ User not found or inactive");
-      const response = NextResponse.json(
-        { message: "User not found or inactive", authenticated: false, user: null },
-        { status: 404, headers: NO_CACHE_HEADERS }
-      );
-      clearAuthCookies(response);
-      return response;
-    }
-
-    // Update session activity (don't await - fire and forget)
-    updateSessionActivity(sessionId).catch(console.error);
-
-    console.log("[Auth Me] ✅ Authentication successful:", user.email, `(${Date.now() - startTime}ms)`);
-
-    // Create response
     const response = NextResponse.json(
-      {
-        authenticated: true,
-        user: createUserResponse(user),
-        refreshed: tokenWasRefreshed,
-        authMethod: "jwt",
-      },
-      {
-        status: 200,
-        headers: NO_CACHE_HEADERS,
-      }
+      { message: "No session found", authenticated: false, user: null },
+      { status: 401, headers: NO_CACHE_HEADERS }
     );
 
-    // Set new access token if refreshed
-    if (tokenWasRefreshed && currentAccessToken) {
-      response.cookies.set("access_token", currentAccessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 60 * 60, // 1 hour
-        path: "/",
-      });
-      console.log("[Auth Me] ✅ New access token cookie set");
+    // Only clear custom cookies if they exist but are invalid
+    if (sessionId || accessToken || refreshToken) {
+      clearAuthCookies(response);
     }
 
     return response;

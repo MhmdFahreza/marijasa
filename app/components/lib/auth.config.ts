@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts - FIXED & SIMPLIFIED
+// app/components/lib/auth.config.ts - FIXED FOR VERCEL SERVERLESS
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -31,7 +31,7 @@ function normalizePhone(phone: string): string {
 function getBaseUrl(): string {
   // 1. Production: NEXTAUTH_URL (set in Vercel)
   if (process.env.NEXTAUTH_URL) {
-    return process.env.NEXTAUTH_URL.trim();
+    return process.env.NEXTAUTH_URL.replace(/\/+$/, "").trim();
   }
 
   // 2. Vercel auto-sets VERCEL_URL
@@ -41,7 +41,7 @@ function getBaseUrl(): string {
 
   // 3. Fallback
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL.trim();
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "").trim();
   }
 
   // 4. Development
@@ -50,23 +50,12 @@ function getBaseUrl(): string {
 
 const BASE_URL = getBaseUrl();
 
-// Store session data temporarily for cookie setting
-const pendingGoogleSessions = new Map<string, {
-  sessionId: string;
-  accessToken: string;
-  refreshToken: string;
-  timestamp: number;
-}>();
-
-// Cleanup old pending sessions every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [email, data] of pendingGoogleSessions.entries()) {
-    if (now - data.timestamp > 5 * 60 * 1000) { // 5 minutes
-      pendingGoogleSessions.delete(email);
-    }
-  }
-}, 5 * 60 * 1000);
+// ============================================
+// ❌ REMOVED: pendingGoogleSessions Map
+// In-memory Map does NOT work reliably on Vercel serverless
+// because signIn and jwt callbacks may run in different instances.
+// Session/token creation is now done directly in the jwt callback.
+// ============================================
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -158,12 +147,15 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // Handle Google OAuth
+    // ============================================
+    // signIn: ONLY validates user, updates DB fields
+    // NO session/token creation here (moved to jwt)
+    // ============================================
+    async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
           console.log("[Google OAuth signIn] ========== START ==========");
-          
+
           const userEmail = user.email?.toLowerCase();
 
           if (!userEmail) {
@@ -173,7 +165,7 @@ export const authOptions: NextAuthOptions = {
 
           console.log(`[Google OAuth signIn] Processing: ${userEmail}`);
 
-          // Check if user registered
+          // Check if user is registered
           const existingUser = await prisma.user.findUnique({
             where: { email: userEmail },
           });
@@ -188,124 +180,135 @@ export const authOptions: NextAuthOptions = {
             return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
           }
 
-          // Update email_verified
+          // Update email_verified and avatar in one query
+          const updateData: Record<string, any> = {};
           if (!existingUser.email_verified) {
-            await prisma.user.update({
-              where: { email: userEmail },
-              data: { email_verified: true },
-            });
+            updateData.email_verified = true;
           }
-
-          // Update avatar if needed
           if (!existingUser.avatar && user.image) {
+            updateData.avatar = user.image;
+          }
+
+          if (Object.keys(updateData).length > 0) {
             await prisma.user.update({
               where: { email: userEmail },
-              data: { avatar: user.image },
+              data: updateData,
             });
           }
 
-          // ✅ CREATE SESSION AND TOKENS HERE
-          const sessionId = createSessionId();
-
-          // Store session in Redis
-          await storeSession(sessionId, {
-            userId: existingUser.user_id,
-            email: existingUser.email,
-            role: existingUser.role,
-            createdAt: Date.now(),
-            lastActivity: Date.now(),
-          });
-
-          // Generate tokens
-          const accessToken = generateAccessToken({
-            userId: existingUser.user_id,
-            email: existingUser.email,
-            role: existingUser.role,
-            sessionId,
-          });
-
-          const refreshToken = generateRefreshToken({
-            userId: existingUser.user_id,
-            email: existingUser.email,
-            role: existingUser.role,
-            sessionId,
-          });
-
-          // Store tokens in Redis
-          await storeTokens(sessionId, accessToken, refreshToken);
-
-          // Store in temporary map for cookie setting
-          pendingGoogleSessions.set(userEmail, {
-            sessionId,
-            accessToken,
-            refreshToken,
-            timestamp: Date.now(),
-          });
-
-          console.log(`[Google OAuth signIn] ✅ Success: ${userEmail}`);
+          console.log(`[Google OAuth signIn] ✅ Validated: ${userEmail}`);
           console.log("[Google OAuth signIn] ========== SUCCESS ==========");
-          
+
           return true;
         } catch (error) {
           console.error("[Google OAuth signIn] ========== ERROR ==========");
           console.error("[Google OAuth signIn] Error:", error);
-          
-          const errorMessage = error instanceof Error ? error.message : "GOOGLE_SIGNIN_ERROR";
-          return `${BASE_URL}/login?error=${errorMessage}`;
+
+          const errorMessage =
+            error instanceof Error ? error.message : "GOOGLE_SIGNIN_ERROR";
+          return `${BASE_URL}/login?error=${encodeURIComponent(errorMessage)}`;
         }
       }
 
       return true;
     },
 
+    // ============================================
+    // jwt: Creates session/tokens for Google OAuth
+    // This runs in the SAME request as signIn on Vercel,
+    // but we don't rely on in-memory state anymore.
+    // ============================================
     async jwt({ token, user, account }) {
-      // Initial sign in
-      if (user) {
-        token.id = user.id;
-        token.role = (user as any).role;
-        token.phone = (user as any).phone;
+      // ===== INITIAL SIGN-IN (user & account are only available on first call) =====
+      if (user && account) {
+        // --- Google OAuth ---
+        if (account.provider === "google" && user.email) {
+          try {
+            console.log("[JWT] Google OAuth initial sign-in for:", user.email);
 
-        // For Google OAuth, get session data from pending map
-        if (account?.provider === "google" && user.email) {
-          const sessionData = pendingGoogleSessions.get(user.email.toLowerCase());
-          
-          if (sessionData) {
-            token.sessionId = sessionData.sessionId;
-            token.accessToken = sessionData.accessToken;
-            token.refreshToken = sessionData.refreshToken;
-            
-            // Clean up
-            pendingGoogleSessions.delete(user.email.toLowerCase());
-            
-            console.log(`[JWT] Retrieved session for Google user: ${user.email}`);
-          } else {
-            console.warn(`[JWT] No pending session found for: ${user.email}`);
+            const email = user.email.toLowerCase();
+
+            // Fetch DB user to get user_id and other fields
+            const dbUser = await prisma.user.findUnique({
+              where: { email },
+              select: {
+                user_id: true,
+                email: true,
+                name: true,
+                phone: true,
+                avatar: true,
+                role: true,
+              },
+            });
+
+            if (dbUser) {
+              // Set token fields from DB
+              token.id = dbUser.user_id;
+              token.email = dbUser.email;
+              token.name = dbUser.name;
+              token.role = dbUser.role;
+              token.phone = dbUser.phone;
+              token.picture = dbUser.avatar || user.image || "/profile.svg";
+
+              // ✅ CREATE SESSION AND TOKENS HERE (serverless-safe)
+              const sessionId = createSessionId();
+
+              // Store session in Redis
+              await storeSession(sessionId, {
+                userId: dbUser.user_id,
+                email: dbUser.email,
+                role: dbUser.role,
+                createdAt: Date.now(),
+                lastActivity: Date.now(),
+              });
+
+              // Generate tokens
+              const accessToken = generateAccessToken({
+                userId: dbUser.user_id,
+                email: dbUser.email,
+                role: dbUser.role,
+                sessionId,
+              });
+
+              const refreshToken = generateRefreshToken({
+                userId: dbUser.user_id,
+                email: dbUser.email,
+                role: dbUser.role,
+                sessionId,
+              });
+
+              // Store tokens in Redis
+              await storeTokens(sessionId, accessToken, refreshToken);
+
+              // Store in JWT token for middleware to read
+              token.sessionId = sessionId;
+              token.accessToken = accessToken;
+              token.refreshToken = refreshToken;
+
+              console.log(`[JWT] ✅ Session created for Google user: ${dbUser.email}, sessionId: ${sessionId.substring(0, 8)}...`);
+            } else {
+              console.error(`[JWT] ❌ DB user not found for: ${email}`);
+            }
+          } catch (error) {
+            console.error("[JWT] ❌ Error creating session for Google user:", error);
+            // Don't throw - let NextAuth continue with basic token
+            // The user will need to re-login but won't get a 500
           }
         }
-      }
-
-      // Refresh user data for Google OAuth
-      if (account?.provider === "google" && token.email) {
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { email: token.email.toLowerCase() },
-          });
-
-          if (dbUser) {
-            token.id = dbUser.user_id;
-            token.role = dbUser.role;
-            token.phone = dbUser.phone;
-            token.name = dbUser.name;
-            token.picture = dbUser.avatar || "/profile.svg";
-          }
-        } catch (error) {
-          console.error("[JWT] Error fetching user:", error);
+        // --- Credentials ---
+        else if (account.provider === "credentials") {
+          token.id = user.id;
+          token.role = (user as any).role;
+          token.phone = (user as any).phone;
         }
       }
 
       return token;
     },
 
+    // ============================================
+    // session: Pass data from JWT to session
+    // ============================================
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
@@ -315,38 +318,42 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
         session.user.name = token.name as string;
-        session.user.image = token.picture as string || "/profile.svg";
+        session.user.image = (token.picture as string) || "/profile.svg";
       }
       return session;
     },
 
+    // ============================================
+    // redirect: Handle post-auth redirects
+    // ============================================
     async redirect({ url, baseUrl }) {
-      console.log('[Redirect] url:', url);
-      console.log('[Redirect] baseUrl:', baseUrl);
+      console.log("[Redirect] url:", url);
+      console.log("[Redirect] baseUrl:", baseUrl);
 
       const CORRECT_BASE_URL = BASE_URL;
 
       // Handle errors
       if (url.includes("error=")) {
-        console.log('[Redirect] Error detected');
-        
+        console.log("[Redirect] Error detected");
+
         if (url.startsWith(CORRECT_BASE_URL)) {
           return url;
         }
-        
+
         try {
-          const urlObj = new URL(url.startsWith('http') ? url : `${CORRECT_BASE_URL}${url}`);
-          const errorParam = urlObj.searchParams.get('error');
+          const urlObj = new URL(
+            url.startsWith("http") ? url : `${CORRECT_BASE_URL}${url}`
+          );
+          const errorParam = urlObj.searchParams.get("error");
           return `${CORRECT_BASE_URL}/login?error=${errorParam}`;
         } catch (e) {
           return `${CORRECT_BASE_URL}/login?error=CALLBACK_ERROR`;
         }
       }
 
-      // ✅ SIMPLIFIED: Direct redirect to home for Google OAuth
-      // No intermediate callback page needed
-      if (url.includes('/api/auth/callback/google')) {
-        console.log('[Redirect] Google callback - redirecting to home');
+      // Google callback - redirect to home
+      if (url.includes("/api/auth/callback/google")) {
+        console.log("[Redirect] Google callback - redirecting to home");
         return CORRECT_BASE_URL;
       }
 
