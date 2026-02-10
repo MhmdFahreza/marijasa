@@ -1,18 +1,5 @@
 // app/api/auth/[...nextauth]/route.ts
-// ✅ CRITICAL FIX: Reconstruct NextAuth's Response as NextResponse
-//
-// ROOT CAUSE:
-// NextAuth v4 internally creates a standard Web API `Response` object.
-// Next.js 15 route handlers process the returned Response through an
-// internal pipeline that expects certain properties/behaviors from
-// `NextResponse`. When NextAuth's plain `Response` (with complex
-// Set-Cookie headers from JWE-encrypted JWT) goes through this pipeline,
-// it crashes silently — no error logged, just FUNCTION_INVOCATION_FAILED.
-//
-// FIX:
-// Reconstruct the Response as a NextResponse before returning it.
-// This ensures Next.js 15's internal pipeline can process it correctly.
-//
+// ✅ FIXED: All error redirects use absolute URLs
 import { NextRequest, NextResponse } from "next/server";
 import NextAuth from "next-auth";
 import { authOptions } from "@/app/components/lib/auth.config";
@@ -23,11 +10,21 @@ export const runtime = "nodejs";
 
 const authHandler = NextAuth(authOptions);
 
-const BASE_URL =
-  process.env.NEXTAUTH_URL?.replace(/\/+$/, "") ||
-  (process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000");
+// ✅ Get BASE_URL for absolute redirects
+function getBaseUrl(): string {
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL.replace(/\/+$/, "").trim();
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "").trim();
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "http://localhost:3000";
+}
+
+const BASE_URL = getBaseUrl();
 
 /**
  * Convert NextAuth's plain Response → NextResponse
@@ -35,26 +32,32 @@ const BASE_URL =
  */
 function toNextResponse(response: Response): NextResponse {
   // For redirects (302/307): reconstruct with NextResponse.redirect
-  // to ensure Next.js handles the Location header properly
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
     if (location) {
-      const redirectResponse = NextResponse.redirect(location, response.status);
+      // ✅ CRITICAL: Ensure location is absolute URL
+      let absoluteLocation = location;
+      
+      if (!location.startsWith("http")) {
+        // Convert relative to absolute
+        absoluteLocation = location.startsWith("/") 
+          ? `${BASE_URL}${location}`
+          : `${BASE_URL}/${location}`;
+        
+        console.log("[toNextResponse] Converting relative → absolute:", location, "→", absoluteLocation);
+      }
+      
+      const redirectResponse = NextResponse.redirect(absoluteLocation, response.status);
 
-      // ✅ CRITICAL: Preserve ALL Set-Cookie headers from NextAuth
-      // These contain the encrypted session token (next-auth.session-token)
-      // Headers.getSetCookie() returns each Set-Cookie as separate entries
-      // (unlike .get('set-cookie') which concatenates them and breaks parsing)
+      // ✅ Preserve ALL Set-Cookie headers from NextAuth
       const setCookieHeaders = response.headers.getSetCookie?.();
       if (setCookieHeaders && setCookieHeaders.length > 0) {
-        // Clear any existing set-cookie from NextResponse.redirect
         redirectResponse.headers.delete("set-cookie");
         for (const cookie of setCookieHeaders) {
           redirectResponse.headers.append("set-cookie", cookie);
         }
       } else {
-        // Fallback for environments where getSetCookie() isn't available
-        // Iterate raw headers to find set-cookie entries
+        // Fallback for environments without getSetCookie()
         const rawHeaders = [...response.headers.entries()];
         const cookieHeaders = rawHeaders.filter(
           ([key]) => key.toLowerCase() === "set-cookie"
@@ -71,8 +74,7 @@ function toNextResponse(response: Response): NextResponse {
     }
   }
 
-  // For non-redirect responses (JSON APIs like /session, /providers, /csrf):
-  // Pass through body and headers as-is
+  // For non-redirect responses: pass through body and headers as-is
   return new NextResponse(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -103,7 +105,7 @@ export async function GET(
       { params: resolvedParams } as any
     );
 
-    // ✅ KEY FIX: Convert to NextResponse before returning
+    // ✅ Convert to NextResponse before returning
     const nextResponse = toNextResponse(authResponse);
 
     const duration = Date.now() - startTime;
@@ -122,13 +124,22 @@ export async function GET(
       `(${duration}ms)`
     );
 
-    // Session was likely already created in Redis (callbacks completed).
-    // Redirect to home — the client will pick up the session via /api/auth/me
+    // ✅ Session might exist in Redis even if error occurred
+    // Redirect to home with absolute URL (let AuthContext pick up session)
     if (req.nextUrl.pathname.includes("/callback")) {
-      console.log("[NextAuth GET] Fallback redirect to home (session exists in Redis)");
+      console.log("[NextAuth GET] Callback error → redirect to home (absolute URL)");
       return NextResponse.redirect(new URL("/", BASE_URL));
     }
 
+    // ✅ For signin errors, redirect to login with absolute URL
+    if (req.nextUrl.pathname.includes("/signin")) {
+      console.log("[NextAuth GET] Signin error → redirect to login (absolute URL)");
+      return NextResponse.redirect(
+        new URL("/login?error=SIGNIN_ERROR", BASE_URL)
+      );
+    }
+
+    // ✅ Generic error response
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -176,10 +187,12 @@ export async function POST(
       `(${duration}ms)`
     );
 
+    // ✅ Handle callback/signin errors with absolute URLs
     if (
       req.nextUrl.pathname.includes("/signin") ||
       req.nextUrl.pathname.includes("/callback")
     ) {
+      console.log("[NextAuth POST] Error → redirect to login (absolute URL)");
       return NextResponse.redirect(
         new URL("/login?error=SIGNIN_ERROR", BASE_URL)
       );
