@@ -1,5 +1,5 @@
 // app/components/lib/auth.config.ts
-// ✅ SIMPLIFIED - No withTimeout, no Promise.race, just regular await + try-catch
+// ✅ CLEAN: No withTimeout, no Promise.race, just regular await + try-catch
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -41,20 +41,6 @@ function getBaseUrl(): string {
 }
 
 const BASE_URL = getBaseUrl();
-
-// ============================================
-// ✅ REMOVED: withTimeout helper
-//
-// WHY: Promise.race with setTimeout is the #1 cause of
-// FUNCTION_INVOCATION_FAILED on Vercel. When the main promise
-// resolves, the timeout promise stays alive. If the function
-// process gets frozen/killed right after responding, the
-// dangling timeout rejects with no handler → process crash.
-//
-// INSTEAD: Just use regular await + try-catch. If Prisma or
-// Redis is slow, the 30s maxDuration on the route handler
-// will handle it. No need for custom timeouts.
-// ============================================
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -155,7 +141,6 @@ export const authOptions: NextAuthOptions = {
           return `${BASE_URL}/login?error=NO_EMAIL`;
         }
 
-        // ✅ Simple await - no withTimeout wrapper
         const existingUser = await prisma.user.findUnique({
           where: { email: userEmail },
           select: {
@@ -177,7 +162,7 @@ export const authOptions: NextAuthOptions = {
           return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
         }
 
-        // ✅ Await the update (not fire-and-forget)
+        // Update user if needed (awaited, not fire-and-forget)
         const needsUpdate =
           !existingUser.email_verified ||
           (!existingUser.avatar && user.image);
@@ -194,7 +179,6 @@ export const authOptions: NextAuthOptions = {
             });
             console.log("[Google signIn] User updated");
           } catch (err) {
-            // Non-critical, continue login
             console.error("[Google signIn] Update failed:", err);
           }
         }
@@ -219,7 +203,6 @@ export const authOptions: NextAuthOptions = {
         if (account.provider === "google" && user.email) {
           const email = user.email.toLowerCase();
 
-          // ✅ Simple await - no withTimeout wrapper
           const dbUser = await prisma.user.findUnique({
             where: { email },
             select: {
@@ -248,11 +231,10 @@ export const authOptions: NextAuthOptions = {
           token.phone = dbUser.phone;
           token.picture = dbUser.avatar || user.image || "/profile.svg";
 
-          // Create session and tokens
+          // Create session and tokens in Redis
           try {
             const sessionId = createSessionId();
 
-            // ✅ Simple await - all operations properly awaited
             const sessionResult = await storeSession(sessionId, {
               userId: dbUser.user_id,
               email: dbUser.email,
@@ -280,7 +262,7 @@ export const authOptions: NextAuthOptions = {
               sessionId,
             });
 
-            // ✅ Await storeTokens (not fire-and-forget)
+            // Await token storage (not fire-and-forget)
             await storeTokens(sessionId, accessToken, refreshToken);
 
             token.sessionId = sessionId;
@@ -330,6 +312,8 @@ export const authOptions: NextAuthOptions = {
     // ============================================
     async redirect({ url, baseUrl }) {
       try {
+        console.log("[Redirect] url:", url, "| baseUrl:", baseUrl);
+
         // Handle errors
         if (url.includes("error=")) {
           try {
@@ -350,7 +334,9 @@ export const authOptions: NextAuthOptions = {
               ? errorMap[errorParam] || errorParam
               : "UNKNOWN_ERROR";
 
-            return `${BASE_URL}/login?error=${mappedError}`;
+            const errorUrl = `${BASE_URL}/login?error=${mappedError}`;
+            console.log("[Redirect] Error redirect:", errorUrl);
+            return errorUrl;
           } catch {
             return `${BASE_URL}/login?error=CALLBACK_ERROR`;
           }
@@ -358,6 +344,7 @@ export const authOptions: NextAuthOptions = {
 
         // Google callback → home
         if (url.includes("/api/auth/callback/google")) {
+          console.log("[Redirect] Google callback → home");
           return BASE_URL;
         }
 
@@ -408,7 +395,7 @@ export const authOptions: NextAuthOptions = {
       }
     },
     debug() {
-      // Disabled in production
+      // Disabled
     },
   },
   events: {

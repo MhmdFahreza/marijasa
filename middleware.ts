@@ -1,5 +1,5 @@
 // middleware.ts
-// ✅ SIMPLIFIED - No Promise.race, no dangling timeouts
+// ✅ CLEAN: No Promise.race, no dangling timeouts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -17,7 +17,7 @@ export const config = {
   ],
 };
 
-// ✅ NextAuth routes that should NEVER be intercepted
+// NextAuth routes - NEVER intercept
 const NEXTAUTH_ROUTES = [
   "/api/auth/callback",
   "/api/auth/signin",
@@ -123,7 +123,7 @@ function setCustomCookiesFromToken(
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ✅ CRITICAL: Let NextAuth handle its own routes completely
+  // ✅ Let NextAuth handle its own routes completely
   for (const route of NEXTAUTH_ROUTES) {
     if (pathname.startsWith(route) || pathname === route) {
       return NextResponse.next();
@@ -242,17 +242,8 @@ export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get("access_token")?.value;
   const refreshToken = request.cookies.get("refresh_token")?.value;
 
-  // ============================================
-  // ✅ FIXED: Simple getToken call - no Promise.race, no setTimeout
-  //
-  // WHY: The previous code used Promise.race with a 3s timeout.
-  // This created a dangling setTimeout that could reject after
-  // the middleware finished, crashing the Edge Runtime process.
-  //
-  // Middleware on Vercel Edge Runtime has its own timeout (30s).
-  // getToken() just decodes a JWT from the cookie - it's fast
-  // (< 10ms, no network calls). No custom timeout needed.
-  // ============================================
+  // ✅ Simple getToken - no Promise.race, no setTimeout
+  // getToken() only decodes JWT from cookie (~1ms, no network calls)
   let sessionToken: any = null;
   try {
     sessionToken = await getToken({
@@ -310,7 +301,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Set custom cookies if needed on any other matched route
+  // Set custom cookies on any matched route if needed
   if (needsCustomCookies && sessionToken) {
     const response = NextResponse.next();
     setCustomCookiesFromToken(response, sessionToken, {
