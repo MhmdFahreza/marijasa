@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts - FIXED GOOGLE OAUTH CALLBACK ERROR
+// app/components/lib/auth.config.ts - OPTIMIZED TO PREVENT 500 ERROR
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -32,33 +32,29 @@ function getBaseUrl(): string {
   // Priority 1: NEXTAUTH_URL (most important for OAuth!)
   if (process.env.NEXTAUTH_URL) {
     const url = process.env.NEXTAUTH_URL.replace(/\/+$/, "").trim();
-    console.log("[Auth Config] ✅ Using NEXTAUTH_URL:", url);
     return url;
   }
   
   // Priority 2: NEXT_PUBLIC_APP_URL
   if (process.env.NEXT_PUBLIC_APP_URL) {
     const url = process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "").trim();
-    console.log("[Auth Config] ⚠️ Using NEXT_PUBLIC_APP_URL:", url);
     return url;
   }
   
   // Priority 3: VERCEL_URL
   if (process.env.VERCEL_URL) {
     const url = `https://${process.env.VERCEL_URL}`;
-    console.log("[Auth Config] ⚠️ Using VERCEL_URL:", url);
     return url;
   }
   
   // Fallback
-  console.log("[Auth Config] ⚠️ Using localhost fallback");
   return "http://localhost:3000";
 }
 
 const BASE_URL = getBaseUrl();
 
 // ============================================
-// Timeout helper to prevent serverless timeout
+// Timeout helper with shorter timeout
 // ============================================
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -159,7 +155,6 @@ export const authOptions: NextAuthOptions = {
       try {
         if (account?.provider === "google") {
           console.log("[Google signIn] 🔐 START for:", user.email);
-          console.log("[Google signIn] Profile:", JSON.stringify(profile, null, 2));
 
           const userEmail = user.email?.toLowerCase();
           if (!userEmail) {
@@ -167,92 +162,78 @@ export const authOptions: NextAuthOptions = {
             return `${BASE_URL}/login?error=NO_EMAIL`;
           }
 
-          // Find user in database
-          console.log("[Google signIn] 🔍 Finding user in DB:", userEmail);
-          
+          // ✅ OPTIMIZED: Single query with only necessary fields
           const existingUser = await withTimeout(
             prisma.user.findUnique({ 
               where: { email: userEmail },
               select: {
                 user_id: true,
                 email: true,
-                name: true,
                 is_active: true,
                 email_verified: true,
                 avatar: true,
               }
             }),
-            7000, // 7 second timeout
+            5000, // Reduced from 7000
             null,
             "Prisma findUser"
           );
 
           if (!existingUser) {
-            console.error("[Google signIn] ❌ User not found in DB:", userEmail);
+            console.error("[Google signIn] ❌ User not found:", userEmail);
             return `${BASE_URL}/login?error=USER_NOT_REGISTERED`;
           }
-
-          console.log("[Google signIn] ✅ User found:", existingUser.email);
 
           if (!existingUser.is_active) {
             console.error("[Google signIn] ❌ User inactive:", userEmail);
             return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
           }
 
-          // Update email_verified and avatar if needed
-          const updateData: Record<string, any> = {};
-          if (!existingUser.email_verified) {
-            updateData.email_verified = true;
-            console.log("[Google signIn] 📝 Will verify email");
-          }
-          if (!existingUser.avatar && user.image) {
-            updateData.avatar = user.image;
-            console.log("[Google signIn] 📝 Will update avatar");
-          }
+          // ✅ OPTIMIZED: Update only if needed, non-blocking
+          const needsUpdate = !existingUser.email_verified || (!existingUser.avatar && user.image);
+          
+          if (needsUpdate) {
+            const updateData: Record<string, any> = {};
+            if (!existingUser.email_verified) {
+              updateData.email_verified = true;
+            }
+            if (!existingUser.avatar && user.image) {
+              updateData.avatar = user.image;
+            }
 
-          if (Object.keys(updateData).length > 0) {
-            console.log("[Google signIn] 💾 Updating user data...");
-            withTimeout(
-              prisma.user.update({ 
-                where: { email: userEmail }, 
-                data: updateData 
-              }),
-              5000,
-              null,
-              "Prisma updateUser"
-            ).catch((err) => {
+            // ✅ Fire and forget - don't block login
+            prisma.user.update({ 
+              where: { email: userEmail }, 
+              data: updateData 
+            }).catch((err) => {
               console.error("[Google signIn] ⚠️ Update failed:", err);
-              // Don't block login if update fails
             });
           }
 
-          console.log("[Google signIn] ✅ Validation complete for:", userEmail);
+          console.log("[Google signIn] ✅ Validation complete");
           return true;
         }
 
         return true;
       } catch (error) {
-        console.error("[Google signIn] ❌ Unexpected error:", error);
-        const msg = error instanceof Error ? error.message : "SIGNIN_ERROR";
-        return `${BASE_URL}/login?error=${encodeURIComponent(msg)}`;
+        console.error("[Google signIn] ❌ Error:", error);
+        return `${BASE_URL}/login?error=SIGNIN_ERROR`;
       }
     },
 
     // ============================================
     // jwt: Create session & tokens for Google OAuth
     // ============================================
-    async jwt({ token, user, account, trigger }) {
+    async jwt({ token, user, account }) {
       try {
         // ===== INITIAL SIGN-IN =====
         if (user && account) {
           console.log("[JWT] 🔐 Initial sign-in, provider:", account.provider);
 
           if (account.provider === "google" && user.email) {
-            console.log("[JWT] 🔐 Processing Google OAuth for:", user.email);
-
             const email = user.email.toLowerCase();
 
-            // Fetch user from DB
+            // ✅ OPTIMIZED: Fetch user with timeout
             const dbUser = await withTimeout(
               prisma.user.findUnique({
                 where: { email },
@@ -265,13 +246,13 @@ export const authOptions: NextAuthOptions = {
                   role: true,
                 },
               }),
-              7000,
+              5000, // Reduced from 7000
               null,
               "JWT findUser"
             );
 
             if (!dbUser) {
-              console.error("[JWT] ❌ User not found in DB:", email);
+              console.error("[JWT] ❌ User not found:", email);
               // Set minimal token data
               token.id = user.id;
               token.email = email;
@@ -279,8 +260,6 @@ export const authOptions: NextAuthOptions = {
               token.picture = user.image || "/profile.svg";
               return token;
             }
-
-            console.log("[JWT] ✅ DB user found:", dbUser.email);
 
             // Set token fields
             token.id = dbUser.user_id;
@@ -290,62 +269,58 @@ export const authOptions: NextAuthOptions = {
             token.phone = dbUser.phone;
             token.picture = dbUser.avatar || user.image || "/profile.svg";
 
-            // ✅ CREATE SESSION AND TOKENS
+            // ✅ CREATE SESSION AND TOKENS (optimized)
             try {
               const sessionId = createSessionId();
-              console.log("[JWT] 💾 Creating session:", sessionId.substring(0, 8) + "...");
 
-              // Store session in Redis
-              const sessionStored = await withTimeout(
-                storeSession(sessionId, {
-                  userId: dbUser.user_id,
-                  email: dbUser.email,
-                  role: dbUser.role,
-                  createdAt: Date.now(),
-                  lastActivity: Date.now(),
-                }),
-                5000,
-                { success: false },
-                "JWT storeSession"
-              );
+              // ✅ OPTIMIZED: Parallel execution instead of sequential
+              const [sessionResult, accessToken, refreshToken] = await Promise.all([
+                withTimeout(
+                  storeSession(sessionId, {
+                    userId: dbUser.user_id,
+                    email: dbUser.email,
+                    role: dbUser.role,
+                    createdAt: Date.now(),
+                    lastActivity: Date.now(),
+                  }),
+                  3000, // Reduced timeout
+                  { success: false },
+                  "JWT storeSession"
+                ),
+                Promise.resolve(
+                  generateAccessToken({
+                    userId: dbUser.user_id,
+                    email: dbUser.email,
+                    role: dbUser.role,
+                    sessionId,
+                  })
+                ),
+                Promise.resolve(
+                  generateRefreshToken({
+                    userId: dbUser.user_id,
+                    email: dbUser.email,
+                    role: dbUser.role,
+                    sessionId,
+                  })
+                ),
+              ]);
 
-              if (!sessionStored || !(sessionStored as any).success) {
-                console.error("[JWT] ❌ Failed to store session");
-                // Continue without session - user can still use NextAuth session
-                return token;
+              if (!sessionResult || !(sessionResult as any).success) {
+                console.error("[JWT] ⚠️ Session storage failed");
+                return token; // Continue without custom session
               }
 
-              console.log("[JWT] ✅ Session stored in Redis");
-
-              // Generate tokens
-              const accessToken = generateAccessToken({
-                userId: dbUser.user_id,
-                email: dbUser.email,
-                role: dbUser.role,
-                sessionId,
+              // Store tokens (fire and forget to save time)
+              storeTokens(sessionId, accessToken, refreshToken).catch((err) => {
+                console.error("[JWT] ⚠️ Token storage failed:", err);
               });
-
-              const refreshToken = generateRefreshToken({
-                userId: dbUser.user_id,
-                email: dbUser.email,
-                role: dbUser.role,
-                sessionId,
-              });
-
-              // Store tokens in Redis
-              await withTimeout(
-                storeTokens(sessionId, accessToken, refreshToken),
-                5000,
-                { success: false },
-                "JWT storeTokens"
-              );
 
               // Add to JWT token
               token.sessionId = sessionId;
               token.accessToken = accessToken;
               token.refreshToken = refreshToken;
 
-              console.log("[JWT] ✅ Session & tokens created for:", dbUser.email);
+              console.log("[JWT] ✅ Session & tokens created");
             } catch (sessionError) {
               console.error("[JWT] ⚠️ Session creation error:", sessionError);
               // Don't crash - user can still login via NextAuth session
@@ -359,8 +334,7 @@ export const authOptions: NextAuthOptions = {
 
         return token;
       } catch (error) {
-        console.error("[JWT] ❌ Unexpected error:", error);
-        // Return token as-is to avoid breaking the flow
+        console.error("[JWT] ❌ Error:", error);
         return token;
       }
     },
@@ -391,50 +365,37 @@ export const authOptions: NextAuthOptions = {
     // ============================================
     async redirect({ url, baseUrl }) {
       try {
-        console.log("[Redirect] 🔄 url:", url, "| baseUrl:", baseUrl, "| BASE_URL:", BASE_URL);
-
         // Handle errors
         if (url.includes("error=")) {
-          console.log("[Redirect] ⚠️ Error detected in URL");
-          
           if (url.startsWith(BASE_URL)) {
-            console.log("[Redirect] ✅ Error URL matches BASE_URL");
             return url;
           }
 
           try {
             const urlObj = new URL(url.startsWith("http") ? url : `${BASE_URL}${url}`);
             const errorParam = urlObj.searchParams.get("error");
-            const errorUrl = `${BASE_URL}/login?error=${errorParam || "CALLBACK_ERROR"}`;
-            console.log("[Redirect] ⚠️ Redirecting to error page:", errorUrl);
-            return errorUrl;
+            return `${BASE_URL}/login?error=${errorParam || "CALLBACK_ERROR"}`;
           } catch {
-            console.log("[Redirect] ❌ Failed to parse error URL");
             return `${BASE_URL}/login?error=CALLBACK_ERROR`;
           }
         }
 
         // Google callback - redirect to home
         if (url.includes("/api/auth/callback/google")) {
-          console.log("[Redirect] ✅ Google callback, redirecting to home");
           return BASE_URL;
         }
 
         // URL starts with BASE_URL
         if (url.startsWith(BASE_URL)) {
-          console.log("[Redirect] ✅ URL matches BASE_URL");
           return url;
         }
 
         // Relative URL
         if (url.startsWith("/")) {
-          const fullUrl = `${BASE_URL}${url}`;
-          console.log("[Redirect] ✅ Relative URL, full URL:", fullUrl);
-          return fullUrl;
+          return `${BASE_URL}${url}`;
         }
 
         // Default
-        console.log("[Redirect] ✅ Default redirect to BASE_URL");
         return BASE_URL;
       } catch (error) {
         console.error("[Redirect] ❌ Error:", error);
@@ -462,29 +423,30 @@ export const authOptions: NextAuthOptions = {
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === "development", // Enable debug in dev
+  debug: false, // ✅ Disable debug in production to reduce overhead
   logger: {
     error(code, ...message) {
       const codeStr = String(code);
-      // Ignore deprecation warnings
       if (codeStr.includes("DEP0169")) return;
       console.error("[NextAuth Error]", code, ...message);
     },
     warn(code, ...message) {
       const codeStr = String(code);
       if (codeStr.includes("DEP0169")) return;
-      if (!codeStr.includes("session")) {
+      // Suppress warnings in production
+      if (process.env.NODE_ENV === "development" && !codeStr.includes("session")) {
         console.warn("[NextAuth Warning]", code, ...message);
       }
     },
     debug(...message) {
+      // Only debug in development
       if (process.env.NODE_ENV === "development") {
         console.log("[NextAuth Debug]", ...message);
       }
     },
   },
   events: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       console.log("[NextAuth Event] 🎉 User signed in:", {
         email: user.email,
         provider: account?.provider,

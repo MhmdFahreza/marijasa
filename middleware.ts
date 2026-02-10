@@ -1,4 +1,4 @@
-// middleware.ts - FIXED FOR GOOGLE OAUTH REDIRECT
+// middleware.ts - FIXED TO NOT INTERFERE WITH GOOGLE OAUTH
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -16,14 +16,23 @@ export const config = {
   ],
 };
 
+// ✅ CRITICAL: NextAuth routes that should NEVER be intercepted
+const NEXTAUTH_ROUTES = [
+  "/api/auth/callback",
+  "/api/auth/signin",
+  "/api/auth/signout",
+  "/api/auth/session",
+  "/api/auth/providers",
+  "/api/auth/csrf",
+  "/api/auth/error",
+  "/api/auth/_log",
+];
+
 // Public routes that don't need authentication
 const publicRoutes = [
   "/api/payments/xendit/webhook",
   "/api/payments/xendit/simulate",
   "/api/payments/xendit/webhook/route",
-  "/api/auth/callback/google", // NextAuth callback
-  "/api/auth/signin/google", // NextAuth signin
-  "/api/auth", // All NextAuth routes
 ];
 
 // Protected routes that require authentication
@@ -83,7 +92,7 @@ function setCustomCookiesFromToken(
       httpOnly: true,
       secure: isProduction,
       sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: 30 * 24 * 60 * 60,
       path: "/",
     });
     cookiesSet = true;
@@ -94,7 +103,7 @@ function setCustomCookiesFromToken(
       httpOnly: true,
       secure: isProduction,
       sameSite: "lax",
-      maxAge: 60 * 60, // 1 hour
+      maxAge: 60 * 60,
       path: "/",
     });
     cookiesSet = true;
@@ -105,7 +114,7 @@ function setCustomCookiesFromToken(
       httpOnly: true,
       secure: isProduction,
       sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: 30 * 24 * 60 * 60,
       path: "/",
     });
     cookiesSet = true;
@@ -120,6 +129,14 @@ function setCustomCookiesFromToken(
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // ✅ CRITICAL: Let NextAuth handle its own routes completely
+  for (const route of NEXTAUTH_ROUTES) {
+    if (pathname.startsWith(route) || pathname === route) {
+      console.log(`[Middleware] 🔓 NextAuth route bypass: ${pathname}`);
+      return NextResponse.next();
+    }
+  }
 
   // =============== PUBLIC ROUTES ===============
   for (const route of publicRoutes) {
@@ -257,15 +274,25 @@ export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get("access_token")?.value;
   const refreshToken = request.cookies.get("refresh_token")?.value;
 
-  // Get NextAuth JWT token
+  // Get NextAuth JWT token - but with timeout to avoid blocking
   let sessionToken: any = null;
   try {
-    sessionToken = await getToken({
+    // ✅ Add timeout to prevent blocking
+    const tokenPromise = getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
     });
+
+    sessionToken = await Promise.race([
+      tokenPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("getToken timeout")), 3000)
+      ),
+    ]);
   } catch (error) {
-    console.error("[Middleware] getToken error:", error);
+    if (error instanceof Error && error.message !== "getToken timeout") {
+      console.error("[Middleware] getToken error:", error);
+    }
   }
 
   let isAuthenticated = false;
@@ -276,13 +303,12 @@ export async function middleware(request: NextRequest) {
     console.log("[Middleware] ✅ NextAuth token found");
     isAuthenticated = true;
 
-    // ✅ Check if custom cookies need to be set from NextAuth token
+    // Check if custom cookies need to be set from NextAuth token
     if (
       sessionToken.sessionId &&
       sessionToken.accessToken &&
       sessionToken.refreshToken
     ) {
-      // If ANY of the custom cookies are missing, we need to set them
       if (!sessionId || !accessToken || !refreshToken) {
         needsCustomCookies = true;
       }
