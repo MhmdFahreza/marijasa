@@ -1,4 +1,4 @@
-// app/components/ui/login-form.tsx - SIMPLIFIED GOOGLE OAUTH
+// app/components/ui/login-form.tsx - IMPROVED ERROR MESSAGES
 "use client";
 
 import { cn } from "../lib/utils";
@@ -27,28 +27,32 @@ interface LoginFormProps extends React.ComponentProps<"div"> {
   onRegisterClick?: () => void;
 }
 
-// Enhanced error messages
+// ✅ IMPROVED ERROR MESSAGES WITH FRIENDLY EXPLANATIONS
 const ERROR_MESSAGES: Record<string, string> = {
-  // Google OAuth errors
+  // ✅ OAuth Errors - User Friendly
+  ACCESS_DENIED: "🚫 Login dibatalkan. Silakan coba lagi dan berikan izin akses untuk melanjutkan.",
   NO_EMAIL: "❌ Tidak dapat mengambil email dari Google. Coba lagi atau gunakan login email/phone.",
-  USER_NOT_REGISTERED: "⚠️ Email Google belum terdaftar. Silakan daftar terlebih dahulu.",
+  USER_NOT_REGISTERED: "⚠️ Email Google belum terdaftar. Silakan daftar terlebih dahulu dengan email ini.",
   ACCOUNT_INACTIVE: "⚠️ Akun tidak aktif. Hubungi administrator.",
   
-  // NextAuth errors
+  // ✅ NextAuth Default Errors - Mapped to Friendly Messages
   OAuthAccountNotLinked: "⚠️ Email sudah terdaftar dengan metode berbeda. Gunakan metode login yang sesuai.",
-  OAuthSignin: "❌ Gagal memulai login Google. Coba lagi.",
-  OAuthCallback: "❌ Gagal memproses callback Google. Coba lagi.",
-  Callback: "❌ Terjadi kesalahan saat login. Coba lagi.",
+  OAuthSignin: "❌ Gagal memulai login Google. Silakan coba lagi.",
+  OAuthCallback: "❌ Terjadi kesalahan saat memproses login Google. Silakan coba lagi.",
+  OAUTH_CALLBACK_ERROR: "❌ Terjadi kesalahan saat login. Silakan coba lagi.",
+  Callback: "❌ Terjadi kesalahan saat login. Silakan coba lagi.",
   AccessDenied: "❌ Akses ditolak. Berikan izin yang diperlukan untuk login dengan Google.",
   Configuration: "❌ Kesalahan konfigurasi. Hubungi administrator.",
+  TIMEOUT: "⏱️ Login memakan waktu terlalu lama. Silakan coba lagi.",
   
-  // Credential errors
+  // ✅ Credential Login Errors
   EMAIL_NOT_REGISTERED: "⚠️ Email belum terdaftar. Silakan daftar terlebih dahulu.",
   PHONE_NOT_REGISTERED: "⚠️ Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.",
   GOOGLE_ACCOUNT: "⚠️ Akun terdaftar via Google. Gunakan tombol 'Login dengan Google'.",
   EMAIL_NOT_VERIFIED: "⚠️ Email belum diverifikasi. Cek inbox/spam Anda.",
   INVALID_PASSWORD: "❌ Password salah. Coba lagi atau reset password.",
   
+  // ✅ Default
   default: "❌ Terjadi kesalahan. Silakan coba lagi.",
 };
 
@@ -126,29 +130,25 @@ export function LoginForm({
     return input.includes("@");
   }, []);
 
-  // Check existing session - ONLY FOR USER TYPE
+  // Check existing session
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // Skip for mitra/admin
         if (userType !== "user") {
           setIsCheckingSession(false);
           return;
         }
 
-        // Wait for status
         if (status === "loading") {
           return;
         }
 
-        // Check for error
         const errorParam = searchParams?.get("error");
         if (errorParam) {
           setIsCheckingSession(false);
           return;
         }
 
-        // Already authenticated via AuthContext
         if (isAuthenticated && user) {
           console.log("[Login] Already authenticated, redirecting...");
           if (onSuccess) {
@@ -160,7 +160,6 @@ export function LoginForm({
           return;
         }
 
-        // Authenticated via NextAuth (Google)
         if (status === "authenticated" && session?.user && userType === "user") {
           const userEmail = session.user.email;
           const userId = (session.user as any).id;
@@ -190,12 +189,13 @@ export function LoginForm({
     checkSession();
   }, [status, session, router, onSuccess, searchParams, userType, isAuthenticated, user, refreshUser]);
 
-  // Check for error from URL
+  // ✅ IMPROVED: Check for error from URL with better messaging
   useEffect(() => {
     const errorParam = searchParams?.get("error");
     if (errorParam) {
       console.log('[Login] Error from URL:', errorParam);
       
+      // Map error to friendly message
       const errorMessage = ERROR_MESSAGES[errorParam] || ERROR_MESSAGES["default"];
       setError(errorMessage);
       setIsGoogleLoading(false);
@@ -207,7 +207,7 @@ export function LoginForm({
     }
   }, [searchParams]);
 
-  // Google Sign In - SIMPLIFIED
+  // Google Sign In
   const handleGoogleSignIn = async () => {
     try {
       setIsGoogleLoading(true);
@@ -215,7 +215,6 @@ export function LoginForm({
 
       console.log("[Login] Starting Google sign in...");
 
-      // ✅ SIMPLIFIED: Just call signIn and let NextAuth + middleware handle the rest
       await signIn("google", {
         callbackUrl: "/",
         redirect: true,
@@ -367,7 +366,6 @@ export function LoginForm({
         return;
       }
 
-      // Update AuthContext
       if (data.user) {
         authLogin({
           id: data.user.id,
@@ -406,7 +404,6 @@ export function LoginForm({
     }
   };
 
-  // Show loading while checking session
   if (isCheckingSession && userType === "user") {
     return (
       <div className="flex flex-col gap-4 sm:gap-6">
@@ -449,7 +446,7 @@ export function LoginForm({
         </CardHeader>
 
         <CardContent className="relative z-10 p-3 sm:p-4 md:p-5">
-          {/* Error Alert */}
+          {/* ✅ IMPROVED ERROR DISPLAY */}
           {error && (
             <div className="mb-3 sm:mb-4 md:mb-5 p-3 sm:p-4 bg-gradient-to-r from-red-50 to-red-50/50 dark:from-red-950/30 dark:to-red-950/10 border-l-4 border-red-500 dark:border-red-600 text-red-700 dark:text-red-400 rounded-lg sm:rounded-xl text-xs sm:text-sm flex items-start justify-between gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
               <div className="flex items-start gap-2 sm:gap-3 flex-1">
