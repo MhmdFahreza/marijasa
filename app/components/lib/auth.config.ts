@@ -1,4 +1,4 @@
-// app/components/lib/auth.config.ts - FIXED ACCESS_DENIED ERROR
+// app/components/lib/auth.config.ts - FIXED FUNCTION_INVOCATION_FAILED
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -35,21 +35,21 @@ function getBaseUrl(): string {
     console.log("[Auth Config] Using NEXTAUTH_URL:", url);
     return url;
   }
-  
+
   // Priority 2: NEXT_PUBLIC_APP_URL
   if (process.env.NEXT_PUBLIC_APP_URL) {
     const url = process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "").trim();
     console.log("[Auth Config] Using NEXT_PUBLIC_APP_URL:", url);
     return url;
   }
-  
+
   // Priority 3: VERCEL_URL
   if (process.env.VERCEL_URL) {
     const url = `https://${process.env.VERCEL_URL}`;
     console.log("[Auth Config] Using VERCEL_URL:", url);
     return url;
   }
-  
+
   // Fallback
   console.log("[Auth Config] Using localhost fallback");
   return "http://localhost:3000";
@@ -58,7 +58,7 @@ function getBaseUrl(): string {
 const BASE_URL = getBaseUrl();
 
 // ============================================
-// Timeout helper
+// ✅ FIXED: Timeout helper - properly clears timeout to avoid dangling rejections
 // ============================================
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -66,16 +66,27 @@ async function withTimeout<T>(
   fallback: T,
   label: string
 ): Promise<T> {
+  let timeoutId: NodeJS.Timeout | undefined;
   try {
     const result = await Promise.race([
-      promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs)
-      ),
+      promise.then((res) => {
+        clearTimeout(timeoutId);
+        return res;
+      }),
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error(`${label} timeout`)),
+          timeoutMs
+        );
+      }),
     ]);
     return result;
   } catch (error) {
-    console.error(`[Auth] ${label} failed:`, error instanceof Error ? error.message : error);
+    clearTimeout(timeoutId);
+    console.error(
+      `[Auth] ${label} failed:`,
+      error instanceof Error ? error.message : error
+    );
     return fallback;
   }
 }
@@ -103,7 +114,9 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.identifier || !credentials?.password) {
-          throw new Error("Email/Nomor telepon dan password harus diisi");
+          throw new Error(
+            "Email/Nomor telepon dan password harus diisi"
+          );
         }
 
         const identifier = credentials.identifier.trim();
@@ -115,7 +128,9 @@ export const authOptions: NextAuthOptions = {
             where: { email: identifier.toLowerCase() },
           });
           if (!user) {
-            throw new Error("Email belum terdaftar. Silakan daftar terlebih dahulu.");
+            throw new Error(
+              "Email belum terdaftar. Silakan daftar terlebih dahulu."
+            );
           }
         } else {
           const normalizedPhone = normalizePhone(identifier);
@@ -123,21 +138,32 @@ export const authOptions: NextAuthOptions = {
             where: { phone: normalizedPhone },
           });
           if (!user) {
-            throw new Error("Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu.");
+            throw new Error(
+              "Nomor telepon belum terdaftar. Silakan daftar terlebih dahulu."
+            );
           }
         }
 
         if (!user.password) {
-          throw new Error("Akun ini terdaftar melalui Google. Silakan login dengan Google.");
+          throw new Error(
+            "Akun ini terdaftar melalui Google. Silakan login dengan Google."
+          );
         }
         if (!user.email_verified) {
-          throw new Error("Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.");
+          throw new Error(
+            "Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu."
+          );
         }
         if (!user.is_active) {
-          throw new Error("Akun Anda tidak aktif. Silakan hubungi admin.");
+          throw new Error(
+            "Akun Anda tidak aktif. Silakan hubungi admin."
+          );
         }
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
         if (!isPasswordValid) {
           throw new Error("Password salah. Silakan coba lagi.");
         }
@@ -170,7 +196,7 @@ export const authOptions: NextAuthOptions = {
 
           // Check if user exists
           const existingUser = await withTimeout(
-            prisma.user.findUnique({ 
+            prisma.user.findUnique({
               where: { email: userEmail },
               select: {
                 user_id: true,
@@ -178,7 +204,7 @@ export const authOptions: NextAuthOptions = {
                 is_active: true,
                 email_verified: true,
                 avatar: true,
-              }
+              },
             }),
             5000,
             null,
@@ -186,18 +212,26 @@ export const authOptions: NextAuthOptions = {
           );
 
           if (!existingUser) {
-            console.error("[Google signIn] ❌ User not found:", userEmail);
+            console.error(
+              "[Google signIn] ❌ User not found:",
+              userEmail
+            );
             return `${BASE_URL}/login?error=USER_NOT_REGISTERED`;
           }
 
           if (!existingUser.is_active) {
-            console.error("[Google signIn] ❌ User inactive:", userEmail);
+            console.error(
+              "[Google signIn] ❌ User inactive:",
+              userEmail
+            );
             return `${BASE_URL}/login?error=ACCOUNT_INACTIVE`;
           }
 
-          // Update if needed (fire and forget)
-          const needsUpdate = !existingUser.email_verified || (!existingUser.avatar && user.image);
-          
+          // ✅ FIXED: Await the update instead of fire-and-forget
+          const needsUpdate =
+            !existingUser.email_verified ||
+            (!existingUser.avatar && user.image);
+
           if (needsUpdate) {
             const updateData: Record<string, any> = {};
             if (!existingUser.email_verified) {
@@ -207,12 +241,16 @@ export const authOptions: NextAuthOptions = {
               updateData.avatar = user.image;
             }
 
-            prisma.user.update({ 
-              where: { email: userEmail }, 
-              data: updateData 
-            }).catch((err) => {
+            try {
+              await prisma.user.update({
+                where: { email: userEmail },
+                data: updateData,
+              });
+              console.log("[Google signIn] ✅ User updated");
+            } catch (err) {
               console.error("[Google signIn] ⚠️ Update failed:", err);
-            });
+              // Non-critical, continue
+            }
           }
 
           console.log("[Google signIn] ✅ Validation complete");
@@ -232,7 +270,10 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       try {
         if (user && account) {
-          console.log("[JWT] 🔐 Initial sign-in, provider:", account.provider);
+          console.log(
+            "[JWT] 🔐 Initial sign-in, provider:",
+            account.provider
+          );
 
           if (account.provider === "google" && user.email) {
             const email = user.email.toLowerCase();
@@ -268,51 +309,70 @@ export const authOptions: NextAuthOptions = {
             token.name = dbUser.name;
             token.role = dbUser.role;
             token.phone = dbUser.phone;
-            token.picture = dbUser.avatar || user.image || "/profile.svg";
+            token.picture =
+              dbUser.avatar || user.image || "/profile.svg";
 
             // Create session and tokens
             try {
               const sessionId = createSessionId();
 
-              const [sessionResult, accessToken, refreshToken] = await Promise.all([
-                withTimeout(
-                  storeSession(sessionId, {
-                    userId: dbUser.user_id,
-                    email: dbUser.email,
-                    role: dbUser.role,
-                    createdAt: Date.now(),
-                    lastActivity: Date.now(),
-                  }),
-                  3000,
-                  { success: false },
-                  "JWT storeSession"
-                ),
-                Promise.resolve(
-                  generateAccessToken({
-                    userId: dbUser.user_id,
-                    email: dbUser.email,
-                    role: dbUser.role,
-                    sessionId,
-                  })
-                ),
-                Promise.resolve(
-                  generateRefreshToken({
-                    userId: dbUser.user_id,
-                    email: dbUser.email,
-                    role: dbUser.role,
-                    sessionId,
-                  })
-                ),
-              ]);
+              // ✅ FIXED: Await storeSession properly via withTimeout
+              const [sessionResult, accessToken, refreshToken] =
+                await Promise.all([
+                  withTimeout(
+                    storeSession(sessionId, {
+                      userId: dbUser.user_id,
+                      email: dbUser.email,
+                      role: dbUser.role,
+                      createdAt: Date.now(),
+                      lastActivity: Date.now(),
+                    }),
+                    3000,
+                    { success: false },
+                    "JWT storeSession"
+                  ),
+                  Promise.resolve(
+                    generateAccessToken({
+                      userId: dbUser.user_id,
+                      email: dbUser.email,
+                      role: dbUser.role,
+                      sessionId,
+                    })
+                  ),
+                  Promise.resolve(
+                    generateRefreshToken({
+                      userId: dbUser.user_id,
+                      email: dbUser.email,
+                      role: dbUser.role,
+                      sessionId,
+                    })
+                  ),
+                ]);
 
-              if (!sessionResult || !(sessionResult as any).success) {
-                console.error("[JWT] ⚠️ Session storage failed");
+              if (
+                !sessionResult ||
+                !(sessionResult as any).success
+              ) {
+                console.error(
+                  "[JWT] ⚠️ Session storage failed"
+                );
                 return token;
               }
 
-              storeTokens(sessionId, accessToken, refreshToken).catch((err) => {
-                console.error("[JWT] ⚠️ Token storage failed:", err);
-              });
+              // ✅ FIXED: Await storeTokens instead of fire-and-forget
+              try {
+                await storeTokens(
+                  sessionId,
+                  accessToken,
+                  refreshToken
+                );
+                console.log("[JWT] ✅ Tokens stored");
+              } catch (err) {
+                console.error(
+                  "[JWT] ⚠️ Token storage failed:",
+                  err
+                );
+              }
 
               token.sessionId = sessionId;
               token.accessToken = accessToken;
@@ -320,7 +380,10 @@ export const authOptions: NextAuthOptions = {
 
               console.log("[JWT] ✅ Session & tokens created");
             } catch (sessionError) {
-              console.error("[JWT] ⚠️ Session creation error:", sessionError);
+              console.error(
+                "[JWT] ⚠️ Session creation error:",
+                sessionError
+              );
             }
           } else if (account.provider === "credentials") {
             token.id = user.id;
@@ -344,12 +407,17 @@ export const authOptions: NextAuthOptions = {
         if (session.user) {
           session.user.id = (token.id as string) || "";
           session.user.role = (token.role as string) || "USER";
-          (session.user as any).phone = (token.phone as string) || null;
-          (session.user as any).sessionId = (token.sessionId as string) || null;
-          (session.user as any).accessToken = (token.accessToken as string) || null;
-          (session.user as any).refreshToken = (token.refreshToken as string) || null;
+          (session.user as any).phone =
+            (token.phone as string) || null;
+          (session.user as any).sessionId =
+            (token.sessionId as string) || null;
+          (session.user as any).accessToken =
+            (token.accessToken as string) || null;
+          (session.user as any).refreshToken =
+            (token.refreshToken as string) || null;
           session.user.name = (token.name as string) || "User";
-          session.user.image = (token.picture as string) || "/profile.svg";
+          session.user.image =
+            (token.picture as string) || "/profile.svg";
         }
       } catch (error) {
         console.error("[Session] ❌ Error:", error);
@@ -362,40 +430,56 @@ export const authOptions: NextAuthOptions = {
     // ============================================
     async redirect({ url, baseUrl }) {
       try {
-        console.log("[Redirect] 🔄 url:", url, "| baseUrl:", baseUrl);
+        console.log(
+          "[Redirect] 🔄 url:",
+          url,
+          "| baseUrl:",
+          baseUrl
+        );
 
         // Handle errors - IMPROVED for access_denied
         if (url.includes("error=")) {
           console.log("[Redirect] ⚠️ Error detected in URL");
-          
+
           // Parse error parameter
           try {
-            const urlObj = new URL(url.startsWith("http") ? url : `${BASE_URL}${url}`);
+            const urlObj = new URL(
+              url.startsWith("http") ? url : `${BASE_URL}${url}`
+            );
             const errorParam = urlObj.searchParams.get("error");
-            
+
             // ✅ Map OAuth errors to friendly messages
             const errorMap: Record<string, string> = {
-              "access_denied": "ACCESS_DENIED",
-              "OAuthAccountNotLinked": "OAUTH_ACCOUNT_NOT_LINKED",
-              "OAuthSignin": "OAUTH_SIGNIN_ERROR",
-              "OAuthCallback": "OAUTH_CALLBACK_ERROR",
-              "Callback": "CALLBACK_ERROR",
+              access_denied: "ACCESS_DENIED",
+              OAuthAccountNotLinked: "OAUTH_ACCOUNT_NOT_LINKED",
+              OAuthSignin: "OAUTH_SIGNIN_ERROR",
+              OAuthCallback: "OAUTH_CALLBACK_ERROR",
+              Callback: "CALLBACK_ERROR",
             };
-            
-            const mappedError = errorParam ? (errorMap[errorParam] || errorParam) : "UNKNOWN_ERROR";
+
+            const mappedError = errorParam
+              ? errorMap[errorParam] || errorParam
+              : "UNKNOWN_ERROR";
             const errorUrl = `${BASE_URL}/login?error=${mappedError}`;
-            
-            console.log("[Redirect] ⚠️ Redirecting to error page:", errorUrl);
+
+            console.log(
+              "[Redirect] ⚠️ Redirecting to error page:",
+              errorUrl
+            );
             return errorUrl;
           } catch {
-            console.log("[Redirect] ❌ Failed to parse error URL");
+            console.log(
+              "[Redirect] ❌ Failed to parse error URL"
+            );
             return `${BASE_URL}/login?error=CALLBACK_ERROR`;
           }
         }
 
         // Google callback - redirect to home
         if (url.includes("/api/auth/callback/google")) {
-          console.log("[Redirect] ✅ Google callback, redirecting to home");
+          console.log(
+            "[Redirect] ✅ Google callback, redirecting to home"
+          );
           return BASE_URL;
         }
 
@@ -408,7 +492,10 @@ export const authOptions: NextAuthOptions = {
         // Relative URL
         if (url.startsWith("/")) {
           const fullUrl = `${BASE_URL}${url}`;
-          console.log("[Redirect] ✅ Relative URL, full URL:", fullUrl);
+          console.log(
+            "[Redirect] ✅ Relative URL, full URL:",
+            fullUrl
+          );
           return fullUrl;
         }
 
@@ -446,9 +533,12 @@ export const authOptions: NextAuthOptions = {
     error(code, ...message) {
       const codeStr = String(code);
       if (codeStr.includes("DEP0169")) return;
-      
+
       // ✅ Better error logging for OAuth errors
-      if (codeStr.includes("OAUTH") || codeStr.includes("access_denied")) {
+      if (
+        codeStr.includes("OAUTH") ||
+        codeStr.includes("access_denied")
+      ) {
         console.error("[NextAuth OAuth Error]", code, ...message);
       } else {
         console.error("[NextAuth Error]", code, ...message);
@@ -457,7 +547,10 @@ export const authOptions: NextAuthOptions = {
     warn(code, ...message) {
       const codeStr = String(code);
       if (codeStr.includes("DEP0169")) return;
-      if (process.env.NODE_ENV === "development" && !codeStr.includes("session")) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        !codeStr.includes("session")
+      ) {
         console.warn("[NextAuth Warning]", code, ...message);
       }
     },

@@ -1,4 +1,4 @@
-// app/api/auth/[...nextauth]/route.ts - FIXED 500 ERROR
+// app/api/auth/[...nextauth]/route.ts - FIXED FUNCTION_INVOCATION_FAILED
 import { NextRequest, NextResponse } from "next/server";
 import NextAuth from "next-auth";
 import { authOptions } from "@/app/components/lib/auth.config";
@@ -35,37 +35,61 @@ function createErrorRedirect(error: string, req: NextRequest): NextResponse {
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000");
 
-  const errorUrl = new URL(`/login?error=${encodeURIComponent(error)}`, baseUrl);
+  const errorUrl = new URL(
+    `/login?error=${encodeURIComponent(error)}`,
+    baseUrl
+  );
   console.log("[NextAuth] Redirecting to error page:", errorUrl.toString());
-  
+
   return NextResponse.redirect(errorUrl);
 }
 
-// Wrap handler with timeout protection
+// ✅ FIXED: Wrap handler with timeout protection - properly clears timeout
 async function handleWithTimeout(
   handler: Function,
   req: NextRequest,
   context: any,
   timeoutMs: number = 25000 // 25 seconds (below Vercel's 30s limit)
 ): Promise<NextResponse> {
-  return Promise.race([
-    handler(req, context),
-    new Promise<NextResponse>((_, reject) =>
-      setTimeout(() => reject(new Error("Handler timeout")), timeoutMs)
-    ),
-  ]);
+  let timeoutId: NodeJS.Timeout | undefined;
+
+  try {
+    const response = await Promise.race([
+      // When handler resolves first, clear the timeout immediately
+      (handler(req, context) as Promise<NextResponse>).then((res) => {
+        clearTimeout(timeoutId);
+        return res;
+      }),
+      new Promise<NextResponse>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("Handler timeout")),
+          timeoutMs
+        );
+      }),
+    ]);
+    return response;
+  } catch (error) {
+    // ✅ Always clear timeout on error (including when handler rejects first)
+    clearTimeout(timeoutId);
+    throw error; // Re-throw so the outer catch handles it
+  }
 }
 
 export async function GET(req: NextRequest) {
   const segments = extractNextAuthSegments(req.url);
   const startTime = Date.now();
-  
-  console.log("[NextAuth GET]", req.nextUrl.pathname, "| segments:", JSON.stringify(segments));
+
+  console.log(
+    "[NextAuth GET]",
+    req.nextUrl.pathname,
+    "| segments:",
+    JSON.stringify(segments)
+  );
 
   try {
     // ✅ Pass plain object with resolved params - NOT a Promise
     const context = { params: { nextauth: segments } };
-    
+
     // Execute with timeout protection
     const response = await handleWithTimeout(
       nextAuthHandler,
@@ -73,16 +97,23 @@ export async function GET(req: NextRequest) {
       context as any,
       25000
     );
-    
+
     const duration = Date.now() - startTime;
-    console.log("[NextAuth GET] ✅ Response status:", response?.status, `(${duration}ms)`);
-    
+    console.log(
+      "[NextAuth GET] ✅ Response status:",
+      response?.status,
+      `(${duration}ms)`
+    );
+
     return response;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error("[NextAuth GET] ❌ Error:", error instanceof Error ? error.message : error);
+    console.error(
+      "[NextAuth GET] ❌ Error:",
+      error instanceof Error ? error.message : error
+    );
     console.error("[NextAuth GET] Duration:", `${duration}ms`);
-    
+
     if (error instanceof Error && error.message === "Handler timeout") {
       console.error("[NextAuth GET] TIMEOUT - Handler took too long");
       return createErrorRedirect("TIMEOUT", req);
@@ -95,7 +126,10 @@ export async function GET(req: NextRequest) {
 
     // For other errors, return JSON error
     return NextResponse.json(
-      { error: "Internal server error", message: error instanceof Error ? error.message : "Unknown error" },
+      {
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }
@@ -104,26 +138,38 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const segments = extractNextAuthSegments(req.url);
   const startTime = Date.now();
-  
-  console.log("[NextAuth POST]", req.nextUrl.pathname, "| segments:", JSON.stringify(segments));
+
+  console.log(
+    "[NextAuth POST]",
+    req.nextUrl.pathname,
+    "| segments:",
+    JSON.stringify(segments)
+  );
 
   try {
     const context = { params: { nextauth: segments } };
-    
+
     const response = await handleWithTimeout(
       nextAuthHandler,
       req as any,
       context as any,
       25000
     );
-    
+
     const duration = Date.now() - startTime;
-    console.log("[NextAuth POST] ✅ Response status:", response?.status, `(${duration}ms)`);
-    
+    console.log(
+      "[NextAuth POST] ✅ Response status:",
+      response?.status,
+      `(${duration}ms)`
+    );
+
     return response;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error("[NextAuth POST] ❌ Error:", error instanceof Error ? error.message : error);
+    console.error(
+      "[NextAuth POST] ❌ Error:",
+      error instanceof Error ? error.message : error
+    );
     console.error("[NextAuth POST] Duration:", `${duration}ms`);
 
     if (error instanceof Error && error.message === "Handler timeout") {
@@ -136,7 +182,10 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Internal server error", message: error instanceof Error ? error.message : "Unknown error" },
+      {
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }

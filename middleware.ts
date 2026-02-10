@@ -1,4 +1,4 @@
-// middleware.ts - FIXED TO NOT INTERFERE WITH GOOGLE OAUTH
+// middleware.ts - FIXED DANGLING PROMISE REJECTIONS
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -99,24 +99,32 @@ function setCustomCookiesFromToken(
   }
 
   if (sessionToken.accessToken && !existingCookies.accessToken) {
-    response.cookies.set("access_token", sessionToken.accessToken as string, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "lax",
-      maxAge: 60 * 60,
-      path: "/",
-    });
+    response.cookies.set(
+      "access_token",
+      sessionToken.accessToken as string,
+      {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: "lax",
+        maxAge: 60 * 60,
+        path: "/",
+      }
+    );
     cookiesSet = true;
   }
 
   if (sessionToken.refreshToken && !existingCookies.refreshToken) {
-    response.cookies.set("refresh_token", sessionToken.refreshToken as string, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60,
-      path: "/",
-    });
+    response.cookies.set(
+      "refresh_token",
+      sessionToken.refreshToken as string,
+      {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60,
+        path: "/",
+      }
+    );
     cookiesSet = true;
   }
 
@@ -150,8 +158,12 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/admin/")) {
     if (pathname === "/admin/login") {
       const adminSessionId = request.cookies.get("admin_session_id")?.value;
-      const adminAccessToken = request.cookies.get("admin_access_token")?.value;
-      const adminRefreshToken = request.cookies.get("admin_refresh_token")?.value;
+      const adminAccessToken = request.cookies.get(
+        "admin_access_token"
+      )?.value;
+      const adminRefreshToken = request.cookies.get(
+        "admin_refresh_token"
+      )?.value;
 
       if (adminSessionId && (adminAccessToken || adminRefreshToken)) {
         return createDirectRedirect("/admin/dashboard", request);
@@ -161,8 +173,12 @@ export async function middleware(request: NextRequest) {
     }
 
     const adminSessionId = request.cookies.get("admin_session_id")?.value;
-    const adminAccessToken = request.cookies.get("admin_access_token")?.value;
-    const adminRefreshToken = request.cookies.get("admin_refresh_token")?.value;
+    const adminAccessToken = request.cookies.get(
+      "admin_access_token"
+    )?.value;
+    const adminRefreshToken = request.cookies.get(
+      "admin_refresh_token"
+    )?.value;
 
     if (!adminSessionId || (!adminAccessToken && !adminRefreshToken)) {
       return createLoadingRedirect(
@@ -212,8 +228,12 @@ export async function middleware(request: NextRequest) {
   // =============== MITRA ROUTES ===============
   if (pathname.startsWith("/mitra/")) {
     const mitraSessionId = request.cookies.get("mitra_session_id")?.value;
-    const mitraAccessToken = request.cookies.get("mitra_access_token")?.value;
-    const mitraRefreshToken = request.cookies.get("mitra_refresh_token")?.value;
+    const mitraAccessToken = request.cookies.get(
+      "mitra_access_token"
+    )?.value;
+    const mitraRefreshToken = request.cookies.get(
+      "mitra_refresh_token"
+    )?.value;
 
     if (publicMitraRoutes.some((route) => pathname === route)) {
       if (pathname === "/mitra/login") {
@@ -225,7 +245,11 @@ export async function middleware(request: NextRequest) {
     }
 
     if (!mitraSessionId || (!mitraAccessToken && !mitraRefreshToken)) {
-      return createLoadingRedirect("/mitra/login", request, "Please login...");
+      return createLoadingRedirect(
+        "/mitra/login",
+        request,
+        "Please login..."
+      );
     }
 
     if (!mitraAccessToken && mitraRefreshToken) {
@@ -274,22 +298,31 @@ export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get("access_token")?.value;
   const refreshToken = request.cookies.get("refresh_token")?.value;
 
-  // Get NextAuth JWT token - but with timeout to avoid blocking
+  // ✅ FIXED: Get NextAuth JWT token with proper timeout cleanup
   let sessionToken: any = null;
   try {
-    // ✅ Add timeout to prevent blocking
+    let timeoutId: NodeJS.Timeout | undefined;
+
     const tokenPromise = getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
     });
 
     sessionToken = await Promise.race([
-      tokenPromise,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("getToken timeout")), 3000)
-      ),
+      // When getToken resolves first, clear the timeout immediately
+      tokenPromise.then((result) => {
+        clearTimeout(timeoutId);
+        return result;
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("getToken timeout")),
+          3000
+        );
+      }),
     ]);
   } catch (error) {
+    // Timeout errors are expected; only log real errors
     if (error instanceof Error && error.message !== "getToken timeout") {
       console.error("[Middleware] getToken error:", error);
     }
@@ -331,11 +364,11 @@ export async function middleware(request: NextRequest) {
     // If authenticated via NextAuth and needs custom cookies, set them
     if (needsCustomCookies && sessionToken) {
       const response = NextResponse.next();
-      setCustomCookiesFromToken(
-        response,
-        sessionToken,
-        { sessionId, accessToken, refreshToken }
-      );
+      setCustomCookiesFromToken(response, sessionToken, {
+        sessionId,
+        accessToken,
+        refreshToken,
+      });
       return response;
     }
   }
@@ -351,11 +384,11 @@ export async function middleware(request: NextRequest) {
   // For any other matched route, if we need to set custom cookies, do it
   if (needsCustomCookies && sessionToken) {
     const response = NextResponse.next();
-    setCustomCookiesFromToken(
-      response,
-      sessionToken,
-      { sessionId, accessToken, refreshToken }
-    );
+    setCustomCookiesFromToken(response, sessionToken, {
+      sessionId,
+      accessToken,
+      refreshToken,
+    });
     return response;
   }
 
