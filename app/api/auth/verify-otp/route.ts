@@ -1,7 +1,12 @@
 // app/api/auth/verify-otp/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/components/lib/prisma";
-import { verifyOTP, getTempUserData, deleteTempUserData } from "@/app/components/lib/otp-service";
+import jwt from "jsonwebtoken";
+import {
+  verifyOTP,
+  getTempUserData,
+  deleteTempUserData,
+} from "@/app/components/lib/otp-service";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -11,6 +16,8 @@ import {
 } from "@/app/components/lib/token-service";
 
 export const runtime = "nodejs";
+
+const JWT_SECRET = process.env.NEXTAUTH_SECRET || "your-jwt-secret-key";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +38,8 @@ export async function POST(request: NextRequest) {
     if (!verifyResult.success) {
       return NextResponse.json(
         {
-          message: verifyResult.error || "Kode OTP salah atau sudah kedaluwarsa",
+          message:
+            verifyResult.error || "Kode OTP salah atau sudah kedaluwarsa",
           remainingAttempts: verifyResult.remainingAttempts,
         },
         { status: 400 }
@@ -45,7 +53,10 @@ export async function POST(request: NextRequest) {
 
       if (!tempUserData) {
         return NextResponse.json(
-          { message: "Data pendaftaran tidak ditemukan. Silakan daftar ulang." },
+          {
+            message:
+              "Data pendaftaran tidak ditemukan. Silakan daftar ulang.",
+          },
           { status: 404 }
         );
       }
@@ -68,8 +79,12 @@ export async function POST(request: NextRequest) {
 
       // Create session and tokens
       const sessionId = createSessionId();
-      const userAgent = request.headers.get("user-agent") || undefined;
-      const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
+      const userAgent =
+        request.headers.get("user-agent") || undefined;
+      const ip =
+        request.headers.get("x-forwarded-for") ||
+        request.headers.get("x-real-ip") ||
+        undefined;
 
       // Store session
       const sessionResult = await storeSession(sessionId, {
@@ -105,7 +120,11 @@ export async function POST(request: NextRequest) {
       });
 
       // Store tokens
-      const tokensResult = await storeTokens(sessionId, accessToken, refreshToken);
+      const tokensResult = await storeTokens(
+        sessionId,
+        accessToken,
+        refreshToken
+      );
       if (!tokensResult.success) {
         return NextResponse.json(
           { message: "Gagal menyimpan token. Silakan login manual." },
@@ -155,18 +174,56 @@ export async function POST(request: NextRequest) {
         path: "/",
       });
 
-      console.log(`[Register] User created and logged in: ${user.email}`);
+      console.log(
+        `[Register] User created and logged in: ${user.email}`
+      );
 
       return response;
     } else if (type === "reset_password") {
-      // Just verify OTP for password reset
-      return NextResponse.json(
+      // ============================================================
+      // FIX: Cari user lalu buat JWT pw-reset-token dan set ke cookie
+      // ============================================================
+      const user = await prisma.user.findUnique({
+        where: { email: email.trim().toLowerCase() },
+        select: { user_id: true, email: true },
+      });
+
+      if (!user) {
+        return NextResponse.json(
+          { message: "User tidak ditemukan." },
+          { status: 404 }
+        );
+      }
+
+      // Buat JWT token untuk reset password (berlaku 10 menit)
+      const resetToken = jwt.sign(
+        { userId: user.user_id, email: user.email },
+        JWT_SECRET,
+        { expiresIn: "10m" }
+      );
+
+      const response = NextResponse.json(
         {
           success: true,
           message: "Verifikasi berhasil. Silakan atur password baru.",
         },
         { status: 200 }
       );
+
+      // Set cookie pw-reset-token agar route reset-password bisa membacanya
+      response.cookies.set("pw-reset-token", resetToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 10 * 60, // 10 menit
+        path: "/",
+      });
+
+      console.log(
+        `[ResetPassword] pw-reset-token cookie set for: ${user.email}`
+      );
+
+      return response;
     } else if (type === "login") {
       // For future 2FA implementation
       return NextResponse.json(
