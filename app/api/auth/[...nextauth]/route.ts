@@ -1,14 +1,3 @@
-// app/api/auth/[...nextauth]/route.ts
-// ============================================
-// FIX: Next.js 15 + NextAuth v4 Compatibility
-//
-// Problem: Next.js 15 changed route handler params to Promise<{...}>
-// NextAuth v4 reads context.params.nextauth synchronously → undefined → crash
-//
-// Solution: Manually extract nextauth segments from the URL path
-// and construct a plain params object before passing to NextAuth.
-// ============================================
-
 import { NextRequest, NextResponse } from "next/server";
 import NextAuth from "next-auth";
 import { authOptions } from "@/app/components/lib/auth.config";
@@ -19,12 +8,6 @@ export const dynamic = "force-dynamic";
 // Create the NextAuth handler once
 const nextAuthHandler = NextAuth(authOptions);
 
-// ============================================
-// Extract [...nextauth] segments from the URL
-// e.g. /api/auth/callback/google → ["callback", "google"]
-// e.g. /api/auth/signin/google  → ["signin", "google"]
-// e.g. /api/auth/session        → ["session"]
-// ============================================
 function extractNextAuthSegments(url: string): string[] {
   try {
     const urlObj = new URL(url);
