@@ -1421,31 +1421,19 @@ export default function OrderHistoryPage() {
                     Pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Klik "Simulasi Pembayaran" untuk testing
+                    Untuk mode testing, gunakan tombol "Simulasi Pembayaran Berhasil" di bawah.
                   </p>
                 </div>
               </div>
-
-              {/* Deeplink untuk mobile (tetap dipertahankan) */}
-              {xenditPaymentData.deeplinkUrl && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => window.location.href = xenditPaymentData.deeplinkUrl!}
-                >
-                  <Smartphone className="h-4 w-4 mr-2" />
-                  Buka Aplikasi {xenditPaymentData.paymentMethodName || methodInfo?.name}
-                </Button>
-              )}
             </div>
 
             {/* E-Wallet Instructions */}
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
+              <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran (Testing):</h4>
               <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                <li>Untuk testing, klik tombol "Simulasi Pembayaran" di bawah</li>
+                <li>Klik tombol "Simulasi Pembayaran Berhasil" di bawah</li>
                 <li>Status pembayaran akan berubah menjadi PAID</li>
-                <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
+                <li>Pesanan akan langsung diproses oleh vendor</li>
               </ol>
             </div>
           </div>
