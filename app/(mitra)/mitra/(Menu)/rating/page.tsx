@@ -109,6 +109,7 @@ export default function UlasanPage() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState<string>('')
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false)
 
   // Parse review metadata dari comment string
   const parseReviewMetadata = (comment: string | null) => {
@@ -253,11 +254,15 @@ export default function UlasanPage() {
     }
   }
 
-  const loadReviews = useCallback(async () => {
+  // ✅ FIX: Tambahkan parameter `silent` agar tidak muncul loading saat background refresh
+  const loadReviews = useCallback(async (silent: boolean = false) => {
     try {
-      setIsLoading(true)
+      // ✅ FIX: Hanya tampilkan loading spinner pada initial load, bukan saat silent refresh
+      if (!silent) {
+        setIsLoading(true)
+      }
       
-      console.log('[Reviews] Loading vendor info...')
+      console.log('[Reviews] Loading vendor info...', { silent })
 
       const meResponse = await fetch('/api/mitra/me', {
         credentials: 'include',
@@ -265,7 +270,7 @@ export default function UlasanPage() {
 
       if (!meResponse.ok) {
         console.error('[Reviews] Failed to get vendor info:', meResponse.status)
-        setIsLoading(false)
+        if (!silent) setIsLoading(false)
         return
       }
 
@@ -273,7 +278,7 @@ export default function UlasanPage() {
       
       if (!meData.authenticated || !meData.vendor) {
         console.error('[Reviews] Not authenticated')
-        setIsLoading(false)
+        if (!silent) setIsLoading(false)
         return
       }
 
@@ -350,7 +355,7 @@ export default function UlasanPage() {
           serviceType,
           date: dateString,
           dateTimestamp: timestamp,
-          photos: photos,           // ✅ Now uses booking.rating_photos as primary source
+          photos: photos,
           response: metadata.response,
           helpfulCount: metadata.helpfulCount,
           mitraLikes: metadata.mitraLikes || [],
@@ -363,20 +368,26 @@ export default function UlasanPage() {
 
     } catch (error) {
       console.error('[Reviews] Error loading:', error)
-      setReviews([])
+      // ✅ FIX: Jangan kosongkan reviews saat silent refresh gagal
+      if (!silent) {
+        setReviews([])
+      }
     } finally {
-      setIsLoading(false)
+      // ✅ FIX: Hanya matikan loading spinner jika bukan silent
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    loadReviews()
+    loadReviews(false) // Initial load → tampilkan loading
   }, [loadReviews])
 
   useEffect(() => {
     const handleReviewsUpdate = () => {
       console.log('[Reviews] Event received: reviewsUpdated')
-      loadReviews()
+      loadReviews(true) // ✅ FIX: Silent refresh → TIDAK tampilkan loading
     }
 
     window.addEventListener('reviewsUpdated', handleReviewsUpdate)
@@ -424,7 +435,8 @@ export default function UlasanPage() {
       })
 
       if (!response.ok) {
-        loadReviews()
+        // ✅ FIX: Gunakan silent reload jika gagal
+        loadReviews(true)
         throw new Error('Failed to like review')
       }
 
@@ -443,32 +455,38 @@ export default function UlasanPage() {
         })
       )
 
-      window.dispatchEvent(new CustomEvent('reviewsUpdated'))
+      // ✅ FIX: Tidak perlu dispatch event karena sudah di-update langsung dari response
+      // Event ini bisa menyebabkan reload yang tidak perlu
+      // window.dispatchEvent(new CustomEvent('reviewsUpdated'))
 
     } catch (error) {
       console.error('[Reviews] Error liking:', error)
     }
   }
 
-  // Reply tanpa reload
+  // ✅ FIX: Reply tanpa loading spinner
   const handleReplySubmit = async (reviewId: string) => {
-    if (!replyText.trim()) return
+    if (!replyText.trim() || isSubmittingReply) return
 
     try {
+      setIsSubmittingReply(true)
+
       const tempReplyDate = new Date().toLocaleDateString('id-ID', {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
       })
 
-      // Optimistic update
+      const currentReplyText = replyText
+
+      // Optimistic update - langsung update UI tanpa loading
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
             return {
               ...review,
               response: {
-                vendorReply: replyText,
+                vendorReply: currentReplyText,
                 replyDate: tempReplyDate
               }
             }
@@ -477,6 +495,7 @@ export default function UlasanPage() {
         })
       )
 
+      // ✅ FIX: Tutup form reply segera setelah optimistic update
       setReplyingTo(null)
       setReplyText('')
 
@@ -488,17 +507,19 @@ export default function UlasanPage() {
         credentials: 'include',
         body: JSON.stringify({ 
           vendorId,
-          reply: replyText 
+          reply: currentReplyText 
         }),
       })
 
       if (!response.ok) {
-        loadReviews()
+        // ✅ FIX: Jika gagal, gunakan silent reload agar tidak muncul loading spinner
+        loadReviews(true)
         throw new Error('Failed to submit reply')
       }
 
       const data = await response.json()
       
+      // ✅ FIX: Update dari server response tanpa trigger full reload
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
@@ -511,10 +532,13 @@ export default function UlasanPage() {
         })
       )
 
-      window.dispatchEvent(new CustomEvent('reviewsUpdated'))
+      // ✅ FIX: Tidak dispatch event agar tidak trigger loadReviews dengan loading
+      // window.dispatchEvent(new CustomEvent('reviewsUpdated'))
 
     } catch (error) {
       console.error('[Reviews] Error submitting reply:', error)
+    } finally {
+      setIsSubmittingReply(false)
     }
   }
 
@@ -906,11 +930,11 @@ export default function UlasanPage() {
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={() => handleReplySubmit(review.id)}
-                          disabled={!replyText.trim()}
+                          disabled={!replyText.trim() || isSubmittingReply}
                           className="flex items-center gap-2 px-4 py-2 bg-[#7CE0A8] text-white rounded-lg hover:bg-[#5DD494] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Send className="w-4 h-4" />
-                          Kirim Balasan
+                          {isSubmittingReply ? 'Mengirim...' : 'Kirim Balasan'}
                         </button>
                         <button
                           onClick={() => {
