@@ -44,6 +44,11 @@ import type { Message, ChatSession } from "@/app/components/lib/services/chatSer
 import { useWebRTC } from "@/app/components/lib/hooks/useWebRTC";
 import { CallType } from "@/app/components/lib/services/callService";
 
+// ============================================
+// PRESENCE HEARTBEAT INTERVAL (30 seconds)
+// ============================================
+const PRESENCE_HEARTBEAT_INTERVAL = 30 * 1000;
+
 // Safe fetch helper
 async function safeFetch(url: string, options?: RequestInit) {
   try {
@@ -61,7 +66,47 @@ async function safeFetch(url: string, options?: RequestInit) {
   }
 }
 
+// ============================================
+// Presence Helper Functions
+// ============================================
+async function setPresenceOnline(participantId: string, participantType: "user" | "mitra") {
+  try {
+    await fetch("/api/chat/presence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, participantType, isOnline: true }),
+    });
+    console.log(`[Presence] ${participantType} ${participantId} set ONLINE`);
+  } catch (error) {
+    console.error("[Presence] Failed to set online:", error);
+  }
+}
+
+async function setPresenceOffline(participantId: string, participantType: "user" | "mitra") {
+  try {
+    // Use sendBeacon for reliability during page unload
+    const data = JSON.stringify({ participantId, participantType, isOnline: false });
+    const blob = new Blob([data], { type: "application/json" });
+    const sent = navigator.sendBeacon("/api/chat/presence", blob);
+    
+    if (!sent) {
+      // Fallback to fetch with keepalive
+      await fetch("/api/chat/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: data,
+        keepalive: true,
+      });
+    }
+    console.log(`[Presence] ${participantType} ${participantId} set OFFLINE`);
+  } catch (error) {
+    console.error("[Presence] Failed to set offline:", error);
+  }
+}
+
+// ============================================
 // Image Lightbox Component
+// ============================================
 const ImageLightbox = ({
   isOpen,
   imageUrl,
@@ -143,7 +188,9 @@ const ImageLightbox = ({
   );
 };
 
+// ============================================
 // VoiceRecorder Component
+// ============================================
 const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: number) => void; onCancel: () => void }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -225,7 +272,9 @@ const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: nu
   );
 };
 
+// ============================================
 // Voice Message Player
+// ============================================
 const VoiceMessagePlayer = ({ msg, isUser }: { msg: Message; isUser: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -368,7 +417,9 @@ const VoiceMessagePlayer = ({ msg, isUser }: { msg: Message; isUser: boolean }) 
   );
 };
 
+// ============================================
 // Media Popup
+// ============================================
 const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: boolean; onClose: () => void; onTakePhoto: () => void; onSelectImage: () => void }) => {
   if (!isOpen) return null;
   return (
@@ -386,7 +437,9 @@ const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: b
   );
 };
 
+// ============================================
 // Media Message with Lightbox
+// ============================================
 const MediaMessage = ({
   msg,
   isUser,
@@ -487,7 +540,9 @@ const MediaMessage = ({
   );
 };
 
+// ============================================
 // Main Component
+// ============================================
 export default function UserChatPage() {
   const params = useParams();
   const router = useRouter();
@@ -513,14 +568,20 @@ export default function UserChatPage() {
   const [outgoingCallType, setOutgoingCallType] = useState<CallType>('VOICE');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
+  // ✅ NEW: Track the other party's real-time online status
+  const [peerOnlineStatus, setPeerOnlineStatus] = useState<boolean>(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const hasMarkedAsReadRef = useRef(false);
+  const presenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const peerPresenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const vendorName = currentSession?.mitraName || "Vendor";
   const vendorAvatar = currentSession?.mitraAvatar || "/store.svg";
-  const vendorOnline = currentSession?.mitraOnline || false;
+  // ✅ USE real-time peer status instead of stale session data
+  const vendorOnline = peerOnlineStatus;
 
   const webRTC = useWebRTC({
     userId: currentUser?.id || '',
@@ -530,6 +591,94 @@ export default function UserChatPage() {
     onCallEnded: () => setShowCallModal(false),
     onError: (error) => { alert(error); setShowCallModal(false); },
   });
+
+  // ============================================
+  // ✅ PRESENCE HEARTBEAT - Set user online & detect page close
+  // ============================================
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const userId = currentUser.id;
+
+    // Set online immediately
+    setPresenceOnline(userId, "user");
+
+    // Send heartbeat every 30 seconds
+    presenceIntervalRef.current = setInterval(() => {
+      setPresenceOnline(userId, "user");
+    }, PRESENCE_HEARTBEAT_INTERVAL);
+
+    // Handle tab visibility change
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setPresenceOnline(userId, "user");
+      }
+    };
+
+    // Handle page unload (close tab, navigate away)
+    const handleBeforeUnload = () => {
+      setPresenceOffline(userId, "user");
+    };
+
+    // Handle page hide (more reliable than beforeunload on mobile)
+    const handlePageHide = () => {
+      setPresenceOffline(userId, "user");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      // Cleanup: set offline when component unmounts
+      setPresenceOffline(userId, "user");
+
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current);
+        presenceIntervalRef.current = null;
+      }
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [currentUser?.id]);
+
+  // ============================================
+  // ✅ POLL PEER (VENDOR/MITRA) ONLINE STATUS
+  // ============================================
+  useEffect(() => {
+    if (!selectedVendorId) {
+      setPeerOnlineStatus(false);
+      return;
+    }
+
+    // Fetch immediately
+    const fetchPeerStatus = async () => {
+      try {
+        const res = await safeFetch(
+          `/api/chat/presence?participantId=${selectedVendorId}&participantType=mitra`
+        );
+        if (res?.success) {
+          setPeerOnlineStatus(res.isOnline);
+        }
+      } catch (err) {
+        console.error("[Presence] Failed to fetch peer status:", err);
+      }
+    };
+
+    fetchPeerStatus();
+
+    // Poll every 10 seconds for peer status
+    peerPresenceIntervalRef.current = setInterval(fetchPeerStatus, 10 * 1000);
+
+    return () => {
+      if (peerPresenceIntervalRef.current) {
+        clearInterval(peerPresenceIntervalRef.current);
+        peerPresenceIntervalRef.current = null;
+      }
+    };
+  }, [selectedVendorId]);
 
   // Load user
   useEffect(() => {
@@ -574,12 +723,10 @@ export default function UserChatPage() {
         setCurrentSession(session);
         setMessages(session.messages || []);
         
-        // Mark as read immediately when opening chat
         if (!hasMarkedAsReadRef.current) {
           await chatService.markAsRead(currentUser.id, selectedVendorId, "user");
           hasMarkedAsReadRef.current = true;
           
-          // Refresh chat list to update unread count
           const sessions = await chatService.getUserSessions(currentUser.id);
           setChatList(sessions || []);
         }
@@ -597,10 +744,8 @@ export default function UserChatPage() {
       if (msgs && msgs.length > messages.length) {
         setMessages(msgs);
         
-        // Auto mark as read when new messages arrive
         await chatService.markAsRead(currentUser.id, selectedVendorId, "user");
         
-        // Refresh chat list to update unread count
         const sessions = await chatService.getUserSessions(currentUser.id);
         setChatList(sessions || []);
       }
@@ -625,7 +770,6 @@ export default function UserChatPage() {
     router.push(`/chat/${vendorId}`);
     setIsSidebarOpen(false);
     
-    // Mark as read when selecting chat
     if (currentUser?.id) {
       await chatService.markAsRead(currentUser.id, vendorId, "user");
       const sessions = await chatService.getUserSessions(currentUser.id);
@@ -656,7 +800,6 @@ export default function UserChatPage() {
       setMessages(prev => [...prev, sent]); 
       setNewMessage(""); 
       
-      // Refresh chat list after sending
       const sessions = await chatService.getUserSessions(currentUser.id);
       setChatList(sessions || []);
     }
@@ -670,7 +813,6 @@ export default function UserChatPage() {
     if (sent) {
       setMessages(prev => [...prev, sent]);
       
-      // Refresh chat list after sending
       const sessions = await chatService.getUserSessions(currentUser.id);
       setChatList(sessions || []);
     }
@@ -685,7 +827,6 @@ export default function UserChatPage() {
     if (sent) {
       setMessages(prev => [...prev, sent!]);
       
-      // Refresh chat list after sending
       const sessions = await chatService.getUserSessions(currentUser.id);
       setChatList(sessions || []);
     }
@@ -700,7 +841,6 @@ export default function UserChatPage() {
     if (sent) {
       setMessages(prev => [...prev, sent]);
       
-      // Refresh chat list after sending
       const sessions = await chatService.getUserSessions(currentUser.id);
       setChatList(sessions || []);
     }

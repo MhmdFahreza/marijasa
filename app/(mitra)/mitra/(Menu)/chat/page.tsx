@@ -44,6 +44,11 @@ import type { Message, ChatSession } from "@/app/components/lib/services/chatSer
 import { useWebRTC } from "@/app/components/lib/hooks/useWebRTC";
 import { CallType } from "@/app/components/lib/services/callService";
 
+// ============================================
+// PRESENCE HEARTBEAT INTERVAL (30 seconds)
+// ============================================
+const PRESENCE_HEARTBEAT_INTERVAL = 30 * 1000;
+
 // Safe fetch helper
 async function safeFetch(url: string, options?: RequestInit) {
   try {
@@ -61,7 +66,47 @@ async function safeFetch(url: string, options?: RequestInit) {
   }
 }
 
+// ============================================
+// Presence Helper Functions
+// ============================================
+async function setPresenceOnline(participantId: string, participantType: "user" | "mitra") {
+  try {
+    await fetch("/api/chat/presence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, participantType, isOnline: true }),
+    });
+    console.log(`[Presence] ${participantType} ${participantId} set ONLINE`);
+  } catch (error) {
+    console.error("[Presence] Failed to set online:", error);
+  }
+}
+
+async function setPresenceOffline(participantId: string, participantType: "user" | "mitra") {
+  try {
+    // Use sendBeacon for reliability during page unload
+    const data = JSON.stringify({ participantId, participantType, isOnline: false });
+    const blob = new Blob([data], { type: "application/json" });
+    const sent = navigator.sendBeacon("/api/chat/presence", blob);
+    
+    if (!sent) {
+      // Fallback to fetch with keepalive
+      await fetch("/api/chat/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: data,
+        keepalive: true,
+      });
+    }
+    console.log(`[Presence] ${participantType} ${participantId} set OFFLINE`);
+  } catch (error) {
+    console.error("[Presence] Failed to set offline:", error);
+  }
+}
+
+// ============================================
 // Image Lightbox Component
+// ============================================
 const ImageLightbox = ({ isOpen, imageUrl, onClose }: { isOpen: boolean; imageUrl: string; onClose: () => void; }) => {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -102,7 +147,9 @@ const ImageLightbox = ({ isOpen, imageUrl, onClose }: { isOpen: boolean; imageUr
   );
 };
 
+// ============================================
 // VoiceRecorder Component
+// ============================================
 const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: number) => void; onCancel: () => void }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -184,7 +231,9 @@ const VoiceRecorder = ({ onSend, onCancel }: { onSend: (blob: Blob, duration: nu
   );
 };
 
+// ============================================
 // Voice Message Player
+// ============================================
 const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -348,7 +397,9 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
   );
 };
 
+// ============================================
 // Media Popup Component
+// ============================================
 const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: boolean; onClose: () => void; onTakePhoto: () => void; onSelectImage: () => void }) => {
   if (!isOpen) return null;
   return (
@@ -366,7 +417,9 @@ const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: b
   );
 };
 
+// ============================================
 // Media Message Component
+// ============================================
 const MediaMessage = ({ msg, isMitra, timestamp, onImageClick }: { msg: Message; isMitra: boolean; timestamp: string; onImageClick: (url: string) => void; }) => {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -441,7 +494,9 @@ const MediaMessage = ({ msg, isMitra, timestamp, onImageClick }: { msg: Message;
   );
 };
 
+// ============================================
 // Main Mitra Chat Page Component
+// ============================================
 export default function MitraChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -468,13 +523,19 @@ export default function MitraChatPage() {
   const [outgoingCallType, setOutgoingCallType] = useState<CallType>('VOICE');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
+  // ✅ NEW: Track the other party's real-time online status
+  const [peerOnlineStatus, setPeerOnlineStatus] = useState<boolean>(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const presenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const peerPresenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const userName = currentSession?.userName || "Customer";
   const userAvatar = currentSession?.userAvatar || "/profile.svg";
-  const userOnline = currentSession?.userOnline || false;
+  // ✅ USE real-time peer status instead of stale session data
+  const userOnline = peerOnlineStatus;
 
   const webRTC = useWebRTC({
     userId: currentMitra?.id || '',
@@ -484,6 +545,97 @@ export default function MitraChatPage() {
     onCallEnded: () => setShowCallModal(false),
     onError: (error) => { console.error('Call error:', error); alert(error); setShowCallModal(false); },
   });
+
+  // ============================================
+  // ✅ PRESENCE HEARTBEAT - Set mitra online & detect page close
+  // ============================================
+  useEffect(() => {
+    if (!currentMitra?.id) return;
+
+    const mitraId = currentMitra.id;
+
+    // Set online immediately
+    setPresenceOnline(mitraId, "mitra");
+
+    // Send heartbeat every 30 seconds
+    presenceIntervalRef.current = setInterval(() => {
+      setPresenceOnline(mitraId, "mitra");
+    }, PRESENCE_HEARTBEAT_INTERVAL);
+
+    // Handle tab visibility change
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setPresenceOnline(mitraId, "mitra");
+      } else {
+        // Tab hidden - set offline after a short delay (in case user comes back quickly)
+        // We don't set offline immediately to avoid flickering
+      }
+    };
+
+    // Handle page unload (close tab, navigate away)
+    const handleBeforeUnload = () => {
+      setPresenceOffline(mitraId, "mitra");
+    };
+
+    // Handle page hide (more reliable than beforeunload on mobile)
+    const handlePageHide = () => {
+      setPresenceOffline(mitraId, "mitra");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      // Cleanup: set offline when component unmounts
+      setPresenceOffline(mitraId, "mitra");
+
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current);
+        presenceIntervalRef.current = null;
+      }
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [currentMitra?.id]);
+
+  // ============================================
+  // ✅ POLL PEER (USER) ONLINE STATUS
+  // ============================================
+  useEffect(() => {
+    if (!selectedUserId) {
+      setPeerOnlineStatus(false);
+      return;
+    }
+
+    // Fetch immediately
+    const fetchPeerStatus = async () => {
+      try {
+        const res = await safeFetch(
+          `/api/chat/presence?participantId=${selectedUserId}&participantType=user`
+        );
+        if (res?.success) {
+          setPeerOnlineStatus(res.isOnline);
+        }
+      } catch (err) {
+        console.error("[Presence] Failed to fetch peer status:", err);
+      }
+    };
+
+    fetchPeerStatus();
+
+    // Poll every 10 seconds for peer status
+    peerPresenceIntervalRef.current = setInterval(fetchPeerStatus, 10 * 1000);
+
+    return () => {
+      if (peerPresenceIntervalRef.current) {
+        clearInterval(peerPresenceIntervalRef.current);
+        peerPresenceIntervalRef.current = null;
+      }
+    };
+  }, [selectedUserId]);
 
   // Load current mitra from auth
   useEffect(() => {
@@ -546,17 +698,13 @@ export default function MitraChatPage() {
     loadChatList();
   }, [currentMitra?.id, authLoading]);
 
-  // AUTO-OPEN CHAT from URL query parameter - NEW FEATURE
+  // AUTO-OPEN CHAT from URL query parameter
   useEffect(() => {
     const userIdFromUrl = searchParams.get('userId');
     
     if (userIdFromUrl && currentMitra?.id && !authLoading) {
       console.log('[Chat] Auto-opening chat for user:', userIdFromUrl);
-      
-      // Set selected user immediately
       setSelectedUserId(userIdFromUrl);
-      
-      // Open sidebar on mobile to show the chat started
       setIsSidebarOpen(false);
     }
   }, [searchParams, currentMitra?.id, authLoading]);
@@ -580,7 +728,6 @@ export default function MitraChatPage() {
           setMessages(session.messages || []);
           await chatService.markAsRead(selectedUserId, currentMitra.id, "mitra");
           
-          // Reload chat list to update the sidebar
           const sessions = await chatService.getMitraSessions(currentMitra.id);
           setChatList(sessions || []);
         }
