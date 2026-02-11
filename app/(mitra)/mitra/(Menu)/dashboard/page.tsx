@@ -333,66 +333,6 @@ const DashboardSkeleton = () => (
   </div>
 );
 
-// ==========================================
-// Helper: Verify authentication with auto-refresh
-// ==========================================
-async function verifyWithAutoRefresh(): Promise<{
-  success: boolean;
-  vendor: any | null;
-}> {
-  // Step 1: Try verify
-  const verifyResponse = await fetch('/api/mitra/verify', {
-    method: 'GET',
-    credentials: 'include',
-  });
-
-  if (verifyResponse.ok) {
-    const verifyData = await verifyResponse.json();
-    return { success: true, vendor: verifyData.vendor };
-  }
-
-  // Step 2: If verify failed, check if we should try refresh
-  let verifyError: any = {};
-  try {
-    verifyError = await verifyResponse.json();
-  } catch {
-    // ignore parse error
-  }
-
-  if (!verifyError.shouldRefresh) {
-    console.log('[Dashboard] Verify failed, no refresh possible');
-    return { success: false, vendor: null };
-  }
-
-  // Step 3: Attempt token refresh
-  console.log('[Dashboard] Access token expired, attempting refresh...');
-  const refreshResponse = await fetch('/api/mitra/refresh', {
-    method: 'POST',
-    credentials: 'include',
-  });
-
-  if (!refreshResponse.ok) {
-    console.log('[Dashboard] Token refresh failed');
-    return { success: false, vendor: null };
-  }
-
-  console.log('[Dashboard] Token refreshed successfully, retrying verify...');
-
-  // Step 4: Retry verify after successful refresh
-  const retryResponse = await fetch('/api/mitra/verify', {
-    method: 'GET',
-    credentials: 'include',
-  });
-
-  if (retryResponse.ok) {
-    const retryData = await retryResponse.json();
-    return { success: true, vendor: retryData.vendor };
-  }
-
-  console.log('[Dashboard] Verify still failed after refresh');
-  return { success: false, vendor: null };
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
@@ -423,79 +363,40 @@ export default function DashboardPage() {
       try {
         console.log('[Dashboard] Starting initialization...');
 
-        // ✅ FIX: Use verifyWithAutoRefresh instead of plain verify
-        // This will automatically attempt token refresh if access token is expired
-        const authResult = await verifyWithAutoRefresh();
+        // Step 1: Verify authentication (will auto-refresh if needed)
+        const verifyResponse = await fetch('/api/mitra/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
 
-        if (!authResult.success || !authResult.vendor) {
-          console.log('[Dashboard] Authentication failed after all attempts, redirecting to login');
-          if (isMounted) {
-            toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
-            router.push('/mitra/login');
-          }
+        if (!verifyResponse.ok) {
+          console.log('[Dashboard] Verification failed, redirecting to login');
+          toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
+          router.push('/mitra/login');
           return;
         }
 
-        console.log('[Dashboard] Verification successful:', authResult.vendor);
+        const verifyData = await verifyResponse.json();
+
+        // ✅ Log if token was refreshed
+        if (verifyData.refreshed) {
+          console.log('[Dashboard] Access token was auto-refreshed');
+        }
+
+        console.log('[Dashboard] Verification successful:', verifyData.vendor);
 
         if (!isMounted) return;
 
         // Step 2: Set vendor data
-        setCurrentVendor(authResult.vendor);
+        setCurrentVendor(verifyData.vendor);
 
         // Step 3: Load dashboard data
-        const dashboardResponse = await fetch(`/api/mitra/dashboard?vendorId=${authResult.vendor.id}`, {
+        const dashboardResponse = await fetch(`/api/mitra/dashboard?vendorId=${verifyData.vendor.id}`, {
           method: 'GET',
           credentials: 'include',
         });
 
         if (!dashboardResponse.ok) {
-          // ✅ FIX: If dashboard fetch fails with 401, also try refresh
-          if (dashboardResponse.status === 401) {
-            console.log('[Dashboard] Dashboard API returned 401, attempting refresh...');
-            const refreshResponse = await fetch('/api/mitra/refresh', {
-              method: 'POST',
-              credentials: 'include',
-            });
-
-            if (refreshResponse.ok) {
-              // Retry dashboard fetch
-              const retryDashboard = await fetch(`/api/mitra/dashboard?vendorId=${authResult.vendor.id}`, {
-                method: 'GET',
-                credentials: 'include',
-              });
-
-              if (retryDashboard.ok) {
-                const dashboardData = await retryDashboard.json();
-                if (isMounted) {
-                  setStatData({
-                    availableBalance: dashboardData.availableBalance || 0,
-                    pendingBalance: dashboardData.pendingBalance || 0,
-                    monthlyIncome: dashboardData.monthlyIncome || 0,
-                    monthlyWithdrawal: dashboardData.monthlyWithdrawal || 0,
-                    totalOrders: dashboardData.totalOrders || 0,
-                    completedOrders: dashboardData.completedOrders || 0,
-                    pendingOrders: dashboardData.pendingOrders || 0,
-                    inProgressOrders: dashboardData.inProgressOrders || 0,
-                    vendorRating: dashboardData.vendorRating || 0,
-                    vendorReviewCount: dashboardData.vendorReviewCount || 0,
-                    totalRevenue: dashboardData.totalRevenue || 0
-                  });
-                  setTransactionHistory(dashboardData.transactions || []);
-                  setIsLoading(false);
-                }
-                return;
-              }
-            }
-
-            // If still fails after refresh, redirect to login
-            if (isMounted) {
-              toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
-              router.push('/mitra/login');
-            }
-            return;
-          }
-
           throw new Error('Failed to load dashboard data');
         }
 
@@ -528,7 +429,8 @@ export default function DashboardPage() {
         if (isMounted) {
           setIsLoading(false);
           toast.error('Gagal memuat data dashboard');
-          router.push('/mitra/login');
+          // ✅ Don't auto-redirect on error - could be temporary network issue
+          // Only redirect if it's auth error (401)
         }
       }
     };
@@ -557,47 +459,6 @@ export default function DashboardPage() {
       });
 
       if (!response.ok) {
-        // ✅ FIX: Handle 401 on manual refresh too
-        if (response.status === 401) {
-          console.log('[Dashboard] Refresh got 401, attempting token refresh...');
-          const refreshResponse = await fetch('/api/mitra/refresh', {
-            method: 'POST',
-            credentials: 'include',
-          });
-
-          if (refreshResponse.ok) {
-            const retryResponse = await fetch(`/api/mitra/dashboard?vendorId=${currentVendor.id}`, {
-              method: 'GET',
-              credentials: 'include',
-            });
-
-            if (retryResponse.ok) {
-              const data = await retryResponse.json();
-              setStatData({
-                availableBalance: data.availableBalance || 0,
-                pendingBalance: data.pendingBalance || 0,
-                monthlyIncome: data.monthlyIncome || 0,
-                monthlyWithdrawal: data.monthlyWithdrawal || 0,
-                totalOrders: data.totalOrders || 0,
-                completedOrders: data.completedOrders || 0,
-                pendingOrders: data.pendingOrders || 0,
-                inProgressOrders: data.inProgressOrders || 0,
-                vendorRating: data.vendorRating || 0,
-                vendorReviewCount: data.vendorReviewCount || 0,
-                totalRevenue: data.totalRevenue || 0
-              });
-              setTransactionHistory(data.transactions || []);
-              setIsLoading(false);
-              toast.success('Data berhasil diperbarui');
-              return;
-            }
-          }
-
-          toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
-          router.push('/mitra/login');
-          return;
-        }
-
         throw new Error('Failed to refresh dashboard data');
       }
 

@@ -1,13 +1,18 @@
 // app/api/mitra/verify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getSession, getAccessToken } from '@/app/components/lib/token-service';
+import { 
+  verifyToken, 
+  getSession, 
+  getAccessToken, 
+  refreshAccessToken,
+  updateSessionActivity 
+} from '@/app/components/lib/token-service';
 import prisma from '@/app/components/lib/prisma';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    // Dapatkan access token dan session dari cookie
     const accessToken = request.cookies.get('mitra_access_token')?.value;
     const sessionId = request.cookies.get('mitra_session_id')?.value;
     const refreshToken = request.cookies.get('mitra_refresh_token')?.value;
@@ -43,17 +48,74 @@ export async function GET(request: NextRequest) {
       role: session.role
     });
 
-    // If no access token but has refresh token, allow through for refresh
+    // ✅ AUTO-REFRESH: If no access token but has refresh token, auto-refresh
     if (!accessToken && refreshToken) {
-      console.log('[Mitra Verify API] No access token but has refresh token');
-      return NextResponse.json(
-        { error: 'Access token expired', valid: false, shouldRefresh: true },
-        { status: 401 }
-      );
+      console.log('[Mitra Verify API] No access token but has refresh token - auto-refreshing...');
+      
+      const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+      
+      if (refreshResult.success && refreshResult.accessToken) {
+        console.log('[Mitra Verify API] Auto-refresh successful');
+        
+        // Get vendor data
+        const vendor = await prisma.vendor.findUnique({
+          where: { vendor_id: session.userId },
+          select: { 
+            vendor_id: true, 
+            email: true, 
+            name: true,
+            avatar: true,
+            status: true,
+            verified: true
+          }
+        });
+
+        if (!vendor || vendor.status !== 'ACTIVE') {
+          console.log('[Mitra Verify API] Vendor not found or inactive');
+          return NextResponse.json(
+            { error: 'Vendor tidak ditemukan atau tidak aktif', valid: false },
+            { status: 401 }
+          );
+        }
+
+        // Update session activity
+        await updateSessionActivity(sessionId);
+
+        // Return success with new access token in cookie
+        const response = NextResponse.json({
+          vendor: {
+            id: vendor.vendor_id,
+            email: vendor.email,
+            name: vendor.name,
+            avatar: vendor.avatar,
+            verified: vendor.verified,
+            status: vendor.status,
+          },
+          valid: true,
+          refreshed: true
+        });
+
+        // Set new access token cookie
+        response.cookies.set('mitra_access_token', refreshResult.accessToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60 * 60, // 1 hour
+          path: '/',
+        });
+
+        return response;
+      } else {
+        console.log('[Mitra Verify API] Auto-refresh failed:', refreshResult.error);
+        return NextResponse.json(
+          { error: 'Session expired', valid: false, shouldRefresh: false },
+          { status: 401 }
+        );
+      }
     }
 
     if (!accessToken) {
-      console.log('[Mitra Verify API] Missing access token');
+      console.log('[Mitra Verify API] Missing access token and no refresh token');
       return NextResponse.json(
         { error: 'Unauthorized', valid: false },
         { status: 401 }
@@ -65,12 +127,69 @@ export async function GET(request: NextRequest) {
     if (!tokenPayload || tokenPayload.type !== 'access') {
       console.log('[Mitra Verify API] Invalid access token');
       
-      // If has refresh token, suggest refresh
+      // ✅ If has refresh token, try to refresh
       if (refreshToken) {
-        return NextResponse.json(
-          { error: 'Invalid access token', valid: false, shouldRefresh: true },
-          { status: 401 }
-        );
+        console.log('[Mitra Verify API] Invalid access token - attempting auto-refresh...');
+        
+        const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+        
+        if (refreshResult.success && refreshResult.accessToken) {
+          console.log('[Mitra Verify API] Auto-refresh successful after invalid token');
+          
+          // Get vendor data
+          const vendor = await prisma.vendor.findUnique({
+            where: { vendor_id: session.userId },
+            select: { 
+              vendor_id: true, 
+              email: true, 
+              name: true,
+              avatar: true,
+              status: true,
+              verified: true
+            }
+          });
+
+          if (!vendor || vendor.status !== 'ACTIVE') {
+            console.log('[Mitra Verify API] Vendor not found or inactive');
+            return NextResponse.json(
+              { error: 'Vendor tidak ditemukan atau tidak aktif', valid: false },
+              { status: 401 }
+            );
+          }
+
+          // Update session activity
+          await updateSessionActivity(sessionId);
+
+          // Return success with new access token
+          const response = NextResponse.json({
+            vendor: {
+              id: vendor.vendor_id,
+              email: vendor.email,
+              name: vendor.name,
+              avatar: vendor.avatar,
+              verified: vendor.verified,
+              status: vendor.status,
+            },
+            valid: true,
+            refreshed: true
+          });
+
+          response.cookies.set('mitra_access_token', refreshResult.accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60, // 1 hour
+            path: '/',
+          });
+
+          return response;
+        } else {
+          console.log('[Mitra Verify API] Auto-refresh failed after invalid token');
+          return NextResponse.json(
+            { error: 'Invalid access token', valid: false },
+            { status: 401 }
+          );
+        }
       }
       
       return NextResponse.json(
@@ -100,12 +219,69 @@ export async function GET(request: NextRequest) {
     if (!storedToken || storedToken !== accessToken) {
       console.log('[Mitra Verify API] Token not found in Redis or mismatch');
       
-      // If has refresh token, suggest refresh
+      // ✅ If has refresh token, try to refresh
       if (refreshToken) {
-        return NextResponse.json(
-          { error: 'Token mismatch', valid: false, shouldRefresh: true },
-          { status: 401 }
-        );
+        console.log('[Mitra Verify API] Token mismatch - attempting auto-refresh...');
+        
+        const refreshResult = await refreshAccessToken(sessionId, refreshToken);
+        
+        if (refreshResult.success && refreshResult.accessToken) {
+          console.log('[Mitra Verify API] Auto-refresh successful after token mismatch');
+          
+          // Get vendor data
+          const vendor = await prisma.vendor.findUnique({
+            where: { vendor_id: session.userId },
+            select: { 
+              vendor_id: true, 
+              email: true, 
+              name: true,
+              avatar: true,
+              status: true,
+              verified: true
+            }
+          });
+
+          if (!vendor || vendor.status !== 'ACTIVE') {
+            console.log('[Mitra Verify API] Vendor not found or inactive');
+            return NextResponse.json(
+              { error: 'Vendor tidak ditemukan atau tidak aktif', valid: false },
+              { status: 401 }
+            );
+          }
+
+          // Update session activity
+          await updateSessionActivity(sessionId);
+
+          // Return success with new access token
+          const response = NextResponse.json({
+            vendor: {
+              id: vendor.vendor_id,
+              email: vendor.email,
+              name: vendor.name,
+              avatar: vendor.avatar,
+              verified: vendor.verified,
+              status: vendor.status,
+            },
+            valid: true,
+            refreshed: true
+          });
+
+          response.cookies.set('mitra_access_token', refreshResult.accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60, // 1 hour
+            path: '/',
+          });
+
+          return response;
+        } else {
+          console.log('[Mitra Verify API] Auto-refresh failed after token mismatch');
+          return NextResponse.json(
+            { error: 'Token mismatch', valid: false },
+            { status: 401 }
+          );
+        }
       }
       
       return NextResponse.json(
@@ -114,7 +290,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Cek apakah vendor masih ada di database
+    // Cek vendor di database
     const vendor = await prisma.vendor.findUnique({
       where: { vendor_id: tokenPayload.userId },
       select: { 
@@ -142,6 +318,9 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Update session activity
+    await updateSessionActivity(sessionId);
 
     console.log('[Mitra Verify API] Verification successful for:', vendor.email);
 

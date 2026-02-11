@@ -202,11 +202,14 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    if (!mitraSessionId || (!mitraAccessToken && !mitraRefreshToken)) {
+    // ✅ Require at minimum: sessionId and refreshToken
+    if (!mitraSessionId || !mitraRefreshToken) {
       return createLoadingRedirect("/mitra/login", request, "Please login...");
     }
 
+    // ✅ If no access token but has refresh token, let it through (verify API will handle refresh)
     if (!mitraAccessToken && mitraRefreshToken) {
+      console.log('[Middleware] Mitra: No access token, but has refresh token - allowing through for auto-refresh');
       return NextResponse.next();
     }
 
@@ -215,23 +218,37 @@ export async function middleware(request: NextRequest) {
       const verifyResponse = await fetch(verifyUrl.toString(), {
         method: "GET",
         headers: {
-          Cookie: `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken}; mitra_refresh_token=${mitraRefreshToken || ""}`,
+          Cookie: `mitra_session_id=${mitraSessionId}; mitra_access_token=${mitraAccessToken || ""}; mitra_refresh_token=${mitraRefreshToken || ""}`,
         },
       });
 
       const verifyData = await verifyResponse.json();
 
       if (!verifyResponse.ok) {
-        if (verifyData.shouldRefresh && mitraRefreshToken) {
+        console.log('[Middleware] Mitra verify failed:', verifyData);
+
+        // ✅ If verify says it refreshed successfully, allow through
+        if (verifyData.refreshed) {
+          console.log('[Middleware] Mitra: Token was refreshed, allowing through');
           return NextResponse.next();
         }
+
         return createLoadingRedirect("/mitra/login", request, "Session expired...");
+      }
+
+      // ✅ If response includes refreshed flag, we know token was auto-refreshed
+      if (verifyData.refreshed) {
+        console.log('[Middleware] Mitra: Token auto-refreshed during verify');
       }
 
       return NextResponse.next();
     } catch (error) {
       console.error("[Middleware] Mitra verify error:", error);
-      if (mitraRefreshToken) return NextResponse.next();
+      // If has refresh token, allow through (verify API might fix it)
+      if (mitraRefreshToken) {
+        console.log('[Middleware] Mitra verify error but has refresh token - allowing through');
+        return NextResponse.next();
+      }
       return createLoadingRedirect("/mitra/login", request, "Authentication error...");
     }
   }
