@@ -15,6 +15,7 @@ import {
   Send,
 } from 'lucide-react'
 
+// ✅ FIX: Updated Review type to include ratingPhotos and isAnonymous from API
 type Review = {
   review_id: string
   booking_id: string
@@ -24,10 +25,17 @@ type Review = {
   comment: string | null
   created_at: Date
   updated_at: Date
+  // ✅ Fields added by the formatted API response
+  isAnonymous?: boolean
+  ratingPhotos?: string[]
+  rating_photos?: string[]
   booking: {
     booking_number: string
     scheduled_date: Date
     notes: string | null
+    // ✅ Fields from booking model
+    rating_photos?: string[]
+    is_anonymous?: boolean
     items: Array<{
       service: {
         name: string
@@ -65,7 +73,7 @@ type FormattedReview = {
     replyDate: string
   }
   helpfulCount: number
-  mitraLikes: string[] // ✅ Changed from optional to required with default []
+  mitraLikes: string[]
   isAnonymous?: boolean
 }
 
@@ -102,7 +110,7 @@ export default function UlasanPage() {
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState<string>('')
 
-  // ✅ IMPROVED: Parse review metadata dari comment string
+  // Parse review metadata dari comment string
   const parseReviewMetadata = (comment: string | null) => {
     if (!comment) {
       return {
@@ -110,7 +118,7 @@ export default function UlasanPage() {
         photos: [],
         response: undefined,
         helpfulCount: 0,
-        mitraLikes: [], // ✅ Always return array, never undefined
+        mitraLikes: [],
         isAnonymous: false
       }
     }
@@ -119,16 +127,14 @@ export default function UlasanPage() {
     let photos: string[] = []
     let response: { vendorReply: string; replyDate: string } | undefined
     let helpfulCount = 0
-    let mitraLikes: string[] = [] // ✅ Initialize as empty array
+    let mitraLikes: string[] = []
     let isAnonymous = false
 
     try {
-      // ✅ Step 1: Extract main comment (sebelum metadata pertama)
       const firstMetadataIndex = comment.search(/\|(PHOTOS|RESPONSE|LIKES|ANONYMOUS)\|/)
       if (firstMetadataIndex !== -1) {
         mainComment = comment.substring(0, firstMetadataIndex).trim()
       } else {
-        // No metadata, return comment as is
         return {
           mainComment: comment.trim(),
           photos: [],
@@ -139,7 +145,6 @@ export default function UlasanPage() {
         }
       }
 
-      // ✅ Step 2: Extract photos
       if (comment.includes('|PHOTOS|')) {
         const photoMatch = comment.match(/\|PHOTOS\|(.*?)(?=\|(RESPONSE|LIKES|ANONYMOUS)\||$)/)
         if (photoMatch && photoMatch[1]) {
@@ -151,7 +156,6 @@ export default function UlasanPage() {
         }
       }
 
-      // ✅ Step 3: Extract response
       if (comment.includes('|RESPONSE|')) {
         const responseMatch = comment.match(/\|RESPONSE\|(.*?)(?=\|(LIKES|ANONYMOUS)\||$)/)
         if (responseMatch && responseMatch[1]) {
@@ -171,7 +175,6 @@ export default function UlasanPage() {
         }
       }
 
-      // ✅ Step 4: Extract likes
       if (comment.includes('|LIKES|')) {
         const likesMatch = comment.match(/\|LIKES\|(.*?)(?=\|ANONYMOUS\||$)/)
         if (likesMatch && likesMatch[1]) {
@@ -181,25 +184,23 @@ export default function UlasanPage() {
             mitraLikes = Array.isArray(likesData.mitraLikes) ? likesData.mitraLikes : []
           } catch (e) {
             console.error('[Reviews] Failed to parse likes:', e)
-            mitraLikes = [] // ✅ Set to empty array on error
+            mitraLikes = []
           }
         }
       }
 
-      // ✅ Step 5: Check anonymous flag
       if (comment.includes('|ANONYMOUS|')) {
         isAnonymous = true
       }
 
     } catch (error) {
       console.error('[Reviews] Error parsing metadata:', error)
-      // Return safe defaults on error
       return {
         mainComment: comment.split('|')[0].trim(),
         photos: [],
         response: undefined,
         helpfulCount: 0,
-        mitraLikes: [], // ✅ Always return array
+        mitraLikes: [],
         isAnonymous: false
       }
     }
@@ -209,7 +210,7 @@ export default function UlasanPage() {
       photos,
       response,
       helpfulCount,
-      mitraLikes, // ✅ Always an array, never undefined
+      mitraLikes,
       isAnonymous
     }
   }
@@ -302,13 +303,38 @@ export default function UlasanPage() {
         const serviceType = review.booking.items[0]?.service?.name || 'Layanan'
         const metadata = parseReviewMetadata(review.comment)
         
-        // ✅ Debug logging
-        console.log('[Reviews] Parsing review:', {
-          original: review.comment,
-          parsed: metadata.mainComment,
-          hasMetadata: review.comment?.includes('|'),
-          response: metadata.response,
-          photos: metadata.photos?.length || 0
+        // ✅ FIX: Get photos from multiple sources with priority:
+        // 1. Top-level ratingPhotos / rating_photos (added by formatted API response)
+        // 2. booking.rating_photos (direct from booking model)
+        // 3. metadata.photos (parsed from comment string - legacy fallback)
+        const apiPhotos = review.ratingPhotos || review.rating_photos || []
+        const bookingPhotos = review.booking?.rating_photos || []
+        const metadataPhotos = metadata.photos || []
+        
+        // Use first non-empty source
+        const photos = apiPhotos.length > 0 
+          ? apiPhotos 
+          : bookingPhotos.length > 0 
+            ? bookingPhotos 
+            : metadataPhotos
+
+        // ✅ FIX: Get anonymous status from multiple sources with priority:
+        // 1. Top-level isAnonymous (added by formatted API response)
+        // 2. booking.is_anonymous (direct from booking model)
+        // 3. metadata.isAnonymous (parsed from comment string - legacy fallback)
+        const isAnonymous = review.isAnonymous === true 
+          || review.booking?.is_anonymous === true 
+          || metadata.isAnonymous
+
+        console.log('[Reviews] Formatting review:', {
+          reviewId: review.review_id,
+          isAnonymous,
+          apiPhotosCount: apiPhotos.length,
+          bookingPhotosCount: bookingPhotos.length,
+          metadataPhotosCount: metadataPhotos.length,
+          finalPhotosCount: photos.length,
+          finalPhotos: photos,
+          hasResponse: !!metadata.response,
         })
         
         return {
@@ -316,19 +342,19 @@ export default function UlasanPage() {
           booking_id: review.booking_id,
           user_id: review.user_id,
           vendor_id: review.vendor_id,
-          userName: metadata.isAnonymous ? 'Anonymous' : review.user.name,
-          userEmail: review.user.email,
-          userAvatar: metadata.isAnonymous ? undefined : (review.user.avatar || undefined),
+          userName: isAnonymous ? 'Anonymous' : review.user.name,
+          userEmail: isAnonymous ? '' : review.user.email,
+          userAvatar: isAnonymous ? undefined : (review.user.avatar || undefined),
           rating: review.rating,
-          comment: metadata.mainComment, // ✅ HANYA mainComment yang ditampilkan
+          comment: metadata.mainComment,
           serviceType,
           date: dateString,
           dateTimestamp: timestamp,
-          photos: metadata.photos,
+          photos: photos,           // ✅ Now uses booking.rating_photos as primary source
           response: metadata.response,
           helpfulCount: metadata.helpfulCount,
-          mitraLikes: metadata.mitraLikes || [], // ✅ Ensure always array
-          isAnonymous: metadata.isAnonymous
+          mitraLikes: metadata.mitraLikes || [],
+          isAnonymous: isAnonymous
         }
       })
 
@@ -365,7 +391,7 @@ export default function UlasanPage() {
     }
   }
 
-  // ✅ REAL-TIME UPDATE: Like review tanpa reload
+  // Like review tanpa reload
   const handleLikeReview = async (reviewId: string) => {
     try {
       // Optimistic update
@@ -398,14 +424,12 @@ export default function UlasanPage() {
       })
 
       if (!response.ok) {
-        // Rollback on error
         loadReviews()
         throw new Error('Failed to like review')
       }
 
       const data = await response.json()
       
-      // Update dengan data dari server untuk sinkronisasi
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
@@ -419,7 +443,6 @@ export default function UlasanPage() {
         })
       )
 
-      // Dispatch event untuk update di page lain
       window.dispatchEvent(new CustomEvent('reviewsUpdated'))
 
     } catch (error) {
@@ -427,7 +450,7 @@ export default function UlasanPage() {
     }
   }
 
-  // ✅ REAL-TIME UPDATE: Reply tanpa reload
+  // Reply tanpa reload
   const handleReplySubmit = async (reviewId: string) => {
     if (!replyText.trim()) return
 
@@ -454,7 +477,6 @@ export default function UlasanPage() {
         })
       )
 
-      // Clear form
       setReplyingTo(null)
       setReplyText('')
 
@@ -471,14 +493,12 @@ export default function UlasanPage() {
       })
 
       if (!response.ok) {
-        // Rollback on error
         loadReviews()
         throw new Error('Failed to submit reply')
       }
 
       const data = await response.json()
       
-      // Update dengan data dari server untuk sinkronisasi
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review.id === reviewId) {
@@ -491,7 +511,6 @@ export default function UlasanPage() {
         })
       )
 
-      // Dispatch event untuk update di page lain
       window.dispatchEvent(new CustomEvent('reviewsUpdated'))
 
     } catch (error) {
@@ -779,6 +798,7 @@ export default function UlasanPage() {
                     )}
                   </div>
 
+                  {/* ✅ FIX: Photos section - now correctly shows booking.rating_photos */}
                   {review.photos && review.photos.length > 0 && (
                     <div className="mb-4">
                       <div className="flex gap-2 overflow-x-auto pb-2">

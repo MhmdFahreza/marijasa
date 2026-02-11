@@ -69,13 +69,19 @@ export async function GET(request: NextRequest) {
     console.log('[Mitra Reviews API] Fetching reviews for vendor:', vendorId)
 
     // Fetch reviews dengan relasi yang diperlukan
+    // ✅ FIX: Explicitly select rating_photos and is_anonymous from booking
     const reviews = await prisma.review.findMany({
       where: {
         vendor_id: vendorId,
       },
       include: {
         booking: {
-          include: {
+          select: {
+            booking_number: true,
+            scheduled_date: true,
+            notes: true,
+            rating_photos: true,   
+            is_anonymous: true,     
             items: {
               include: {
                 service: {
@@ -118,6 +124,7 @@ export async function GET(request: NextRequest) {
         reviewId: review.review_id,
         isAnonymous,
         photosCount: ratingPhotos.length,
+        photosUrls: ratingPhotos,
         userName: review.user.name,
         displayName: isAnonymous ? 'Anonymous' : review.user.name,
       })
