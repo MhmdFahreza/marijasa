@@ -1,7 +1,7 @@
 // app/components/lib/mitra-email-service.ts
 
 const APP_NAME = "MariJasa";
-const DEFAULT_FROM_EMAIL = "onboarding@resend.dev";
+const DEFAULT_FROM_EMAIL = "noreply@marijasa.my.id";
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL;
 
 interface SendMitraEmailResult {
@@ -96,7 +96,7 @@ function getApprovalEmailTemplate(name: string, notes?: string): string {
   const primaryColor = "#7CE0A8";
   const loginUrl = process.env.NEXT_PUBLIC_APP_URL 
     ? `${process.env.NEXT_PUBLIC_APP_URL}/mitra/login`
-    : "http://localhost:3000/mitra/login";
+    : "https://www.marijasa.my.id/mitra/login";
 
   return `
 <!DOCTYPE html>
@@ -201,7 +201,7 @@ function getRejectionEmailTemplate(name: string, reason?: string): string {
   const primaryColor = "#7CE0A8";
   const registerUrl = process.env.NEXT_PUBLIC_APP_URL 
     ? `${process.env.NEXT_PUBLIC_APP_URL}/mitra/daftar`
-    : "https://marijasa.com/mitra/daftar";
+    : "https://www.marijasa.my.id/mitra/daftar";
 
   return `
 <!DOCTYPE html>

@@ -4,7 +4,7 @@ import React, { useRef, ReactNode, useEffect, useState, useCallback } from "reac
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-
+import imageCompression from 'browser-image-compression';
 import { IconUpload } from "@tabler/icons-react";
 import { useDropzone } from "react-dropzone";
 import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
@@ -58,6 +58,7 @@ import {
     ZoomOut,
     Minus,
     FileUser,
+    Loader2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import SiteFooter from "@/app/(footer)/footer";
@@ -178,6 +179,33 @@ const readFileAsDataURL = (file: File): Promise<string> => {
     });
 };
 
+// ✅ SOLUSI: Fungsi untuk kompres gambar
+const compressImage = async (file: File, maxSizeMB: number = 0.5): Promise<File> => {
+    try {
+        const options = {
+            maxSizeMB: maxSizeMB,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+            fileType: 'image/jpeg',
+        };
+
+        const compressedFile = await imageCompression(file, options);
+
+        // Rename file dengan nama asli
+        const renamedFile = new File([compressedFile], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+        });
+
+        console.log(`Compressed ${file.name}: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(renamedFile.size / 1024 / 1024).toFixed(2)}MB`);
+
+        return renamedFile;
+    } catch (error) {
+        console.error('Error compressing image:', error);
+        return file; // Return original if compression fails
+    }
+};
+
 export default function MitraDaftarPage() {
     const router = useRouter();
     const prefersReduced = useReducedMotion();
@@ -224,6 +252,7 @@ export default function MitraDaftarPage() {
     const [siup, setSiup] = useState<DocumentFile>({ file: null, displayName: "" });
     const [cv, setCv] = useState<DocumentFile>({ file: null, displayName: "" });
     const [tipeMitra, setTipeMitra] = useState<"individu" | "perusahaan">("individu");
+    const [uploadProgress, setUploadProgress] = useState<string>("");
 
     // Error state
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -350,10 +379,20 @@ export default function MitraDaftarPage() {
                 setErrors((prev) => ({ ...prev, fotoProfil: "Ukuran file maksimal 5MB" }));
                 return;
             }
-            setFotoProfil(file);
-            const dataUrl = await readFileAsDataURL(file);
-            setFotoProfilPreview(dataUrl);
-            setErrors((prev) => ({ ...prev, fotoProfil: "" }));
+
+            try {
+                setUploadProgress("Mengompres foto profil...");
+                const compressedFile = await compressImage(file, 0.3); // Max 300KB
+                setFotoProfil(compressedFile);
+                const dataUrl = await readFileAsDataURL(compressedFile);
+                setFotoProfilPreview(dataUrl);
+                setErrors((prev) => ({ ...prev, fotoProfil: "" }));
+                setUploadProgress("");
+            } catch (error) {
+                console.error('Error processing profile photo:', error);
+                setErrors((prev) => ({ ...prev, fotoProfil: "Gagal memproses foto" }));
+                setUploadProgress("");
+            }
         }
     }, []);
 
@@ -378,18 +417,8 @@ export default function MitraDaftarPage() {
 
     const handleHasilPekerjaanChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
-        const validFiles = files.filter((file) => {
-            if (file.size > 5 * 1024 * 1024) {
-                setErrors((prev) => ({
-                    ...prev,
-                    hasilPekerjaan: "Setiap file maksimal 5MB",
-                }));
-                return false;
-            }
-            return true;
-        });
 
-        if (hasilPekerjaan.length + validFiles.length > 6) {
+        if (hasilPekerjaan.length + files.length > 6) {
             setErrors((prev) => ({
                 ...prev,
                 hasilPekerjaan: "Maksimal 6 foto",
@@ -397,19 +426,41 @@ export default function MitraDaftarPage() {
             return;
         }
 
-        const newImages: WorkImage[] = [];
-        for (const file of validFiles) {
-            const dataUrl = await readFileAsDataURL(file);
-            newImages.push({
-                id: `${Date.now()}-${Math.random()}`,
-                file,
-                preview: dataUrl,
-                displayName: generateRandomFileName(file)
-            });
-        }
+        try {
+            setUploadProgress(`Mengompres ${files.length} foto...`);
 
-        setHasilPekerjaan([...hasilPekerjaan, ...newImages]);
-        setErrors((prev) => ({ ...prev, hasilPekerjaan: "" }));
+            const newImages: WorkImage[] = [];
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+
+                if (file.size > 5 * 1024 * 1024) {
+                    setErrors((prev) => ({
+                        ...prev,
+                        hasilPekerjaan: "Setiap file maksimal 5MB",
+                    }));
+                    continue;
+                }
+
+                setUploadProgress(`Mengompres foto ${i + 1}/${files.length}...`);
+                const compressedFile = await compressImage(file, 0.4); // Max 400KB
+                const dataUrl = await readFileAsDataURL(compressedFile);
+
+                newImages.push({
+                    id: `${Date.now()}-${Math.random()}`,
+                    file: compressedFile,
+                    preview: dataUrl,
+                    displayName: generateRandomFileName(compressedFile)
+                });
+            }
+
+            setHasilPekerjaan([...hasilPekerjaan, ...newImages]);
+            setErrors((prev) => ({ ...prev, hasilPekerjaan: "" }));
+            setUploadProgress("");
+        } catch (error) {
+            console.error('Error processing work images:', error);
+            setErrors((prev) => ({ ...prev, hasilPekerjaan: "Gagal memproses foto" }));
+            setUploadProgress("");
+        }
     }, [hasilPekerjaan]);
 
     const handleRemoveHasilPekerjaan = useCallback((id: string) => {
@@ -481,10 +532,18 @@ export default function MitraDaftarPage() {
 
         canvas.toBlob(async (blob) => {
             if (blob) {
-                const croppedFile = new File([blob], "ktp-cropped.jpg", { type: "image/jpeg" });
-                const displayName = generateRandomFileName(croppedFile);
-                const dataUrl = await readFileAsDataURL(croppedFile);
-                setFotoKTP({ file: croppedFile, displayName, preview: dataUrl });
+                try {
+                    setUploadProgress("Mengompres KTP...");
+                    const croppedFile = new File([blob], "ktp-cropped.jpg", { type: "image/jpeg" });
+                    const compressedFile = await compressImage(croppedFile, 0.3); // Max 300KB
+                    const displayName = generateRandomFileName(compressedFile);
+                    const dataUrl = await readFileAsDataURL(compressedFile);
+                    setFotoKTP({ file: compressedFile, displayName, preview: dataUrl });
+                    setUploadProgress("");
+                } catch (error) {
+                    console.error('Error compressing KTP:', error);
+                    setUploadProgress("");
+                }
             }
         }, 'image/jpeg', 0.95);
 
@@ -500,10 +559,20 @@ export default function MitraDaftarPage() {
                 setErrors((prev) => ({ ...prev, fotoDenganKTP: "Ukuran file maksimal 5MB" }));
                 return;
             }
-            const displayName = generateRandomFileName(file);
-            const dataUrl = await readFileAsDataURL(file);
-            setFotoDenganKTP({ file, displayName, preview: dataUrl });
-            setErrors((prev) => ({ ...prev, fotoDenganKTP: "" }));
+
+            try {
+                setUploadProgress("Mengompres foto dengan KTP...");
+                const compressedFile = await compressImage(file, 0.3); // Max 300KB
+                const displayName = generateRandomFileName(compressedFile);
+                const dataUrl = await readFileAsDataURL(compressedFile);
+                setFotoDenganKTP({ file: compressedFile, displayName, preview: dataUrl });
+                setErrors((prev) => ({ ...prev, fotoDenganKTP: "" }));
+                setUploadProgress("");
+            } catch (error) {
+                console.error('Error processing selfie with KTP:', error);
+                setErrors((prev) => ({ ...prev, fotoDenganKTP: "Gagal memproses foto" }));
+                setUploadProgress("");
+            }
         }
     }, []);
 
@@ -702,11 +771,13 @@ export default function MitraDaftarPage() {
         }
 
         setIsSubmitting(true);
+        setUploadProgress("Memproses pendaftaran...");
 
         try {
             const formData = new FormData();
+
+            // Text fields
             formData.append("namaMitra", namaMitra);
-            if (fotoProfil) formData.append("fotoProfil", fotoProfil);
             formData.append("kategoriJasa", kategoriJasa);
             formData.append("jasaDitawarkan", JSON.stringify(jasaDitawarkan));
             formData.append("deskripsi", deskripsi);
@@ -716,6 +787,11 @@ export default function MitraDaftarPage() {
             formData.append("alamat", alamat);
             formData.append("password", password);
             formData.append("tipeMitra", tipeMitra);
+
+            // Files - already compressed
+            setUploadProgress("Mengunggah dokumen...");
+
+            if (fotoProfil) formData.append("fotoProfil", fotoProfil);
             if (fotoKTP.file) formData.append("fotoKTP", fotoKTP.file);
             if (fotoDenganKTP.file) formData.append("fotoDenganKTP", fotoDenganKTP.file);
             if (skck.file) formData.append("skck", skck.file);
@@ -725,6 +801,17 @@ export default function MitraDaftarPage() {
             hasilPekerjaan.forEach((img, index) => {
                 formData.append(`hasilPekerjaan_${index}`, img.file);
             });
+
+            // ✅ Log total size
+            let totalSize = 0;
+            for (const [key, value] of formData.entries()) {
+                if (value instanceof File) {
+                    totalSize += value.size;
+                }
+            }
+            console.log(`Total payload size: ${(totalSize / 1024 / 1024).toFixed(2)}MB`);
+
+            setUploadProgress("Mengirim data ke server...");
 
             const response = await fetch('/api/mitra/register', {
                 method: 'POST',
@@ -737,13 +824,14 @@ export default function MitraDaftarPage() {
                 throw new Error(data.message || 'Terjadi kesalahan saat mendaftar');
             }
 
-            // Tampilkan modal sukses
             setShowSuccessModal(true);
             setStep2Completed(true);
+            setUploadProgress("");
 
         } catch (error: any) {
             console.error('Registration error:', error);
             setSubmitError(error.message || 'Terjadi kesalahan saat mendaftar. Silakan coba lagi.');
+            setUploadProgress("");
         } finally {
             setIsSubmitting(false);
         }
@@ -820,6 +908,25 @@ export default function MitraDaftarPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* ✅ Upload Progress Indicator */}
+                <AnimatePresence>
+                    {uploadProgress && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="mb-6"
+                        >
+                            <Alert className="border-[#7CE0A8] bg-[#7CE0A8]/10">
+                                <Loader2 className="h-4 w-4 text-[#7CE0A8] animate-spin" />
+                                <AlertDescription className="text-[#7CE0A8]">
+                                    {uploadProgress}
+                                </AlertDescription>
+                            </Alert>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Error Alert */}
                 <AnimatePresence>
@@ -1748,7 +1855,7 @@ export default function MitraDaftarPage() {
                             Sesuaikan area crop dengan batas KTP
                         </p>
                     </DialogHeader>
-                    
+
                     <div className="flex-1 flex flex-col gap-3 overflow-hidden">
                         {/* Zoom Controls */}
                         <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg">
@@ -1867,8 +1974,8 @@ export default function MitraDaftarPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button 
-                            className="w-full bg-[#7CE0A8] hover:bg-[#6BC999]" 
+                        <Button
+                            className="w-full bg-[#7CE0A8] hover:bg-[#6BC999]"
                             onClick={handleCloseSuccessModal}
                         >
                             Kembali ke Halaman Utama
