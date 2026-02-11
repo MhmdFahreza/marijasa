@@ -32,6 +32,63 @@ async function updateVendorTags(vendorId: string) {
   }
 }
 
+// ✅ Helper: Auto-create services dari vendor tags jika belum ada services
+async function ensureServicesFromTags(vendorId: string): Promise<any[]> {
+  try {
+    // Cek vendor dan tags-nya
+    const vendor = await prisma.vendor.findUnique({
+      where: { vendor_id: vendorId },
+      select: {
+        vendor_id: true,
+        name: true,
+        tags: true,
+        specialties: true,
+      },
+    });
+
+    if (!vendor) {
+      console.log('[Services API] Vendor not found:', vendorId);
+      return [];
+    }
+
+    // Gunakan tags atau specialties sebagai sumber layanan
+    const serviceTags = vendor.tags?.length > 0 ? vendor.tags : vendor.specialties || [];
+
+    if (serviceTags.length === 0) {
+      console.log('[Services API] No tags/specialties found for vendor:', vendorId);
+      return [];
+    }
+
+    console.log('[Services API] Auto-creating services from tags:', serviceTags);
+
+    // Buat services dari tags
+    const createdServices = [];
+    for (const tagName of serviceTags) {
+      try {
+        const service = await prisma.service.create({
+          data: {
+            vendor_id: vendor.vendor_id,
+            name: tagName,
+            description: `Layanan ${tagName} oleh ${vendor.name}`,
+            price: 0,
+            price_type: 'FIXED',
+            is_active: true,
+          },
+        });
+        createdServices.push(service);
+        console.log('[Services API] Auto-created service:', service.name, service.service_id);
+      } catch (createError) {
+        console.error('[Services API] Error creating service from tag:', tagName, createError);
+      }
+    }
+
+    return createdServices;
+  } catch (error) {
+    console.error('[Services API] Error in ensureServicesFromTags:', error);
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const accessToken = request.cookies.get('mitra_access_token')?.value;
@@ -51,27 +108,49 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [services, gallery] = await Promise.all([
-      prisma.service.findMany({
-        where: {
-          vendor_id: tokenPayload.userId,
-        },
-        orderBy: {
-          created_at: 'desc',
-        },
-      }),
-      prisma.vendorGallery.findMany({
-        where: {
-          vendor_id: tokenPayload.userId,
-        },
-        orderBy: {
-          sort_order: 'asc',
-        },
-      })
-    ]);
+    // Fetch services
+    let services = await prisma.service.findMany({
+      where: {
+        vendor_id: tokenPayload.userId,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
 
-    console.log('[Services API GET] Total services:', services.length);
+    console.log('[Services API GET] Total services found:', services.length);
+
+    // ✅ FALLBACK: Jika tidak ada services, coba buat dari tags vendor
+    if (services.length === 0) {
+      console.log('[Services API GET] No services found, attempting to create from vendor tags...');
+      const autoCreated = await ensureServicesFromTags(tokenPayload.userId);
+      
+      if (autoCreated.length > 0) {
+        // Fetch ulang setelah auto-create
+        services = await prisma.service.findMany({
+          where: {
+            vendor_id: tokenPayload.userId,
+          },
+          orderBy: {
+            created_at: 'desc',
+          },
+        });
+        console.log('[Services API GET] Services after auto-create:', services.length);
+      }
+    }
+
+    // Fetch gallery
+    const gallery = await prisma.vendorGallery.findMany({
+      where: {
+        vendor_id: tokenPayload.userId,
+      },
+      orderBy: {
+        sort_order: 'asc',
+      },
+    });
+
     console.log('[Services API GET] Active services:', services.filter(s => s.is_active === true).length);
+    console.log('[Services API GET] Gallery items:', gallery.length);
 
     return NextResponse.json({
       services,
@@ -129,7 +208,7 @@ export async function POST(request: NextRequest) {
         price: parseFloat(price),
         price_type,
         estimated_time,
-        is_active: isActiveBoolean, // Pastikan boolean
+        is_active: isActiveBoolean,
       },
     });
 
@@ -217,7 +296,7 @@ export async function PUT(request: NextRequest) {
         price: price !== undefined ? parseFloat(price) : existingService.price,
         price_type: price_type ?? existingService.price_type,
         estimated_time: estimated_time ?? existingService.estimated_time,
-        is_active: isActiveBoolean, // Pastikan boolean
+        is_active: isActiveBoolean,
         updated_at: new Date(),
       },
     });

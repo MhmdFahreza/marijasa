@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
     const lokasi = JSON.parse((formData.get("lokasi") as string) || "[]");
     const tipeMitra = formData.get("tipeMitra") as string;
 
+    console.log("[Mitra Register] Starting registration for:", namaMitra);
+    console.log("[Mitra Register] Kategori:", kategoriJasa);
+    console.log("[Mitra Register] Jasa ditawarkan:", jasaDitawarkan);
+    console.log("[Mitra Register] Jasa ditawarkan type:", typeof jasaDitawarkan, Array.isArray(jasaDitawarkan));
+
     // Validate required fields
     if (
       !namaMitra ||
@@ -76,6 +81,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ✅ Pastikan jasaDitawarkan adalah array of strings
+    let serviceNames: string[] = [];
+    if (Array.isArray(jasaDitawarkan)) {
+      serviceNames = jasaDitawarkan.filter(
+        (item: any) => typeof item === "string" && item.trim() !== ""
+      );
+    } else if (typeof jasaDitawarkan === "string") {
+      // Jika ternyata string, coba parse atau split
+      try {
+        const parsed = JSON.parse(jasaDitawarkan);
+        if (Array.isArray(parsed)) {
+          serviceNames = parsed.filter(
+            (item: any) => typeof item === "string" && item.trim() !== ""
+          );
+        }
+      } catch {
+        serviceNames = jasaDitawarkan
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter((s: string) => s !== "");
+      }
+    }
+
+    console.log("[Mitra Register] Parsed service names:", serviceNames);
+
     // Create vendor
     const vendor = await prisma.vendor.create({
       data: {
@@ -85,14 +115,14 @@ export async function POST(request: NextRequest) {
         address: alamat,
         password: hashedPassword,
         category: kategoriJasa,
-        tags: jasaDitawarkan,
+        tags: serviceNames, // ✅ Gunakan serviceNames yang sudah divalidasi
         description: deskripsi,
         service_areas: lokasi,
         partner_type: tipeMitra === "perusahaan" ? "PERUSAHAAN" : "INDIVIDU",
-        avatar: avatarUrl, // ✅ base64 string disimpan langsung di DB
+        avatar: avatarUrl,
         status: "PENDING",
         verified: false,
-        specialties: jasaDitawarkan,
+        specialties: serviceNames, // ✅ Simpan juga di specialties sebagai backup
         rating: 0,
         review_count: 0,
         is_online: false,
@@ -116,7 +146,7 @@ export async function POST(request: NextRequest) {
           prisma.vendorGallery.create({
             data: {
               vendor_id: vendor.vendor_id,
-              image_url: imageBase64, // ✅ base64 string
+              image_url: imageBase64,
               caption: `Hasil Pekerjaan ${galleryIndex + 1}`,
               sort_order: galleryIndex,
             },
@@ -154,7 +184,7 @@ export async function POST(request: NextRequest) {
             data: {
               vendor_id: vendor.vendor_id,
               document_type: doc.type,
-              file_url: fileBase64, // ✅ base64 string disimpan di DB
+              file_url: fileBase64,
               file_name: file.name,
               file_type: file.type,
             },
@@ -168,23 +198,54 @@ export async function POST(request: NextRequest) {
       documentPromises.length
     );
 
-    // Create default services based on tags
-    const servicePromises = jasaDitawarkan.map((serviceName: string) =>
-      prisma.service.create({
-        data: {
-          vendor_id: vendor.vendor_id,
-          name: serviceName,
-          description: `Layanan ${serviceName} oleh ${namaMitra}`,
-          price: 0,
-          price_type: "FIXED",
-          is_active: true,
-        },
-      })
-    );
-    await Promise.all(servicePromises);
+    // ✅ FIXED: Create default services dari jasaDitawarkan
+    // Pastikan services benar-benar dibuat dengan is_active: true
+    let createdServicesCount = 0;
+    if (serviceNames.length > 0) {
+      console.log("[Mitra Register] Creating default services for:", serviceNames);
+      
+      for (const serviceName of serviceNames) {
+        try {
+          const service = await prisma.service.create({
+            data: {
+              vendor_id: vendor.vendor_id,
+              name: serviceName,
+              description: `Layanan ${serviceName} oleh ${namaMitra}`,
+              price: 0,
+              price_type: "FIXED",
+              is_active: true,
+            },
+          });
+          createdServicesCount++;
+          console.log(
+            `[Mitra Register] Service created: ${service.name} (${service.service_id}), is_active: ${service.is_active}`
+          );
+        } catch (serviceError) {
+          console.error(
+            `[Mitra Register] Error creating service "${serviceName}":`,
+            serviceError
+          );
+        }
+      }
+
+      console.log(
+        "[Mitra Register] Total services created:",
+        createdServicesCount,
+        "out of",
+        serviceNames.length
+      );
+    } else {
+      console.warn("[Mitra Register] No service names provided, skipping service creation");
+    }
+
+    // ✅ Verifikasi services yang berhasil dibuat
+    const verifyServices = await prisma.service.findMany({
+      where: { vendor_id: vendor.vendor_id },
+    });
     console.log(
-      "[Mitra Register] Default services created:",
-      servicePromises.length
+      "[Mitra Register] Verification - Services in DB:",
+      verifyServices.length,
+      verifyServices.map((s) => ({ name: s.name, is_active: s.is_active }))
     );
 
     return NextResponse.json(
@@ -192,6 +253,7 @@ export async function POST(request: NextRequest) {
         success: true,
         message: "Pendaftaran berhasil! Menunggu persetujuan admin.",
         vendorId: vendor.vendor_id,
+        servicesCreated: createdServicesCount,
       },
       { status: 201 }
     );
