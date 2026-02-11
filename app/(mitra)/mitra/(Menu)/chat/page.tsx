@@ -37,6 +37,7 @@ import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import EmojiPicker3D from "@/app/components/ui/emoji-picker-3d";
 import CameraModal from "@/app/components/ui/camera-modal";
+import MediaPopup from "@/app/components/ui/media-popup";
 import CallModal from "@/app/components/ui/call-modal";
 import IncomingCallListener from "@/app/components/ui/incoming-call-listener";
 import * as chatService from "@/app/components/lib/services/chatService";
@@ -84,13 +85,11 @@ async function setPresenceOnline(participantId: string, participantType: "user" 
 
 async function setPresenceOffline(participantId: string, participantType: "user" | "mitra") {
   try {
-    // Use sendBeacon for reliability during page unload
     const data = JSON.stringify({ participantId, participantType, isOnline: false });
     const blob = new Blob([data], { type: "application/json" });
     const sent = navigator.sendBeacon("/api/chat/presence", blob);
     
     if (!sent) {
-      // Fallback to fetch with keepalive
       await fetch("/api/chat/presence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -398,26 +397,6 @@ const VoiceMessagePlayer = ({ msg, isMitra }: { msg: Message; isMitra: boolean }
 };
 
 // ============================================
-// Media Popup Component
-// ============================================
-const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: boolean; onClose: () => void; onTakePhoto: () => void; onSelectImage: () => void }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed bottom-24 left-4 z-50 bg-white rounded-2xl shadow-2xl border p-2 w-48">
-      <button onClick={onTakePhoto} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 rounded-lg w-full">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center"><Camera className="h-5 w-5 text-white" /></div>
-        <div className="text-left"><p className="font-medium text-gray-800">Ambil Foto</p><p className="text-xs text-gray-500">Gunakan kamera</p></div>
-      </button>
-      <div className="h-px bg-gray-200 my-1" />
-      <button onClick={onSelectImage} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 rounded-lg w-full">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-r from-[#7CE0A8] to-[#6BD099] flex items-center justify-center"><ImageIcon className="h-5 w-5 text-white" /></div>
-        <div className="text-left"><p className="font-medium text-gray-800">Gambar & Video</p><p className="text-xs text-gray-500">Pilih dari galeri</p></div>
-      </button>
-    </div>
-  );
-};
-
-// ============================================
 // Media Message Component
 // ============================================
 const MediaMessage = ({ msg, isMitra, timestamp, onImageClick }: { msg: Message; isMitra: boolean; timestamp: string; onImageClick: (url: string) => void; }) => {
@@ -522,8 +501,6 @@ export default function MitraChatPage() {
   const [showCallModal, setShowCallModal] = useState(false);
   const [outgoingCallType, setOutgoingCallType] = useState<CallType>('VOICE');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
-
-  // ✅ NEW: Track the other party's real-time online status
   const [peerOnlineStatus, setPeerOnlineStatus] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -531,10 +508,10 @@ export default function MitraChatPage() {
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const presenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const peerPresenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const paperclipRef = useRef<HTMLButtonElement>(null);
 
   const userName = currentSession?.userName || "Customer";
   const userAvatar = currentSession?.userAvatar || "/profile.svg";
-  // ✅ USE real-time peer status instead of stale session data
   const userOnline = peerOnlineStatus;
 
   const webRTC = useWebRTC({
@@ -546,38 +523,24 @@ export default function MitraChatPage() {
     onError: (error) => { console.error('Call error:', error); alert(error); setShowCallModal(false); },
   });
 
-  // ============================================
-  // ✅ PRESENCE HEARTBEAT - Set mitra online & detect page close
-  // ============================================
   useEffect(() => {
     if (!currentMitra?.id) return;
-
     const mitraId = currentMitra.id;
-
-    // Set online immediately
     setPresenceOnline(mitraId, "mitra");
-
-    // Send heartbeat every 30 seconds
     presenceIntervalRef.current = setInterval(() => {
       setPresenceOnline(mitraId, "mitra");
     }, PRESENCE_HEARTBEAT_INTERVAL);
 
-    // Handle tab visibility change
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         setPresenceOnline(mitraId, "mitra");
-      } else {
-        // Tab hidden - set offline after a short delay (in case user comes back quickly)
-        // We don't set offline immediately to avoid flickering
       }
     };
 
-    // Handle page unload (close tab, navigate away)
     const handleBeforeUnload = () => {
       setPresenceOffline(mitraId, "mitra");
     };
 
-    // Handle page hide (more reliable than beforeunload on mobile)
     const handlePageHide = () => {
       setPresenceOffline(mitraId, "mitra");
     };
@@ -587,30 +550,23 @@ export default function MitraChatPage() {
     window.addEventListener("pagehide", handlePageHide);
 
     return () => {
-      // Cleanup: set offline when component unmounts
       setPresenceOffline(mitraId, "mitra");
-
       if (presenceIntervalRef.current) {
         clearInterval(presenceIntervalRef.current);
         presenceIntervalRef.current = null;
       }
-
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handlePageHide);
     };
   }, [currentMitra?.id]);
 
-  // ============================================
-  // ✅ POLL PEER (USER) ONLINE STATUS
-  // ============================================
   useEffect(() => {
     if (!selectedUserId) {
       setPeerOnlineStatus(false);
       return;
     }
 
-    // Fetch immediately
     const fetchPeerStatus = async () => {
       try {
         const res = await safeFetch(
@@ -625,8 +581,6 @@ export default function MitraChatPage() {
     };
 
     fetchPeerStatus();
-
-    // Poll every 10 seconds for peer status
     peerPresenceIntervalRef.current = setInterval(fetchPeerStatus, 10 * 1000);
 
     return () => {
@@ -637,7 +591,6 @@ export default function MitraChatPage() {
     };
   }, [selectedUserId]);
 
-  // Load current mitra from auth
   useEffect(() => {
     const loadCurrentMitra = async () => {
       setAuthLoading(true);
@@ -678,7 +631,6 @@ export default function MitraChatPage() {
     loadCurrentMitra();
   }, []);
 
-  // Load chat list
   useEffect(() => {
     if (!currentMitra?.id) {
       if (!authLoading) setIsLoading(false);
@@ -698,7 +650,6 @@ export default function MitraChatPage() {
     loadChatList();
   }, [currentMitra?.id, authLoading]);
 
-  // AUTO-OPEN CHAT from URL query parameter
   useEffect(() => {
     const userIdFromUrl = searchParams.get('userId');
     
@@ -709,7 +660,6 @@ export default function MitraChatPage() {
     }
   }, [searchParams, currentMitra?.id, authLoading]);
 
-  // Load messages when user is selected
   useEffect(() => {
     if (!currentMitra?.id || !selectedUserId) {
       setCurrentSession(null);
@@ -739,7 +689,6 @@ export default function MitraChatPage() {
     loadMessages();
   }, [currentMitra?.id, selectedUserId]);
 
-  // Polling for new messages
   useEffect(() => {
     if (!currentMitra?.id || !selectedUserId) return;
     const pollMessages = async () => {
@@ -1030,16 +979,91 @@ export default function MitraChatPage() {
               </div>
 
               <form onSubmit={handleSendMessage} className="p-4 border-t flex-shrink-0">
-                <div className="max-w-3xl mx-auto flex items-center gap-2">
-                  <Button type="button" variant="ghost" size="icon" onClick={() => { setShowMediaPopup(!showMediaPopup); setShowEmojiPicker(false); setShowVoiceRecorder(false); }} className="rounded-full"><Paperclip className={`h-5 w-5 ${showMediaPopup ? 'text-[#7CE0A8]' : ''}`} /></Button>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowVoiceRecorder(false); setShowMediaPopup(false); }} className="rounded-full"><Smile className={`h-5 w-5 ${showEmojiPicker ? 'text-orange-500' : ''}`} /></Button>
-                  <div className="flex-1 relative">
-                    <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Ketik pesan..." className="rounded-full px-4 py-5 pr-12" disabled={isSending} />
-                    <Button type="button" variant="ghost" size="icon" onClick={() => { setShowVoiceRecorder(!showVoiceRecorder); setShowEmojiPicker(false); setShowMediaPopup(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full"><Mic className={`h-5 w-5 ${showVoiceRecorder ? 'text-red-500' : ''}`} /></Button>
+                <div className="max-w-3xl mx-auto relative">
+                  {/* Media Popup - positioned relative to paperclip button */}
+                  {showMediaPopup && (
+                    <div className="absolute bottom-full mb-2 left-0">
+                      <MediaPopup
+                        isOpen={showMediaPopup}
+                        onClose={() => setShowMediaPopup(false)}
+                        onTakePhoto={() => {
+                          setShowCameraModal(true);
+                          setShowMediaPopup(false);
+                        }}
+                        onSelectImage={() => {
+                          fileInputRef.current?.click();
+                          setShowMediaPopup(false);
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      ref={paperclipRef}
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => { 
+                        setShowMediaPopup(!showMediaPopup); 
+                        setShowEmojiPicker(false); 
+                        setShowVoiceRecorder(false); 
+                      }} 
+                      className="rounded-full"
+                    >
+                      <Paperclip className={`h-5 w-5 ${showMediaPopup ? 'text-[#7CE0A8]' : ''}`} />
+                    </Button>
+                    
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => { 
+                        setShowEmojiPicker(!showEmojiPicker); 
+                        setShowVoiceRecorder(false); 
+                        setShowMediaPopup(false); 
+                      }} 
+                      className="rounded-full"
+                    >
+                      <Smile className={`h-5 w-5 ${showEmojiPicker ? 'text-orange-500' : ''}`} />
+                    </Button>
+                    
+                    <div className="flex-1 relative">
+                      <Input 
+                        value={newMessage} 
+                        onChange={e => setNewMessage(e.target.value)} 
+                        placeholder="Ketik pesan..." 
+                        className="rounded-full px-4 py-5 pr-12" 
+                        disabled={isSending} 
+                      />
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => { 
+                          setShowVoiceRecorder(!showVoiceRecorder); 
+                          setShowEmojiPicker(false); 
+                          setShowMediaPopup(false); 
+                        }} 
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full"
+                      >
+                        <Mic className={`h-5 w-5 ${showVoiceRecorder ? 'text-red-500' : ''}`} />
+                      </Button>
+                    </div>
+                    
+                    <Button 
+                      type="submit" 
+                      size="icon" 
+                      disabled={!newMessage.trim() || isSending} 
+                      className={`rounded-full shadow-lg h-10 w-10 ${newMessage.trim() && !isSending ? 'bg-gradient-to-r from-[#7CE0A8] to-[#6BD099]' : 'bg-gray-300'}`}
+                    >
+                      {isSending ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Send className="h-5 w-5" />
+                      )}
+                    </Button>
                   </div>
-                  <Button type="submit" size="icon" disabled={!newMessage.trim() || isSending} className={`rounded-full shadow-lg h-10 w-10 ${newMessage.trim() && !isSending ? 'bg-gradient-to-r from-[#7CE0A8] to-[#6BD099]' : 'bg-gray-300'}`}>
-                    {isSending ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-5 w-5" />}
-                  </Button>
                 </div>
               </form>
             </>
@@ -1050,7 +1074,6 @@ export default function MitraChatPage() {
       <EmojiPicker3D isOpen={showEmojiPicker} onEmojiSelect={handleEmojiSelect} onClose={() => setShowEmojiPicker(false)} />
       {showVoiceRecorder && <VoiceRecorder onSend={handleSendVoiceMessage} onCancel={() => setShowVoiceRecorder(false)} />}
       <CameraModal isOpen={showCameraModal} onClose={() => setShowCameraModal(false)} onCapture={handleCameraCapture} />
-      <MediaPopup isOpen={showMediaPopup} onClose={() => setShowMediaPopup(false)} onTakePhoto={() => { setShowCameraModal(true); setShowMediaPopup(false); }} onSelectImage={() => { fileInputRef.current?.click(); setShowMediaPopup(false); }} />
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileSelect} />
     </div>
   );
