@@ -1,10 +1,11 @@
-// app/api/payments/xendit/simulate/route.ts - FIXED WITH RETRY MECHANISM
+// app/api/payments/xendit/simulate/route.ts - UPDATED WITH FALLBACK
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 import { XENDIT_PAYMENT_FEES, PaymentMethodId } from '@/app/components/lib/xendit';
 
 const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY || '';
 const BASE_URL = 'https://api.xendit.co';
+const ALLOW_DIRECT_SIMULATION = process.env.ALLOW_DIRECT_SIMULATION === 'true';
 
 // ==========================================
 // IMPROVED XENDIT SIMULATION WITH RETRY
@@ -23,14 +24,11 @@ async function simulateXenditEWalletPayment(
 
   const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
-  // Try simulation with retry
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[E-Wallet Simulate] Attempt ${attempt}/${maxRetries}`);
 
       const requestBody: any = {};
-
-      // OVO tidak perlu amount parameter
       if (channelCode !== 'ID_OVO') {
         requestBody.amount = amount;
       }
@@ -66,14 +64,11 @@ async function simulateXenditEWalletPayment(
         return { success: true, data, isTestMode: true };
       }
 
-      // Handle specific error cases
       if (response.status === 404) {
         console.log('[E-Wallet Simulate] ⚠️ 404 - Simulation endpoint not available');
-        console.log('[E-Wallet Simulate] This usually means you are in PRODUCTION mode');
-        console.log('[E-Wallet Simulate] Simulation is only available in TEST mode');
         return {
           success: false,
-          error: 'PRODUCTION_MODE',
+          error: 'CHARGE_NOT_FOUND',
           isTestMode: false
         };
       }
@@ -88,7 +83,6 @@ async function simulateXenditEWalletPayment(
         }
         console.log('[E-Wallet Simulate] Error details:', errorData);
 
-        // Jangan retry untuk bad request
         return {
           success: false,
           error: errorData.message || 'Bad request',
@@ -96,7 +90,6 @@ async function simulateXenditEWalletPayment(
         };
       }
 
-      // Retry untuk error lainnya
       if (attempt < maxRetries) {
         console.log(`[E-Wallet Simulate] Retrying in 1 second...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -169,7 +162,7 @@ async function simulateXenditVAPayment(
       }
 
       if (response.status === 404) {
-        return { success: false, error: 'PRODUCTION_MODE', isTestMode: false };
+        return { success: false, error: 'CHARGE_NOT_FOUND', isTestMode: false };
       }
 
       if (attempt < maxRetries) {
@@ -230,7 +223,7 @@ async function simulateXenditQRISPayment(
       }
 
       if (response.status === 404) {
-        return { success: false, error: 'PRODUCTION_MODE', isTestMode: false };
+        return { success: false, error: 'CHARGE_NOT_FOUND', isTestMode: false };
       }
 
       if (attempt < maxRetries) {
@@ -291,7 +284,7 @@ async function simulateXenditRetailPayment(
       }
 
       if (response.status === 404) {
-        return { success: false, error: 'PRODUCTION_MODE', isTestMode: false };
+        return { success: false, error: 'CHARGE_NOT_FOUND', isTestMode: false };
       }
 
       if (attempt < maxRetries) {
@@ -324,15 +317,17 @@ export async function POST(request: NextRequest) {
   console.log('\n╔══════════════════════════════════════════════════════════════════╗');
   console.log('║           SIMULATE PAYMENT - REQUEST RECEIVED                    ║');
   console.log('╚══════════════════════════════════════════════════════════════════╝');
+  console.log('[Config] ALLOW_DIRECT_SIMULATION:', ALLOW_DIRECT_SIMULATION);
 
   try {
     const body = await request.json();
-    const { orderId, simulateStatus, additionalServiceId, paymentType } = body;
+    const { orderId, simulateStatus, additionalServiceId, paymentType, forceUpdate } = body;
 
     console.log('[Simulate] Order ID:', orderId);
     console.log('[Simulate] Status to simulate:', simulateStatus || 'PAID');
     console.log('[Simulate] Payment type:', paymentType || 'main');
     console.log('[Simulate] Additional service ID:', additionalServiceId);
+    console.log('[Simulate] Force update:', forceUpdate);
 
     if (!orderId) {
       return NextResponse.json(
@@ -341,7 +336,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find booking
     const booking = await prisma.booking.findFirst({
       where: { booking_number: orderId },
       include: {
@@ -405,9 +399,10 @@ export async function POST(request: NextRequest) {
         const additionalAmount = additionalService.total_price + (additionalService.service_fee || 10000) + (additionalService.transaction_fee || 0);
 
         let xenditSimulationResult: any = { success: false, isTestMode: true };
+        let useDirectUpdate = forceUpdate === true;
 
-        // Try Xendit simulation
-        if (xenditId) {
+        // Try Xendit simulation if not forced
+        if (!useDirectUpdate && xenditId) {
           console.log('[Simulate] Attempting Xendit simulation for additional service...');
 
           switch (additionalPaymentType) {
@@ -426,41 +421,34 @@ export async function POST(request: NextRequest) {
           }
 
           console.log('[Simulate] Xendit simulation result:', xenditSimulationResult);
+
+          // If Xendit failed and ALLOW_DIRECT_SIMULATION is true, use direct update
+          if (!xenditSimulationResult.success && ALLOW_DIRECT_SIMULATION) {
+            console.log('[Simulate] ⚠️ Xendit failed, using direct database update (ALLOW_DIRECT_SIMULATION=true)');
+            useDirectUpdate = true;
+          }
         }
 
-        // Check if we're in production mode
-        if (xenditSimulationResult.error === 'PRODUCTION_MODE') {
-          return NextResponse.json({
-            success: false,
-            error: 'Production Mode Detected',
-            message: '⚠️ Anda menggunakan Production API Key. Simulasi pembayaran hanya tersedia di Test Mode.\n\n' +
-              'Solusi:\n' +
-              '1. Gunakan Test Mode API Key untuk simulasi, ATAU\n' +
-              '2. Lakukan pembayaran real untuk menguji di Production Mode\n\n' +
-              'Catatan: Database lokal TIDAK akan diupdate karena simulasi gagal.',
-            isTestMode: false,
-            xenditSimulated: false
-          }, { status: 400 });
-        }
-
-        // If simulation failed but in test mode, show error
-        if (!xenditSimulationResult.success && xenditSimulationResult.isTestMode) {
+        // Check if Xendit failed without fallback
+        if (!xenditSimulationResult.success && !ALLOW_DIRECT_SIMULATION && !useDirectUpdate) {
           return NextResponse.json({
             success: false,
             error: 'Simulation Failed',
             message: `❌ Simulasi Xendit gagal: ${xenditSimulationResult.error}\n\n` +
               'Kemungkinan penyebab:\n' +
-              '1. Charge ID tidak valid atau sudah expired\n' +
-              '2. Xendit API sedang bermasalah\n' +
-              '3. Parameter simulasi tidak sesuai\n\n' +
-              'Database lokal TIDAK akan diupdate.',
+              '1. Charge ID sudah expired atau tidak valid\n' +
+              '2. Xendit API sedang bermasalah\n\n' +
+              'Solusi:\n' +
+              '1. Buat pembayaran baru\n' +
+              '2. Set ALLOW_DIRECT_SIMULATION=true di .env untuk testing',
             xenditSimulated: false,
             xenditError: xenditSimulationResult.error
           }, { status: 400 });
         }
 
-        // SUCCESS - Update database
-        console.log('[Simulate] ✅ Xendit simulation SUCCESS - Updating database...');
+        // UPDATE DATABASE (either Xendit succeeded OR using direct update)
+        console.log('[Simulate] ✅ Updating database...');
+        console.log('[Simulate] Method:', useDirectUpdate ? 'DIRECT UPDATE' : 'XENDIT API');
 
         const updatedAdditionalService = await prisma.additionalServiceRequest.update({
           where: { request_id: additionalServiceId },
@@ -472,7 +460,9 @@ export async function POST(request: NextRequest) {
               simulated: true,
               simulated_at: new Date().toISOString(),
               simulated_status: 'PAID',
-              xendit_simulated: true,
+              xendit_simulated: !useDirectUpdate,
+              direct_update: useDirectUpdate,
+              simulation_note: useDirectUpdate ? 'Direct database update (Xendit unavailable)' : 'Xendit API simulation',
               xendit_simulation_data: xenditSimulationResult.data || null
             }
           }
@@ -519,20 +509,27 @@ export async function POST(request: NextRequest) {
         });
 
         // Add to booking history
+        const historyReason = useDirectUpdate
+          ? `Pembayaran untuk layanan tambahan: ${additionalService.description} (Direct Update - Testing)`
+          : `Pembayaran untuk layanan tambahan: ${additionalService.description} (Xendit Simulation)`;
+
         await prisma.bookingHistory.create({
           data: {
             booking_id: booking.booking_id,
-            status: 'Pembayaran Layanan Tambahan Berhasil (Simulasi Xendit)',
-            reason: `Pembayaran untuk layanan tambahan: ${additionalService.description}`
+            status: 'Pembayaran Layanan Tambahan Berhasil (Simulasi)',
+            reason: historyReason
           }
         });
 
-        console.log('[Simulate] ✅ Additional service payment completed with Xendit simulation');
+        console.log('[Simulate] ✅ Additional service payment completed');
 
         return NextResponse.json({
           success: true,
-          message: '✅ Pembayaran berhasil disimulasikan di Xendit dan database lokal!',
-          xenditSimulated: true,
+          message: useDirectUpdate
+            ? '✅ Pembayaran berhasil disimulasikan (Direct Update untuk Testing)!'
+            : '✅ Pembayaran berhasil disimulasikan di Xendit dan database lokal!',
+          xenditSimulated: !useDirectUpdate,
+          directUpdate: useDirectUpdate,
           isTestMode: true,
           additionalServicePaid: true,
           additionalService: {
@@ -584,9 +581,10 @@ export async function POST(request: NextRequest) {
       console.log('[Simulate] Booking total:', booking.total);
 
       let xenditSimulationResult: any = { success: false, isTestMode: true };
+      let useDirectUpdate = forceUpdate === true;
 
-      // Try Xendit simulation
-      if (xenditId) {
+      // Try Xendit simulation if not forced
+      if (!useDirectUpdate && xenditId) {
         console.log('[Simulate] Attempting Xendit simulation for main payment...');
 
         switch (xenditPaymentType) {
@@ -607,47 +605,34 @@ export async function POST(request: NextRequest) {
         }
 
         console.log('[Simulate] Xendit simulation result:', xenditSimulationResult);
+
+        // If Xendit failed and ALLOW_DIRECT_SIMULATION is true, use direct update
+        if (!xenditSimulationResult.success && ALLOW_DIRECT_SIMULATION) {
+          console.log('[Simulate] ⚠️ Xendit failed, using direct database update (ALLOW_DIRECT_SIMULATION=true)');
+          useDirectUpdate = true;
+        }
       }
 
-      // Check if we're in production mode
-      if (xenditSimulationResult.error === 'PRODUCTION_MODE') {
-        return NextResponse.json({
-          success: false,
-          error: 'Production Mode Detected',
-          message: '⚠️ Anda menggunakan Production API Key. Simulasi pembayaran hanya tersedia di Test Mode.\n\n' +
-            'Solusi:\n' +
-            '1. Gunakan Test Mode API Key untuk simulasi, ATAU\n' +
-            '2. Lakukan pembayaran real untuk menguji di Production Mode, ATAU\n' +
-            '3. Gunakan webhook simulator di Xendit Dashboard\n\n' +
-            'Catatan: Database lokal TIDAK akan diupdate karena simulasi gagal.',
-          isTestMode: false,
-          xenditSimulated: false,
-          helpUrl: 'https://dashboard.xendit.co/settings/developers#webhooks'
-        }, { status: 400 });
-      }
-
-      // If simulation failed but in test mode, show error
-      if (!xenditSimulationResult.success && xenditSimulationResult.isTestMode) {
+      // Check if Xendit failed without fallback
+      if (!xenditSimulationResult.success && !ALLOW_DIRECT_SIMULATION && !useDirectUpdate) {
         return NextResponse.json({
           success: false,
           error: 'Simulation Failed',
           message: `❌ Simulasi Xendit gagal: ${xenditSimulationResult.error}\n\n` +
             'Kemungkinan penyebab:\n' +
-            '1. Charge ID tidak valid atau sudah expired\n' +
-            '2. Xendit API sedang bermasalah\n' +
-            '3. Parameter simulasi tidak sesuai\n\n' +
+            '1. Charge ID sudah expired atau tidak valid\n' +
+            '2. Xendit API sedang bermasalah\n\n' +
             'Solusi:\n' +
-            '1. Coba buat pembayaran baru\n' +
-            '2. Periksa Xendit Dashboard untuk status charge\n' +
-            '3. Gunakan webhook simulator di Xendit Dashboard\n\n' +
-            'Database lokal TIDAK akan diupdate.',
+            '1. Buat pembayaran baru\n' +
+            '2. Set ALLOW_DIRECT_SIMULATION=true di .env untuk testing',
           xenditSimulated: false,
           xenditError: xenditSimulationResult.error
         }, { status: 400 });
       }
 
-      // SUCCESS - Update database
-      console.log('[Simulate] ✅ Xendit simulation SUCCESS - Updating database...');
+      // UPDATE DATABASE (either Xendit succeeded OR using direct update)
+      console.log('[Simulate] ✅ Updating database...');
+      console.log('[Simulate] Method:', useDirectUpdate ? 'DIRECT UPDATE' : 'XENDIT API');
 
       const paidAdditionalServices = await prisma.additionalServiceRequest.findMany({
         where: {
@@ -676,7 +661,9 @@ export async function POST(request: NextRequest) {
             simulated: true,
             simulated_at: new Date().toISOString(),
             simulated_status: 'PAID',
-            xendit_simulated: true,
+            xendit_simulated: !useDirectUpdate,
+            direct_update: useDirectUpdate,
+            simulation_note: useDirectUpdate ? 'Direct database update (Xendit unavailable)' : 'Xendit API simulation',
             xendit_simulation_data: xenditSimulationResult.data || null
           }
         }
@@ -697,25 +684,32 @@ export async function POST(request: NextRequest) {
       });
 
       // Add to booking history
+      const historyReason = useDirectUpdate
+        ? `Pembayaran via ${paymentMethodName} (Direct Update - Testing)`
+        : `Pembayaran via ${paymentMethodName} (Xendit Simulation)`;
+
       await prisma.bookingHistory.create({
         data: {
           booking_id: booking.booking_id,
-          status: 'Pembayaran Berhasil (Simulasi Xendit)',
-          reason: `Pembayaran via ${paymentMethodName} telah dikonfirmasi melalui simulasi Xendit`
+          status: 'Pembayaran Berhasil (Simulasi)',
+          reason: historyReason
         }
       });
 
       console.log('\n╔══════════════════════════════════════════════════════════════════╗');
       console.log('║           PAYMENT SIMULATION SUCCESSFUL                          ║');
-      console.log('║ Method: Xendit API Simulation                                    ║');
+      console.log('║ Method:', (useDirectUpdate ? 'Direct Update' : 'Xendit API').padEnd(55), '║');
       console.log('║ Status: CONFIRMED (Diproses)                                     ║');
       console.log('║ Total:', newTotal.toString().padEnd(55), '║');
       console.log('╚══════════════════════════════════════════════════════════════════╝\n');
 
       return NextResponse.json({
         success: true,
-        message: '✅ Pembayaran berhasil disimulasikan di Xendit dan database lokal!',
-        xenditSimulated: true,
+        message: useDirectUpdate
+          ? '✅ Pembayaran berhasil disimulasikan (Direct Update untuk Testing)!'
+          : '✅ Pembayaran berhasil disimulasikan di Xendit dan database lokal!',
+        xenditSimulated: !useDirectUpdate,
+        directUpdate: useDirectUpdate,
         isTestMode: true,
         booking: {
           orderId: updatedBooking.booking_number,
@@ -749,12 +743,17 @@ export async function GET(request: NextRequest) {
   if (!orderId) {
     return NextResponse.json({
       message: 'Xendit Payment Simulation Endpoint',
-      usage: 'POST with { orderId, simulateStatus?: "PAID" | "FAILED" }',
-      note: 'This endpoint simulates payment through Xendit API. Requires Test Mode API Key.',
+      usage: 'POST with { orderId, simulateStatus?: "PAID" | "FAILED", forceUpdate?: boolean }',
+      config: {
+        ALLOW_DIRECT_SIMULATION: ALLOW_DIRECT_SIMULATION,
+        note: ALLOW_DIRECT_SIMULATION
+          ? 'Direct database update enabled for testing'
+          : 'Only Xendit API simulation allowed'
+      },
       testMode: {
-        info: 'To use simulation, you must use Test Mode API Key',
+        info: 'To use Xendit simulation, you must use Test Mode API Key',
         howTo: 'Get your test API key from Xendit Dashboard > Settings > Developers',
-        limitations: 'Production API keys do not support simulation endpoints'
+        fallback: 'If Xendit fails and ALLOW_DIRECT_SIMULATION=true, will update database directly'
       }
     });
   }
@@ -784,6 +783,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      config: {
+        ALLOW_DIRECT_SIMULATION: ALLOW_DIRECT_SIMULATION
+      },
       booking: {
         orderId: booking.booking_number,
         paymentStatus: booking.payment_status,
@@ -795,6 +797,8 @@ export async function GET(request: NextRequest) {
         isSimulated: metadata?.simulated || false,
         simulatedAt: metadata?.simulated_at || null,
         xenditSimulated: metadata?.xendit_simulated || false,
+        directUpdate: metadata?.direct_update || false,
+        simulationNote: metadata?.simulation_note || null,
         xenditId: metadata?.xendit_id || null,
         paymentType: metadata?.payment_type || null,
         channelCode: metadata?.channel_code || null,
