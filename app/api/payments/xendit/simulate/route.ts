@@ -11,38 +11,118 @@ const ALLOW_DIRECT_SIMULATION = process.env.ALLOW_DIRECT_SIMULATION === 'true';
 // IMPROVED XENDIT SIMULATION WITH RETRY
 // ==========================================
 
-/**
- * SIMULASI E-WALLET – DIUBAH AGAR LANGSUNG SUKSES UNTUK SEMUA CHANNEL
- * 
- * Alasan perubahan:
- * - Xendit hanya mendukung simulasi pembayaran untuk OVO (tanpa amount).
- * - Untuk DANA, ShopeePay, LinkAja endpoint simulasi tidak tersedia atau selalu error.
- * - Agar semua e-wallet langsung PAID saat tombol "Simulasi Pembayaran Berhasil" ditekan,
- *   kita langsung return success tanpa memanggil API Xendit.
- */
 async function simulateXenditEWalletPayment(
   chargeId: string,
   amount: number,
   channelCode: string,
   maxRetries: number = 3
 ): Promise<{ success: boolean; data?: any; error?: string; isTestMode?: boolean }> {
-  console.log('\n[E-Wallet Simulate] Simulating payment...');
+  console.log('\n[E-Wallet Simulate] Starting simulation...');
   console.log('[E-Wallet Simulate] Charge ID:', chargeId);
   console.log('[E-Wallet Simulate] Channel:', channelCode);
   console.log('[E-Wallet Simulate] Amount:', amount);
-  
-  // ✅ LANGSUNG SUKSES – tidak perlu panggil Xendit API
-  console.log('[E-Wallet Simulate] ✅ SUCCESS (direct simulation for all e-wallets)');
+
+  const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[E-Wallet Simulate] Attempt ${attempt}/${maxRetries}`);
+
+      const requestBody: any = {};
+      if (channelCode !== 'ID_OVO') {
+        requestBody.amount = amount;
+      }
+
+      const endpoint = `${BASE_URL}/ewallets/charges/${chargeId}/simulate_payment`;
+
+      console.log('[E-Wallet Simulate] Endpoint:', endpoint);
+      console.log('[E-Wallet Simulate] Request body:', JSON.stringify(requestBody));
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json',
+          'api-version': '2021-01-25',
+        },
+        body: Object.keys(requestBody).length > 0 ? JSON.stringify(requestBody) : undefined
+      });
+
+      const responseText = await response.text();
+      console.log('[E-Wallet Simulate] Response status:', response.status);
+      console.log('[E-Wallet Simulate] Response body:', responseText);
+
+      if (response.ok) {
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          data = { raw: responseText };
+        }
+
+        console.log('[E-Wallet Simulate] ✅ SUCCESS - Xendit simulation completed');
+        return { success: true, data, isTestMode: true };
+      }
+
+      if (response.status === 404) {
+        console.log('[E-Wallet Simulate] ⚠️ 404 - Simulation endpoint not available');
+        return {
+          success: false,
+          error: 'CHARGE_NOT_FOUND',
+          isTestMode: false
+        };
+      }
+
+      if (response.status === 400) {
+        console.log('[E-Wallet Simulate] ⚠️ 400 - Bad request');
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch (e) {
+          errorData = { message: responseText };
+        }
+        console.log('[E-Wallet Simulate] Error details:', errorData);
+
+        return {
+          success: false,
+          error: errorData.message || 'Bad request',
+          isTestMode: true
+        };
+      }
+
+      if (attempt < maxRetries) {
+        console.log(`[E-Wallet Simulate] Retrying in 1 second...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${responseText}`,
+        isTestMode: true
+      };
+
+    } catch (error: any) {
+      console.error(`[E-Wallet Simulate] Exception on attempt ${attempt}:`, error.message);
+
+      if (attempt < maxRetries) {
+        console.log(`[E-Wallet Simulate] Retrying in 1 second...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        isTestMode: true
+      };
+    }
+  }
+
   return {
-    success: true,
-    data: {
-      id: chargeId,
-      status: 'SUCCEEDED',
-      channel_code: channelCode,
-      paid_amount: amount,
-      paid_at: new Date().toISOString(),
-    },
-    isTestMode: true,
+    success: false,
+    error: 'Max retries reached',
+    isTestMode: true
   };
 }
 
@@ -671,7 +751,8 @@ export async function GET(request: NextRequest) {
           : 'Only Xendit API simulation allowed'
       },
       testMode: {
-        info: 'E-wallet simulations are now always successful (direct success, no Xendit API call)',
+        info: 'To use Xendit simulation, you must use Test Mode API Key',
+        howTo: 'Get your test API key from Xendit Dashboard > Settings > Developers',
         fallback: 'If Xendit fails and ALLOW_DIRECT_SIMULATION=true, will update database directly'
       }
     });
