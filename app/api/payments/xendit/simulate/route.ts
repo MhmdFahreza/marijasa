@@ -1,4 +1,4 @@
-// app/api/payments/xendit/simulate/route.ts - FIXED E-WALLET SIMULATION
+// app/api/payments/xendit/simulate/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 import { XENDIT_PAYMENT_FEES, PaymentMethodId } from '@/app/components/lib/xendit';
@@ -7,22 +7,8 @@ const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY || '';
 const BASE_URL = 'https://api.xendit.co';
 
 // ==========================================
-// XENDIT SIMULATION API - FIXED E-WALLET
+// XENDIT SIMULATION - DENGAN FALLBACK
 // ==========================================
-
-/**
- * PERBAIKAN UTAMA: Xendit E-Wallet Simulation
- * 
- * Setiap e-wallet channel memiliki requirement berbeda untuk simulasi:
- * 
- * 1. OVO: Tidak butuh amount di body
- * 2. DANA: Butuh amount di body
- * 3. ShopeePay: Butuh amount di body
- * 4. LinkAja: Butuh amount di body
- * 
- * Endpoint: POST /ewallets/charges/{charge_id}/simulate_payment
- * Header: api-version harus 2021-01-25 atau lebih baru
- */
 
 async function simulateXenditEWalletPayment(
   chargeId: string, 
@@ -30,46 +16,31 @@ async function simulateXenditEWalletPayment(
   channelCode: string
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    console.log('\n╔════════════════════════════════════════════════════════╗');
-    console.log('║     XENDIT E-WALLET SIMULATION - DETAILED PROCESS     ║');
-    console.log('╚════════════════════════════════════════════════════════╝');
+    console.log('[E-Wallet Simulate] Attempting Xendit API simulation...');
     console.log('[E-Wallet Simulate] Channel:', channelCode);
     console.log('[E-Wallet Simulate] Charge ID:', chargeId);
     console.log('[E-Wallet Simulate] Amount:', amount);
 
     const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
-
-    // PERBAIKAN: Berbeda dengan dokumentasi, semua channel sebenarnya butuh amount
-    // Tapi OVO lebih toleran jika tidak ada
     const requestBody: any = {};
     
-    // Untuk semua channel kecuali OVO, amount WAJIB
     if (channelCode !== 'ID_OVO') {
       requestBody.amount = amount;
-      console.log('[E-Wallet Simulate] Adding amount to body:', amount);
-    } else {
-      console.log('[E-Wallet Simulate] OVO - amount optional');
     }
 
     const endpoint = `${BASE_URL}/ewallets/charges/${chargeId}/simulate_payment`;
-    console.log('[E-Wallet Simulate] Endpoint:', endpoint);
-    console.log('[E-Wallet Simulate] Request body:', JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${authString}`,
         'Content-Type': 'application/json',
-        'api-version': '2021-01-25', // PENTING: API version untuk e-wallet
+        'api-version': '2021-01-25',
       },
       body: Object.keys(requestBody).length > 0 ? JSON.stringify(requestBody) : undefined
     });
 
-    console.log('[E-Wallet Simulate] Response status:', response.status);
-    console.log('[E-Wallet Simulate] Response headers:', Object.fromEntries(response.headers.entries()));
-
     const responseText = await response.text();
-    console.log('[E-Wallet Simulate] Response body:', responseText);
 
     if (response.ok) {
       let data;
@@ -79,54 +50,30 @@ async function simulateXenditEWalletPayment(
         data = { raw: responseText };
       }
 
-      console.log('╔════════════════════════════════════════════════════════╗');
-      console.log('║          E-WALLET SIMULATION SUCCESS ✅                ║');
-      console.log('╚════════════════════════════════════════════════════════╝');
-      console.log('[E-Wallet Simulate] Success data:', JSON.stringify(data, null, 2));
-      
+      console.log('[E-Wallet Simulate] ✅ Xendit simulation successful');
       return { success: true, data };
     } else {
-      console.error('╔════════════════════════════════════════════════════════╗');
-      console.error('║          E-WALLET SIMULATION FAILED ❌                 ║');
-      console.error('╚════════════════════════════════════════════════════════╝');
-      console.error('[E-Wallet Simulate] Error status:', response.status);
-      console.error('[E-Wallet Simulate] Error body:', responseText);
-
-      let errorMessage = responseText;
-      try {
-        const errorData = JSON.parse(responseText);
-        errorMessage = errorData.message || errorData.error_code || responseText;
-      } catch (e) {
-        // Keep original error message
-      }
-
-      // Status 404 = endpoint tidak tersedia (mode production)
+      console.log('[E-Wallet Simulate] ⚠️ Xendit simulation failed:', response.status);
+      
+      // FIX: Jika 404, return success false tapi bukan error critical
       if (response.status === 404) {
-        console.log('[E-Wallet Simulate] Simulation endpoint not available (production mode)');
+        console.log('[E-Wallet Simulate] 404 - Simulation endpoint not available (production mode)');
         return { 
           success: false, 
-          error: 'Simulation endpoint not available - using local update instead' 
+          error: 'SIMULATION_NOT_AVAILABLE' 
         };
       }
 
-      return { success: false, error: errorMessage };
+      return { success: false, error: responseText };
     }
   } catch (error: any) {
-    console.error('╔════════════════════════════════════════════════════════╗');
-    console.error('║       E-WALLET SIMULATION EXCEPTION ⚠️                 ║');
-    console.error('╚════════════════════════════════════════════════════════╝');
     console.error('[E-Wallet Simulate] Exception:', error.message);
-    console.error('[E-Wallet Simulate] Stack:', error.stack);
-    
     return { success: false, error: error.message };
   }
 }
 
 async function simulateXenditVAPayment(externalId: string, amount: number): Promise<boolean> {
   try {
-    console.log('[Xendit Simulate VA] External ID:', externalId);
-    console.log('[Xendit Simulate VA] Amount:', amount);
-
     const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
     const response = await fetch(`${BASE_URL}/callback_virtual_accounts/external_id=${externalId}/simulate_payment`, {
@@ -138,15 +85,11 @@ async function simulateXenditVAPayment(externalId: string, amount: number): Prom
       body: JSON.stringify({ amount })
     });
 
-    console.log('[Xendit Simulate VA] Response status:', response.status);
-
     if (response.ok) {
-      const data = await response.json();
-      console.log('[Xendit Simulate VA] Success:', JSON.stringify(data, null, 2));
+      console.log('[Xendit Simulate VA] Success');
       return true;
     } else {
-      const errorText = await response.text();
-      console.error('[Xendit Simulate VA] Error:', errorText);
+      console.log('[Xendit Simulate VA] Failed:', response.status);
       return false;
     }
   } catch (error) {
@@ -157,9 +100,6 @@ async function simulateXenditVAPayment(externalId: string, amount: number): Prom
 
 async function simulateXenditQRISPayment(qrId: string, amount: number): Promise<boolean> {
   try {
-    console.log('[Xendit Simulate QRIS] QR ID:', qrId);
-    console.log('[Xendit Simulate QRIS] Amount:', amount);
-
     const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
     const response = await fetch(`${BASE_URL}/qr_codes/${qrId}/payments/simulate`, {
@@ -171,15 +111,11 @@ async function simulateXenditQRISPayment(qrId: string, amount: number): Promise<
       body: JSON.stringify({ amount })
     });
 
-    console.log('[Xendit Simulate QRIS] Response status:', response.status);
-
     if (response.ok) {
-      const data = await response.json();
-      console.log('[Xendit Simulate QRIS] Success:', JSON.stringify(data, null, 2));
+      console.log('[Xendit Simulate QRIS] Success');
       return true;
     } else {
-      const errorText = await response.text();
-      console.error('[Xendit Simulate QRIS] Error:', errorText);
+      console.log('[Xendit Simulate QRIS] Failed:', response.status);
       return false;
     }
   } catch (error) {
@@ -190,9 +126,6 @@ async function simulateXenditQRISPayment(qrId: string, amount: number): Promise<
 
 async function simulateXenditRetailPayment(paymentCodeId: string, amount: number): Promise<boolean> {
   try {
-    console.log('[Xendit Simulate Retail] Payment Code ID:', paymentCodeId);
-    console.log('[Xendit Simulate Retail] Amount:', amount);
-
     const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
     const response = await fetch(`${BASE_URL}/fixed_payment_code/${paymentCodeId}/simulate_payment`, {
@@ -204,15 +137,11 @@ async function simulateXenditRetailPayment(paymentCodeId: string, amount: number
       body: JSON.stringify({ transfer_amount: amount })
     });
 
-    console.log('[Xendit Simulate Retail] Response status:', response.status);
-
     if (response.ok) {
-      const data = await response.json();
-      console.log('[Xendit Simulate Retail] Success:', JSON.stringify(data, null, 2));
+      console.log('[Xendit Simulate Retail] Success');
       return true;
     } else {
-      const errorText = await response.text();
-      console.error('[Xendit Simulate Retail] Error:', errorText);
+      console.log('[Xendit Simulate Retail] Failed:', response.status);
       return false;
     }
   } catch (error) {
@@ -226,10 +155,8 @@ async function simulateXenditRetailPayment(paymentCodeId: string, amount: number
 // ==========================================
 
 export async function POST(request: NextRequest) {
-  console.log('\n');
-  console.log('╔══════════════════════════════════════════════════════════════════╗');
+  console.log('\n╔══════════════════════════════════════════════════════════════════╗');
   console.log('║           SIMULATE PAYMENT - REQUEST RECEIVED                    ║');
-  console.log('║ Timestamp:', new Date().toISOString());
   console.log('╚══════════════════════════════════════════════════════════════════╝');
 
   try {
@@ -276,7 +203,7 @@ export async function POST(request: NextRequest) {
     console.log('[Simulate] Payment method:', booking.payment_method);
 
     // ==========================================
-    // PENANGANAN KHUSUS UNTUK LAYANAN TAMBAHAN
+    // HANDLE ADDITIONAL SERVICE PAYMENT
     // ==========================================
     if (additionalServiceId && paymentType === "additional") {
       console.log('[Simulate] Processing additional service payment:', additionalServiceId);
@@ -312,19 +239,17 @@ export async function POST(request: NextRequest) {
         const channelCode = additionalMetadata.channel_code;
         const additionalAmount = additionalService.total_price + (additionalService.service_fee || 10000) + (additionalService.transaction_fee || 0);
 
-        console.log('[Simulate Additional] Xendit ID:', xenditId);
-        console.log('[Simulate Additional] Payment Type:', additionalPaymentType);
-        console.log('[Simulate Additional] Channel Code:', channelCode);
-        console.log('[Simulate Additional] Amount:', additionalAmount);
-
+        // FIX: Try Xendit simulation, fallback to local update if failed
         if (xenditId) {
+          console.log('[Simulate] Attempting Xendit simulation for additional service...');
+          
           switch (additionalPaymentType) {
             case 'ewallet': {
               const result = await simulateXenditEWalletPayment(xenditId, additionalAmount, channelCode);
               xenditSimulated = result.success;
               
               if (!result.success) {
-                console.log('[Simulate Additional] E-Wallet simulation failed:', result.error);
+                console.log('[Simulate] E-Wallet simulation unavailable, proceeding with local update');
               }
               break;
             }
@@ -340,7 +265,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Update additional service payment status
+        // FIX: ALWAYS update database regardless of Xendit simulation result
+        console.log('[Simulate] Updating additional service to PAID in database...');
+        
         const updatedAdditionalService = await prisma.additionalServiceRequest.update({
           where: { request_id: additionalServiceId },
           data: {
@@ -406,14 +333,12 @@ export async function POST(request: NextRequest) {
           }
         });
 
-        console.log('[Simulate] Additional service payment simulated successfully');
+        console.log('[Simulate] ✅ Additional service payment completed');
         console.log('[Simulate] Xendit simulated:', xenditSimulated);
 
         return NextResponse.json({
           success: true,
-          message: xenditSimulated 
-            ? 'Pembayaran layanan tambahan berhasil disimulasikan (Xendit + Local)'
-            : 'Pembayaran layanan tambahan berhasil disimulasikan (Local only - Xendit simulation unavailable)',
+          message: 'Pembayaran layanan tambahan berhasil disimulasikan',
           xenditSimulated,
           additionalServicePaid: true,
           additionalService: {
@@ -430,33 +355,11 @@ export async function POST(request: NextRequest) {
             paidAdditionalServicesTotal: totalAdditionalPaid
           }
         });
-      } else if (targetStatus === 'FAILED') {
-        await prisma.additionalServiceRequest.update({
-          where: { request_id: additionalServiceId },
-          data: {
-            payment_status: 'FAILED',
-            payment_metadata: {
-              ...(additionalService.payment_metadata as any) || {},
-              simulated: true,
-              simulated_at: new Date().toISOString(),
-              simulated_status: 'FAILED'
-            }
-          }
-        });
-
-        return NextResponse.json({
-          success: true,
-          message: 'Simulasi pembayaran gagal untuk layanan tambahan',
-          additionalService: {
-            id: additionalServiceId,
-            paymentStatus: 'FAILED'
-          }
-        });
       }
     }
 
     // ==========================================
-    // SIMULASI PEMBAYARAN UTAMA (BOOKING)
+    // HANDLE MAIN PAYMENT SIMULATION
     // ==========================================
 
     if (booking.payment_status === 'PAID') {
@@ -485,9 +388,9 @@ export async function POST(request: NextRequest) {
 
       console.log('[Simulate] Payment type:', xenditPaymentType);
       console.log('[Simulate] Xendit ID:', xenditId);
-      console.log('[Simulate] Channel Code:', channelCode);
       console.log('[Simulate] Booking total:', booking.total);
 
+      // FIX: Try Xendit simulation, fallback to local update if failed
       if (xenditId) {
         console.log('[Simulate] Attempting Xendit simulation...');
 
@@ -497,8 +400,7 @@ export async function POST(request: NextRequest) {
             xenditSimulated = result.success;
             
             if (!result.success) {
-              console.log('[Simulate] E-Wallet simulation failed:', result.error);
-              console.log('[Simulate] Will proceed with local update only');
+              console.log('[Simulate] E-Wallet simulation unavailable, proceeding with local update');
             }
             break;
           }
@@ -515,40 +417,18 @@ export async function POST(request: NextRequest) {
             console.log('[Simulate] Unknown payment type:', xenditPaymentType);
         }
 
+        // FIX: Jangan wait for webhook, langsung update database
         if (xenditSimulated) {
-          console.log('[Simulate] ✅ Xendit simulation successful!');
-          console.log('[Simulate] Webhook will update the database automatically');
-
-          // Wait for webhook to process
-          await new Promise(resolve => setTimeout(resolve, 2000));
-
-          const updatedBooking = await prisma.booking.findFirst({
-            where: { booking_id: booking.booking_id }
-          });
-
-          if (updatedBooking?.payment_status === 'PAID') {
-            return NextResponse.json({
-              success: true,
-              message: 'Pembayaran berhasil disimulasikan via Xendit',
-              xenditSimulated: true,
-              booking: {
-                orderId: updatedBooking.booking_number,
-                paymentStatus: updatedBooking.payment_status,
-                paymentMethod: updatedBooking.payment_method,
-                paymentMethodName: paymentMethodName,
-                status: updatedBooking.status,
-                total: updatedBooking.total,
-              }
-            });
-          }
+          console.log('[Simulate] ✅ Xendit simulation successful');
+          console.log('[Simulate] Note: Webhook may also update the booking');
         } else {
-          console.log('[Simulate] Xendit simulation not available or failed, using local update');
+          console.log('[Simulate] ⚠️ Xendit simulation not available, using local update only');
         }
-      } else {
-        console.log('[Simulate] No Xendit ID found, using local update only');
       }
 
-      // Fallback: Update local database directly
+      // FIX: ALWAYS update local database regardless of Xendit simulation result
+      console.log('[Simulate] Updating booking to PAID in database...');
+
       const paidAdditionalServices = await prisma.additionalServiceRequest.findMany({
         where: {
           booking_id: booking.booking_id,
@@ -569,7 +449,7 @@ export async function POST(request: NextRequest) {
         where: { booking_id: booking.booking_id },
         data: {
           payment_status: 'PAID',
-          status: 'CONFIRMED',
+          status: 'CONFIRMED', // FIX: Update status to CONFIRMED (diproses)
           total: newTotal,
           payment_metadata: {
             ...currentMetadata,
@@ -582,7 +462,7 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      console.log('[Simulate] Booking updated to PAID');
+      console.log('[Simulate] ✅ Booking updated to PAID and CONFIRMED');
       console.log('[Simulate] New total:', newTotal);
 
       // Create notification
@@ -600,22 +480,21 @@ export async function POST(request: NextRequest) {
       await prisma.bookingHistory.create({
         data: {
           booking_id: booking.booking_id,
-          status: xenditSimulated ? 'Pembayaran Berhasil (Xendit Simulation)' : 'Pembayaran Berhasil (Local Simulation)',
+          status: 'Pembayaran Berhasil (Simulasi)',
           reason: `Pembayaran via ${paymentMethodName} telah dikonfirmasi (mode testing)`
         }
       });
 
       console.log('\n╔══════════════════════════════════════════════════════════════════╗');
       console.log('║           PAYMENT SIMULATION SUCCESSFUL - PAID                   ║');
-      console.log('║ Method:', xenditSimulated ? 'Xendit API + Local' : 'Local Only');
+      console.log('║ Method:', xenditSimulated ? 'Xendit + Local' : 'Local Only');
+      console.log('║ Status: CONFIRMED (Diproses)');
       console.log('║ Total:', newTotal);
       console.log('╚══════════════════════════════════════════════════════════════════╝\n');
 
       return NextResponse.json({
         success: true,
-        message: xenditSimulated
-          ? 'Pembayaran berhasil disimulasikan (Xendit + Local)'
-          : 'Pembayaran berhasil disimulasikan (Local only - Xendit simulation unavailable)',
+        message: 'Pembayaran berhasil disimulasikan',
         xenditSimulated,
         simulationMethod: xenditSimulated ? 'xendit_api' : 'local_only',
         booking: {
@@ -623,64 +502,12 @@ export async function POST(request: NextRequest) {
           paymentStatus: updatedBooking.payment_status,
           paymentMethod: updatedBooking.payment_method,
           paymentMethodName: paymentMethodName,
-          status: updatedBooking.status,
+          status: updatedBooking.status, // FIX: Return CONFIRMED status
           total: updatedBooking.total,
           paidAdditionalServicesCount: paidAdditionalServices.length,
           paidAdditionalServicesTotal: totalAdditionalPaid
         }
       });
-
-    } else if (targetStatus === 'FAILED') {
-      await prisma.booking.update({
-        where: { booking_id: booking.booking_id },
-        data: {
-          payment_status: 'FAILED',
-          payment_metadata: {
-            ...currentMetadata,
-            simulated: true,
-            simulated_at: new Date().toISOString(),
-            simulated_status: 'FAILED',
-          }
-        }
-      });
-
-      await prisma.userNotification.create({
-        data: {
-          user_id: booking.user.user_id,
-          title: '❌ Pembayaran Gagal',
-          message: `Pembayaran untuk pesanan #${orderId} gagal. Silakan lakukan pembayaran ulang atau pilih metode pembayaran lain.`,
-          type: 'payment',
-          order_id: booking.booking_id,
-        }
-      });
-
-      await prisma.bookingHistory.create({
-        data: {
-          booking_id: booking.booking_id,
-          status: 'Pembayaran Gagal (Simulasi)',
-          reason: 'Pembayaran gagal (mode testing)'
-        }
-      });
-
-      console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-      console.log('║           PAYMENT SIMULATION - FAILED                            ║');
-      console.log('╚══════════════════════════════════════════════════════════════════╝\n');
-
-      return NextResponse.json({
-        success: true,
-        message: 'Simulasi pembayaran gagal berhasil',
-        booking: {
-          orderId: booking.booking_number,
-          paymentStatus: 'FAILED',
-          status: booking.status,
-        }
-      });
-
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'Invalid Status', message: 'Status simulasi tidak valid' },
-        { status: 400 }
-      );
     }
 
   } catch (error: any) {
@@ -701,21 +528,9 @@ export async function GET(request: NextRequest) {
 
   if (!orderId) {
     return NextResponse.json({
-      message: 'Xendit Payment Simulation Endpoint - FIXED E-WALLET',
+      message: 'Xendit Payment Simulation Endpoint',
       usage: 'POST with { orderId, simulateStatus?: "PAID" | "FAILED" }',
-      note: 'This endpoint simulates payment in both Xendit (development) and local database',
-      endpoints: {
-        ewallet: '/ewallets/charges/{id}/simulate_payment (with api-version: 2021-01-25)',
-        va: '/callback_virtual_accounts/external_id={id}/simulate_payment',
-        qris: '/qr_codes/{id}/payments/simulate',
-        retail: '/fixed_payment_code/{id}/simulate_payment'
-      },
-      ewalletChannels: {
-        OVO: 'ID_OVO - amount optional',
-        DANA: 'ID_DANA - amount required',
-        ShopeePay: 'ID_SHOPEEPAY - amount required',
-        LinkAja: 'ID_LINKAJA - amount required'
-      }
+      note: 'This endpoint simulates payment with fallback to local update if Xendit simulation unavailable'
     });
   }
 
@@ -792,7 +607,7 @@ function getPaymentMethodName(paymentMethod: string | null): string {
     'va_mandiri': 'Mandiri Virtual Account',
     'va_permata': 'Permata Virtual Account',
     'va_bsi': 'BSI Virtual Account',
-    'va_cimb': 'CIMB Virtual Account',
+    'va_cimb': 'CIMB Niaga Virtual Account',
     'card_visa': 'Kartu Visa',
     'card_mastercard': 'Kartu Mastercard',
     'card_jcb': 'Kartu JCB',
