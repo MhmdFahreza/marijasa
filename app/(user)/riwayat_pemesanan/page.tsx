@@ -1966,14 +1966,6 @@ export default function OrderHistoryPage() {
 
                       {/* Price & Actions */}
                       <div className="flex flex-col items-end gap-3 md:gap-4">
-                        <div className="text-right">
-                          {unpaidAdditionalTotal > 0 && (
-                            <p className="text-xs text-yellow-600 mt-1">
-                              Belum dibayar: Rp {formatPrice(unpaidAdditionalTotal)}
-                            </p>
-                          )}
-                        </div>
-
                         <div className="flex items-center gap-2">
                           <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${expandedOrderId === order.id ? 'rotate-90' : ''
                             }`} />
