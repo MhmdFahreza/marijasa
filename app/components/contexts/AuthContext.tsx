@@ -116,7 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ============================================
   const fetchCurrentUser = useCallback(
     async (skipLoadingState = false): Promise<User | null> => {
+      // ✅ CRITICAL FIX: Don't fetch during logout
       if (isMitraRoute || isAdminRoute || isLoggingOutRef.current) {
+        console.log("[Auth] Skipping fetch - logout in progress or wrong route");
         return null;
       }
 
@@ -124,7 +126,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isFetchingRef.current && abortControllerRef.current) {
         console.log("[Auth] Fetch in progress, aborting previous...");
         abortControllerRef.current.abort();
-        // Small delay to let abort propagate
         await new Promise((r) => setTimeout(r, 50));
       }
 
@@ -150,9 +151,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         clearTimeout(timeoutId);
 
-        // Check if component is still mounted
-        if (!mountedRef.current) {
-          console.log("[Auth] Component unmounted during fetch, ignoring result");
+        // Check if component is still mounted and not logging out
+        if (!mountedRef.current || isLoggingOutRef.current) {
+          console.log("[Auth] Component unmounted or logging out, ignoring result");
           return null;
         }
 
@@ -170,17 +171,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               role: data.user.role || "USER",
             };
 
-            setUser(userData);
-            cacheUser(userData);
-            setIsLoading(false);
-            setIsInitialized(true);
+            if (!isLoggingOutRef.current) {
+              setUser(userData);
+              cacheUser(userData);
+              setIsLoading(false);
+              setIsInitialized(true);
+            }
 
             return userData;
           }
         }
 
         console.log("[Auth] ❌ Not authenticated");
-        if (mountedRef.current) {
+        if (mountedRef.current && !isLoggingOutRef.current) {
           setUser(null);
           cacheUser(null);
           setIsLoading(false);
@@ -198,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         console.error("[Auth] Fetch error:", error);
 
-        if (mountedRef.current) {
+        if (mountedRef.current && !isLoggingOutRef.current) {
           setIsLoading(false);
           setIsInitialized(true);
         }
@@ -230,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // TOKEN REFRESH
   // ============================================
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
+    // ✅ CRITICAL FIX: Don't refresh during logout
     if (
       isMitraRoute ||
       isAdminRoute ||
@@ -254,7 +258,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         console.log("[Auth] ✅ Token refreshed:", data.message);
 
-        if (data.tokenRefreshed) {
+        // ✅ CRITICAL FIX: Check logout state before updating
+        if (data.tokenRefreshed && !isLoggingOutRef.current) {
           await fetchCurrentUser(true);
         }
 
@@ -291,6 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refreshIntervalRef.current) {
       clearInterval(refreshIntervalRef.current);
       refreshIntervalRef.current = null;
+      console.log("[Auth] ✅ Auto-refresh disabled");
     }
   }, []);
 
@@ -319,48 +325,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   // ============================================
-  // LOGOUT
+  // LOGOUT - IMPROVED
   // ============================================
   const logout = useCallback(async () => {
     try {
-      console.log("[Auth] 🚪 Logging out");
+      console.log("[Auth] 🚪 Starting logout process");
 
+      // ✅ Set flag FIRST to prevent any refresh attempts
       isLoggingOutRef.current = true;
 
-      setUser(null);
-      cacheUser(null);
+      // ✅ Stop all intervals immediately
       clearTokenRefresh();
 
-      // Reset Google sync flag
+      // ✅ Abort any ongoing fetches
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+
+      // ✅ Clear state immediately
+      setUser(null);
+      cacheUser(null);
       googleSyncAttemptedRef.current = false;
 
+      // ✅ Sign out from NextAuth FIRST (this clears NextAuth cookies)
       if (session) {
         try {
+          console.log("[Auth] Signing out from NextAuth");
           await nextAuthSignOut({ redirect: false });
+          console.log("[Auth] ✅ NextAuth signout complete");
         } catch (error) {
           console.error("[Auth] NextAuth signout error:", error);
         }
       }
 
+      // ✅ Call backend logout (this clears custom cookies)
       try {
-        await fetch("/api/auth/logout", {
+        console.log("[Auth] Calling backend logout");
+        const response = await fetch("/api/auth/logout", {
           method: "POST",
           credentials: "include",
         });
+        
+        if (response.ok) {
+          console.log("[Auth] ✅ Backend logout successful");
+        } else {
+          console.error("[Auth] Backend logout failed:", response.status);
+        }
       } catch (error) {
         console.error("[Auth] Logout API error:", error);
       }
 
-      console.log("[Auth] ✅ Logout complete");
+      console.log("[Auth] ✅ Logout complete, redirecting");
 
+      // ✅ Redirect and refresh
       router.push("/");
       router.refresh();
-    } catch (error) {
-      console.error("[Auth] Logout error:", error);
-    } finally {
+      
+      // ✅ Small delay before allowing new auth attempts
       setTimeout(() => {
         isLoggingOutRef.current = false;
-      }, 1000);
+        console.log("[Auth] Logout flag cleared");
+      }, 1500);
+      
+    } catch (error) {
+      console.error("[Auth] Logout error:", error);
+      // ✅ Ensure flag is cleared even on error
+      setTimeout(() => {
+        isLoggingOutRef.current = false;
+      }, 1500);
     }
   }, [session, clearTokenRefresh, router, cacheUser]);
 
@@ -368,6 +401,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // REFRESH USER (public API)
   // ============================================
   const refreshUser = useCallback(async () => {
+    if (isLoggingOutRef.current) {
+      console.log("[Auth] Skipping refresh - logout in progress");
+      return;
+    }
     console.log("[Auth] 🔄 Refreshing user data (public API)");
     await fetchCurrentUser(true);
   }, [fetchCurrentUser]);
@@ -377,11 +414,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ============================================
   useEffect(() => {
     mountedRef.current = true;
-    console.log("[Auth] Component mounted, mountedRef = true");
+    console.log("[Auth] Component mounted");
 
     return () => {
       mountedRef.current = false;
-      console.log("[Auth] Component unmounting, mountedRef = false");
+      console.log("[Auth] Component unmounting");
     };
   }, []);
 
@@ -407,7 +444,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // STEP 1: Try cache first for instant UI
       const cachedUser = getCachedUser();
 
-      if (cachedUser && !effectCancelled) {
+      if (cachedUser && !effectCancelled && !isLoggingOutRef.current) {
         console.log("[Auth] ✅ Using cached user:", cachedUser.email);
         setUser(cachedUser);
         setIsLoading(false);
@@ -417,8 +454,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // STEP 2: Fetch from API to validate/update
       const fetchedUser = await fetchCurrentUser(!!cachedUser);
 
-      if (effectCancelled) {
-        console.log("[Auth] Init effect was cancelled, ignoring result");
+      if (effectCancelled || isLoggingOutRef.current) {
+        console.log("[Auth] Init effect was cancelled or logging out");
         return;
       }
 
@@ -429,7 +466,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("[Auth] ❌ No user found");
         clearTokenRefresh();
 
-        // If we had a cached user but server says no, clear it
         if (cachedUser) {
           setUser(null);
           cacheUser(null);
@@ -476,11 +512,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (wasOnAuth && !isOnAuth && !user) {
       console.log(
-        "[Auth] 🔄 Navigated from auth route (",
-        prevPath,
-        ") → (",
-        pathname,
-        ") — re-checking session..."
+        "[Auth] 🔄 Navigated from auth route - re-checking session..."
       );
 
       setIsLoading(true);
@@ -491,13 +523,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchCurrentUser(false)
           .then((fetchedUser) => {
             if (fetchedUser) {
-              console.log(
-                "[Auth] ✅ Session found after login redirect:",
-                fetchedUser.email
-              );
+              console.log("[Auth] ✅ Session found after login");
               setupTokenRefresh();
             } else {
-              console.log("[Auth] ❌ No session after login redirect");
+              console.log("[Auth] ❌ No session after login");
               clearTokenRefresh();
             }
           })
@@ -524,46 +553,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ============================================
   // EFFECT 4: Sync with NextAuth session (Google OAuth)
-  // ✅ IMPROVED: Better sync logic with debounce
   // ============================================
   useEffect(() => {
     if (!isInitialized || isMitraRoute || isAdminRoute) return;
     if (isLoggingOutRef.current) return;
 
-    // When NextAuth session becomes authenticated and we don't have a user
     if (
       sessionStatus === "authenticated" &&
       session?.user?.email &&
       !user
     ) {
-      // Prevent multiple sync attempts
       if (googleSyncAttemptedRef.current) return;
       googleSyncAttemptedRef.current = true;
 
-      console.log("[Auth] 🔄 NextAuth session detected, syncing:", session.user.email);
+      console.log("[Auth] 🔄 NextAuth session detected, syncing");
 
-      // Small delay to allow middleware to set cookies first
       const timer = setTimeout(() => {
         if (!mountedRef.current || isLoggingOutRef.current) return;
 
         fetchCurrentUser(false).then((fetchedUser) => {
           if (fetchedUser) {
-            console.log("[Auth] ✅ Google OAuth user synced:", fetchedUser.email);
+            console.log("[Auth] ✅ Google OAuth user synced");
             setupTokenRefresh();
           } else {
-            console.log("[Auth] ⚠️ Google OAuth sync: user not found via /api/auth/me, retrying...");
+            console.log("[Auth] ⚠️ Google OAuth sync failed, retrying");
             
-            // Retry once after a longer delay (cookies might not be set yet)
             setTimeout(() => {
               if (!mountedRef.current || isLoggingOutRef.current) return;
               
               fetchCurrentUser(false).then((retryUser) => {
                 if (retryUser) {
-                  console.log("[Auth] ✅ Google OAuth user synced on retry:", retryUser.email);
+                  console.log("[Auth] ✅ Google OAuth synced on retry");
                   setupTokenRefresh();
                 } else {
-                  console.log("[Auth] ❌ Google OAuth sync failed after retry");
-                  googleSyncAttemptedRef.current = false; // Allow future attempts
+                  console.log("[Auth] ❌ Google OAuth sync failed");
+                  googleSyncAttemptedRef.current = false;
                 }
               });
             }, 1500);
@@ -574,7 +598,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return () => clearTimeout(timer);
     }
 
-    // Reset sync flag when session is unauthenticated
     if (sessionStatus === "unauthenticated") {
       googleSyncAttemptedRef.current = false;
     }

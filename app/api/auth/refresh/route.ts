@@ -12,7 +12,6 @@ import { authOptions } from "@/app/components/lib/auth.config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Helper to clear all auth cookies
 function clearAuthCookies(response: NextResponse) {
   const cookieOptions = {
     path: "/",
@@ -29,7 +28,6 @@ export async function POST(request: NextRequest) {
   try {
     console.log("[Refresh] Starting token refresh process...");
 
-    // Get tokens from cookies
     const sessionId = request.cookies.get("session_id")?.value;
     const accessToken = request.cookies.get("access_token")?.value;
     const refreshToken = request.cookies.get("refresh_token")?.value;
@@ -41,16 +39,12 @@ export async function POST(request: NextRequest) {
       refreshToken: !!refreshToken,
     });
 
-    // ============================================
-    // If no custom cookies, check if NextAuth session exists
-    // This handles the case where Google OAuth just completed
-    // but custom cookies haven't been set yet
-    // ============================================
+    // ✅ CRITICAL FIX: Better handling when no cookies
     if (!sessionId || !refreshToken) {
       const nextAuthToken = request.cookies.get("next-auth.session-token")?.value;
 
       if (nextAuthToken) {
-        console.log("[Refresh] No custom cookies, but NextAuth token exists - checking session...");
+        console.log("[Refresh] No custom cookies, checking NextAuth...");
 
         try {
           const nextAuthSession = await getServerSession(authOptions);
@@ -58,9 +52,12 @@ export async function POST(request: NextRequest) {
           if (nextAuthSession?.user?.email) {
             const sessionUser = nextAuthSession.user as any;
 
-            // If NextAuth session has custom tokens, set cookies and return
-            if (sessionUser.sessionId && sessionUser.accessToken && sessionUser.refreshToken) {
-              console.log("[Refresh] ✅ Found tokens in NextAuth session, setting cookies");
+            if (
+              sessionUser.sessionId &&
+              sessionUser.accessToken &&
+              sessionUser.refreshToken
+            ) {
+              console.log("[Refresh] ✅ Tokens found in NextAuth session");
 
               const response = NextResponse.json(
                 {
@@ -103,30 +100,24 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // No session at all
-      if (!sessionId) {
-        console.log("[Refresh] ❌ No session ID and no NextAuth fallback");
-        return NextResponse.json(
-          { success: false, message: "Session tidak ditemukan" },
-          { status: 401 }
-        );
-      }
-
-      if (!refreshToken) {
-        console.log("[Refresh] ❌ No refresh token");
-        return NextResponse.json(
-          { success: false, message: "Refresh token tidak ditemukan" },
-          { status: 401 }
-        );
-      }
+      // ✅ Return proper error without cookies
+      console.log("[Refresh] ❌ No session ID and no NextAuth fallback");
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: "No active session found",
+          shouldLogout: true 
+        },
+        { status: 401 }
+      );
     }
 
-    // Verify session still exists in Redis
-    const session = await getSession(sessionId!);
+    // Verify session exists
+    const session = await getSession(sessionId);
     if (!session) {
-      console.error("[Refresh] Session not found in Redis:", sessionId);
+      console.error("[Refresh] Session not found in Redis");
       const response = NextResponse.json(
-        { success: false, message: "Sesi telah kedaluwarsa" },
+        { success: false, message: "Session expired", shouldLogout: true },
         { status: 401 }
       );
       clearAuthCookies(response);
@@ -139,15 +130,13 @@ export async function POST(request: NextRequest) {
     if (accessToken) {
       const tokenPayload = verifyToken(accessToken);
       if (tokenPayload && tokenPayload.sessionId === sessionId) {
-        console.log("[Refresh] Access token still valid, extending session");
-
-        // Update session activity
-        await updateSessionActivity(sessionId!);
+        console.log("[Refresh] Access token still valid");
+        await updateSessionActivity(sessionId);
 
         return NextResponse.json(
           {
             success: true,
-            message: "Token masih valid",
+            message: "Token still valid",
             user: {
               id: tokenPayload.userId,
               email: tokenPayload.email,
@@ -160,17 +149,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Access token expired or invalid, refresh it
-    console.log("[Refresh] Access token expired/invalid, refreshing...");
+    // Refresh token
+    console.log("[Refresh] Refreshing access token...");
 
-    const refreshResult = await refreshAccessToken(sessionId!, refreshToken!);
+    const refreshResult = await refreshAccessToken(sessionId, refreshToken);
 
     if (!refreshResult.success || !refreshResult.accessToken) {
       console.error("[Refresh] Failed to refresh:", refreshResult.error);
       const response = NextResponse.json(
         {
           success: false,
-          message: refreshResult.error || "Gagal refresh token",
+          message: refreshResult.error || "Failed to refresh token",
           shouldLogout: true,
         },
         { status: 401 }
@@ -179,31 +168,25 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    // Verify new access token
     const newTokenPayload = verifyToken(refreshResult.accessToken);
     if (!newTokenPayload) {
       console.error("[Refresh] New token verification failed");
       const response = NextResponse.json(
-        { success: false, message: "Token baru tidak valid" },
+        { success: false, message: "Token validation failed", shouldLogout: true },
         { status: 500 }
       );
       clearAuthCookies(response);
       return response;
     }
 
-    // Update session activity
-    await updateSessionActivity(sessionId!);
+    await updateSessionActivity(sessionId);
 
-    console.log(
-      "[Refresh] ✅ Successfully refreshed token for user:",
-      newTokenPayload.userId
-    );
+    console.log("[Refresh] ✅ Token refreshed successfully");
 
-    // Create response with new token
     const response = NextResponse.json(
       {
         success: true,
-        message: "Token berhasil diperbarui",
+        message: "Token refreshed",
         user: {
           id: newTokenPayload.userId,
           email: newTokenPayload.email,
@@ -219,29 +202,24 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    // Set new access token cookie
     response.cookies.set("access_token", refreshResult.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60, // 1 hour
+      maxAge: 60 * 60,
       path: "/",
     });
 
     return response;
   } catch (error) {
     console.error("[Refresh] Unexpected error:", error);
-
-    const response = NextResponse.json(
-      { success: false, message: "Terjadi kesalahan server" },
+    return NextResponse.json(
+      { success: false, message: "Server error", shouldLogout: false },
       { status: 500 }
     );
-
-    return response;
   }
 }
 
-// Also support GET for simple token validation
 export async function GET(request: NextRequest) {
   try {
     const sessionId = request.cookies.get("session_id")?.value;
@@ -249,25 +227,23 @@ export async function GET(request: NextRequest) {
 
     if (!sessionId || !accessToken) {
       return NextResponse.json(
-        { valid: false, message: "Token tidak ditemukan" },
+        { valid: false, message: "No tokens found" },
         { status: 401 }
       );
     }
 
-    // Verify session
     const session = await getSession(sessionId);
     if (!session) {
       return NextResponse.json(
-        { valid: false, message: "Session tidak valid" },
+        { valid: false, message: "Session invalid" },
         { status: 401 }
       );
     }
 
-    // Verify token
     const tokenPayload = verifyToken(accessToken);
     if (!tokenPayload || tokenPayload.sessionId !== sessionId) {
       return NextResponse.json(
-        { valid: false, message: "Token tidak valid", needsRefresh: true },
+        { valid: false, message: "Token invalid", needsRefresh: true },
         { status: 401 }
       );
     }

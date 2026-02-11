@@ -1,8 +1,7 @@
 // app/api/auth/logout/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { deleteSession, deleteTokens } from "@/app/components/lib/token-service";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/components/lib/auth.config";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
@@ -23,18 +22,6 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error("[Logout] ⚠️ Error deleting from Redis:", error);
       }
-    } else {
-      console.log("[Logout] No session ID found in cookies");
-    }
-
-    // Check if there's a NextAuth session
-    try {
-      const nextAuthSession = await getServerSession(authOptions);
-      if (nextAuthSession) {
-        console.log("[Logout] NextAuth session detected, will be cleared");
-      }
-    } catch (error) {
-      console.log("[Logout] No NextAuth session or error checking");
     }
 
     // Create response
@@ -50,7 +37,7 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    // Define cookie clearing options - MUST match original cookie settings
+    // Cookie clearing options - MUST match original cookie settings
     const secureCookieOptions = {
       path: "/",
       maxAge: 0,
@@ -73,15 +60,15 @@ export async function POST(request: NextRequest) {
     response.cookies.set("access_token", "", secureCookieOptions);
     response.cookies.set("refresh_token", "", secureCookieOptions);
 
-    // Clear NextAuth cookies (both development and production versions)
-    // Development cookie
+    // Clear NextAuth cookies - CRITICAL FIX
+    // Both development and production versions
     response.cookies.set("next-auth.session-token", "", publicCookieOptions);
     
-    // Production cookie (secure)
     if (process.env.NODE_ENV === "production") {
       response.cookies.set("__Secure-next-auth.session-token", "", {
         ...publicCookieOptions,
         secure: true,
+        sameSite: "lax",
       });
     }
     
@@ -91,6 +78,7 @@ export async function POST(request: NextRequest) {
       response.cookies.set("__Host-next-auth.csrf-token", "", {
         ...publicCookieOptions,
         secure: true,
+        sameSite: "lax",
       });
     }
     
@@ -125,12 +113,17 @@ export async function POST(request: NextRequest) {
       expires: new Date(0),
     };
 
-    console.log("[Logout] 🧹 Clearing cookies despite error...");
-    
     response.cookies.set("session_id", "", secureCookieOptions);
     response.cookies.set("access_token", "", secureCookieOptions);
     response.cookies.set("refresh_token", "", secureCookieOptions);
     response.cookies.set("next-auth.session-token", "", publicCookieOptions);
+    
+    if (process.env.NODE_ENV === "production") {
+      response.cookies.set("__Secure-next-auth.session-token", "", {
+        ...publicCookieOptions,
+        secure: true,
+      });
+    }
 
     return response;
   }
