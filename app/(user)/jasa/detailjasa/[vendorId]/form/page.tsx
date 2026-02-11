@@ -372,7 +372,7 @@ export default function VendorFormPage() {
   // Restore state from session storage - FIXED
   const restoreFromSessionStorage = useCallback((vendorId: string) => {
     console.log('[SessionStorage] Restoring from session storage...');
-    
+
     const savedFormData = getFromSessionStorage(STORAGE_KEYS.FORM_STATE);
     const savedStep = getFromSessionStorage(STORAGE_KEYS.CURRENT_STEP);
     const savedPaymentData = getFromSessionStorage(STORAGE_KEYS.PAYMENT_DATA);
@@ -384,9 +384,9 @@ export default function VendorFormPage() {
 
     // Check if we should restore (only if same vendor and recent)
     const currentTime = Date.now();
-    const shouldRestore = savedVendorId === vendorId && 
-                        (!lastRestoreTime || (currentTime - lastRestoreTime) < 5 * 60 * 1000); // 5 minutes
-    
+    const shouldRestore = savedVendorId === vendorId &&
+      (!lastRestoreTime || (currentTime - lastRestoreTime) < 5 * 60 * 1000); // 5 minutes
+
     if (!shouldRestore) {
       console.log('[SessionStorage] Not restoring: different vendor or expired session');
       setHasRestored(true);
@@ -429,7 +429,7 @@ export default function VendorFormPage() {
 
     // Save restore time
     saveToSessionStorage(STORAGE_KEYS.RESTORE_TIME, currentTime);
-    
+
     setHasRestored(true);
     setIsRestoring(false);
   }, []);
@@ -549,10 +549,10 @@ export default function VendorFormPage() {
         }
 
         setVendor(vendorData);
-        
+
         // Now restore from session storage
         restoreFromSessionStorage(vendorId);
-        
+
         setIsLoading(false);
       } catch (error) {
         console.error("Error checking auth:", error);
@@ -567,7 +567,7 @@ export default function VendorFormPage() {
     const handleBeforeUnload = () => {
       const savedVendorId = getFromSessionStorage(STORAGE_KEYS.VENDOR_ID);
       const vendorId = params.vendorId as string;
-      
+
       // Only clear if user is leaving to a different vendor page
       if (savedVendorId && savedVendorId !== vendorId) {
         handleClearStorage();
@@ -575,7 +575,7 @@ export default function VendorFormPage() {
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
@@ -823,15 +823,15 @@ export default function VendorFormPage() {
       if (selectedPayment === 'tunai') {
         console.log('[Payment Frontend] Handling cash payment - redirecting to order history');
         toast.success('Pesanan berhasil dibuat dengan pembayaran tunai! Pesanan Anda sedang diproses.');
-        
+
         // Clear storage setelah pembayaran tunai berhasil
         handleClearStorage();
-        
+
         // Tampilkan modal sukses sebentar sebelum redirect
         setShowPaymentSuccessModal(true);
         await new Promise(resolve => setTimeout(resolve, 2000));
         setShowPaymentSuccessModal(false);
-        
+
         // Redirect ke halaman riwayat pemesanan
         console.log('[Payment Frontend] Redirecting to /riwayat_pemesanan');
         router.push('/riwayat_pemesanan');
@@ -1077,7 +1077,7 @@ export default function VendorFormPage() {
               exit={{ scale: 0.9, y: 20 }}
               className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center"
             >
-              <motion.div 
+              <motion.div
                 className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center"
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
@@ -1091,7 +1091,7 @@ export default function VendorFormPage() {
                   <CheckCircle className="h-10 w-10 text-green-600" />
                 </motion.div>
               </motion.div>
-              <motion.h3 
+              <motion.h3
                 className="text-xl font-semibold text-gray-900 mb-2"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1099,17 +1099,17 @@ export default function VendorFormPage() {
               >
                 {selectedPayment === 'tunai' ? 'Pesanan Berhasil! 🎉' : 'Pembayaran Berhasil! 🎉'}
               </motion.h3>
-              <motion.p 
+              <motion.p
                 className="text-gray-600 mb-2"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
               >
-                {selectedPayment === 'tunai' 
+                {selectedPayment === 'tunai'
                   ? 'Pesanan Anda sedang diproses. Bayar tunai saat layanan diberikan.'
                   : 'Pesanan Anda sedang diproses.'}
               </motion.p>
-              <motion.p 
+              <motion.p
                 className="text-sm text-gray-500 mb-6"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1703,8 +1703,8 @@ function ConfirmationStep({
                 <div>
                   <p className="font-medium">{XENDIT_PAYMENT_FEES[selectedPayment]?.name || selectedPayment}</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedPayment === 'tunai' 
-                      ? 'Bayar ditempat' 
+                    {selectedPayment === 'tunai'
+                      ? 'Bayar ditempat'
                       : `Biaya Transaksi: ${getCalculatedFeeDisplay(selectedPayment, baseAmount)}`}
                   </p>
                 </div>
@@ -1861,7 +1861,7 @@ function ConfirmationStep({
             )}
 
             <p className="text-xs text-center text-muted-foreground mt-4">
-              {selectedPayment === 'tunai' 
+              {selectedPayment === 'tunai'
                 ? 'Dengan mengklik "Konfirmasi Pesanan", Anda menyetujui untuk membayar tunai saat layanan diberikan'
                 : 'Dengan mengklik "Bayar Sekarang", Anda menyetujui kebijakan dan privasi dari Selsas'}
             </p>
@@ -1925,23 +1925,23 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
           return prev - 1;
         });
       }, 1000);
-      
+
       return () => clearInterval(interval);
     }
   }, [selectedPayment, qrRefreshTime]);
 
   const refreshQRCode = async () => {
     if (isRefreshingQR) return;
-    
+
     setIsRefreshingQR(true);
     try {
       const response = await fetch(`/api/payments/xendit?orderId=${orderId}&refreshQR=true`, {
         method: 'GET',
         credentials: 'include',
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success && data.booking?.refreshedQR) {
         const refreshed = data.booking.refreshedQR;
         if (refreshed.qrString) {
@@ -2058,11 +2058,11 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
   // Generate QR code dari string menggunakan qrcode.react
   const generateQRCodeFromString = () => {
     if (!currentQrString) return null;
-    
+
     return (
       <div className="w-64 h-64 mx-auto">
-        <QRCodeSVG 
-          value={currentQrString} 
+        <QRCodeSVG
+          value={currentQrString}
           size={256}
           level="H"
           includeMargin={true}
@@ -2150,7 +2150,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                   Scan QR Code dengan aplikasi e-wallet atau mobile banking<br />
                   <span className="text-xs">QR code akan otomatis diperbarui setiap 5 menit untuk keamanan</span>
                 </p>
-                
+
                 {/* QR Code Display */}
                 <div className="bg-white p-6 rounded-lg border-2 border-dashed border-gray-300 shadow-sm">
                   {currentQrString ? (
@@ -2174,7 +2174,7 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                     <Download className="h-4 w-4" />
                     {paymentData?.qrCodeUrl ? 'Download QR Code' : 'Download Tidak Tersedia'}
                   </Button>
-                  
+
                   <Button
                     variant="ghost"
                     onClick={refreshQRCode}
@@ -2217,27 +2217,16 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
                 <div className="flex items-center gap-3 mb-4">
                   <Smartphone className="h-8 w-8 text-primary" />
                   <div>
-                    <p className="font-medium">Pembayaran {paymentData.paymentMethodName || methodInfo?.name}</p>
+                    <p className="font-medium">
+                      Pembayaran {paymentData.paymentMethodName || methodInfo?.name}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      {paymentData.checkoutUrl 
-                        ? 'Klik tombol di bawah untuk membuka halaman pembayaran'
-                        : 'Klik "Simulasi Pembayaran" untuk testing'}
+                      Klik "Simulasi Pembayaran" untuk testing
                     </p>
                   </div>
                 </div>
 
-                {/* Checkout URL Button */}
-                {paymentData.checkoutUrl && (
-                  <Button
-                    className="w-full mb-4"
-                    onClick={() => window.open(paymentData.checkoutUrl, '_blank')}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Buka Halaman Pembayaran {paymentData.paymentMethodName || methodInfo?.name}
-                  </Button>
-                )}
-
-                {/* Deeplink for mobile */}
+                {/* Deeplink untuk mobile (tetap dipertahankan) */}
                 {paymentData.deeplinkUrl && (
                   <Button
                     variant="outline"
@@ -2254,21 +2243,9 @@ function PaymentStep({ paymentData, selectedPayment, onBack, orderId, router, ha
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
                 <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  {paymentData.checkoutUrl ? (
-                    <>
-                      <li>Klik tombol "Buka Halaman Pembayaran" di atas</li>
-                      <li>Anda akan diarahkan ke halaman pembayaran {paymentData.paymentMethodName || methodInfo?.name}</li>
-                      <li>Login ke akun {paymentData.paymentMethodName || methodInfo?.name} Anda</li>
-                      <li>Konfirmasi pembayaran dengan PIN atau biometrik</li>
-                      <li>Setelah berhasil, Anda akan diarahkan kembali</li>
-                    </>
-                  ) : (
-                    <>
-                      <li>Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah</li>
-                      <li>Status pembayaran akan berubah menjadi PAID</li>
-                      <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
-                    </>
-                  )}
+                  <li>Untuk testing, klik tombol "Simulasi Pembayaran Berhasil" di bawah</li>
+                  <li>Status pembayaran akan berubah menjadi PAID</li>
+                  <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
                 </ol>
               </div>
             </div>

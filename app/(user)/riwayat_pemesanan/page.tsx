@@ -386,11 +386,11 @@ export default function OrderHistoryPage() {
         const processedOrders = data.orders.map((order: any) => {
           // Total dari API sudah final dan TIDAK perlu ditambah dengan apa pun
           const totalPrice = order.totalPrice || 0;
-          
+
           // Hitung total layanan tambahan yang belum dibayar untuk informasi saja
           const unpaidAdditionalTotal = order.additionalServices
-            ?.filter((add: any) => 
-              (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
+            ?.filter((add: any) =>
+              (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") &&
               !add.isPaid
             )
             .reduce((sum: number, add: any) => {
@@ -444,18 +444,18 @@ export default function OrderHistoryPage() {
   // Get base total (pembayaran utama TANPA layanan tambahan)
   const getBaseTotal = (order: any): number => {
     // FIX: Gunakan subtotal dari API
-    return (order.paymentDetails?.subtotal || 0) + 
-           (order.paymentDetails?.serviceFee || 0) + 
-           (order.paymentDetails?.transactionFee || 0);
+    return (order.paymentDetails?.subtotal || 0) +
+      (order.paymentDetails?.serviceFee || 0) +
+      (order.paymentDetails?.transactionFee || 0);
   };
 
   // Get total paid additional services
   const getPaidAdditionalTotal = (order: any): number => {
     if (!order.additionalServices) return 0;
-    
+
     return order.additionalServices
-      .filter((add: any) => 
-        (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") && 
+      .filter((add: any) =>
+        (add.status === "disetujui" || add.status === "approved" || add.status === "diterima") &&
         add.isPaid
       )
       .reduce((sum: number, add: any) => {
@@ -489,7 +489,7 @@ export default function OrderHistoryPage() {
   // Get approved additional services (both paid and unpaid)
   const getApprovedAdditionalServices = (order: any): any[] => {
     if (!order.additionalServices) return [];
-    return order.additionalServices.filter((add: any) => 
+    return order.additionalServices.filter((add: any) =>
       add.status === "disetujui" || add.status === "approved" || add.status === "diterima"
     );
   };
@@ -1417,27 +1417,16 @@ export default function OrderHistoryPage() {
               <div className="flex items-center gap-3 mb-4">
                 <Smartphone className="h-8 w-8 text-primary" />
                 <div>
-                  <p className="font-medium">Pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}</p>
+                  <p className="font-medium">
+                    Pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}
+                  </p>
                   <p className="text-sm text-muted-foreground">
-                    {xenditPaymentData.checkoutUrl
-                      ? 'Klik tombol di bawah untuk membuka halaman pembayaran'
-                      : 'Klik "Simulasi Pembayaran" untuk testing'}
+                    Klik "Simulasi Pembayaran" untuk testing
                   </p>
                 </div>
               </div>
 
-              {/* Checkout URL Button */}
-              {xenditPaymentData.checkoutUrl && (
-                <Button
-                  className="w-full mb-4"
-                  onClick={() => window.open(xenditPaymentData.checkoutUrl, '_blank')}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Buka Halaman Pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}
-                </Button>
-              )}
-
-              {/* Deeplink for mobile */}
+              {/* Deeplink untuk mobile (tetap dipertahankan) */}
               {xenditPaymentData.deeplinkUrl && (
                 <Button
                   variant="outline"
@@ -1454,21 +1443,9 @@ export default function OrderHistoryPage() {
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h4 className="font-medium text-blue-900 mb-2">Cara Pembayaran:</h4>
               <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                {xenditPaymentData.checkoutUrl ? (
-                  <>
-                    <li>Klik tombol "Buka Halaman Pembayaran" di atas</li>
-                    <li>Anda akan diarahkan ke halaman pembayaran {xenditPaymentData.paymentMethodName || methodInfo?.name}</li>
-                    <li>Login ke akun {xenditPaymentData.paymentMethodName || methodInfo?.name} Anda</li>
-                    <li>Konfirmasi pembayaran dengan PIN atau biometrik</li>
-                    <li>Setelah berhasil, Anda akan diarahkan kembali</li>
-                  </>
-                ) : (
-                  <>
-                    <li>Untuk testing, klik tombol "Simulasi Pembayaran" di bawah</li>
-                    <li>Status pembayaran akan berubah menjadi PAID</li>
-                    <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
-                  </>
-                )}
+                <li>Untuk testing, klik tombol "Simulasi Pembayaran" di bawah</li>
+                <li>Status pembayaran akan berubah menjadi PAID</li>
+                <li>Anda akan diarahkan ke halaman riwayat pemesanan</li>
               </ol>
             </div>
           </div>
@@ -2181,7 +2158,7 @@ export default function OrderHistoryPage() {
                                                     <div>
                                                       <p className="font-medium">{addService.description}</p>
                                                       <p className="text-xs text-gray-500">
-                                                        {addService.isPaid 
+                                                        {addService.isPaid
                                                           ? `Dibayar: ${addService.paidAt ? new Date(addService.paidAt).toLocaleDateString('id-ID') : '-'}`
                                                           : `Diajukan: ${new Date(addService.submittedAt).toLocaleDateString('id-ID')}`
                                                         }
