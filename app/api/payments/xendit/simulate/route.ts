@@ -1,4 +1,4 @@
-// app/api/payments/xendit/simulate/route.ts - FIXED
+// app/api/payments/xendit/simulate/route.ts - FIXED WITH RETRY MECHANISM
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/components/lib/prisma';
 import { XENDIT_PAYMENT_FEES, PaymentMethodId } from '@/app/components/lib/xendit';
@@ -7,147 +7,313 @@ const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY || '';
 const BASE_URL = 'https://api.xendit.co';
 
 // ==========================================
-// XENDIT SIMULATION - DENGAN FALLBACK
+// IMPROVED XENDIT SIMULATION WITH RETRY
 // ==========================================
 
 async function simulateXenditEWalletPayment(
-  chargeId: string, 
+  chargeId: string,
   amount: number,
-  channelCode: string
-): Promise<{ success: boolean; data?: any; error?: string }> {
-  try {
-    console.log('[E-Wallet Simulate] Attempting Xendit API simulation...');
-    console.log('[E-Wallet Simulate] Channel:', channelCode);
-    console.log('[E-Wallet Simulate] Charge ID:', chargeId);
-    console.log('[E-Wallet Simulate] Amount:', amount);
+  channelCode: string,
+  maxRetries: number = 3
+): Promise<{ success: boolean; data?: any; error?: string; isTestMode?: boolean }> {
+  console.log('\n[E-Wallet Simulate] Starting simulation...');
+  console.log('[E-Wallet Simulate] Charge ID:', chargeId);
+  console.log('[E-Wallet Simulate] Channel:', channelCode);
+  console.log('[E-Wallet Simulate] Amount:', amount);
 
-    const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
-    const requestBody: any = {};
-    
-    if (channelCode !== 'ID_OVO') {
-      requestBody.amount = amount;
-    }
+  const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
-    const endpoint = `${BASE_URL}/ewallets/charges/${chargeId}/simulate_payment`;
+  // Try simulation with retry
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[E-Wallet Simulate] Attempt ${attempt}/${maxRetries}`);
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-        'api-version': '2021-01-25',
-      },
-      body: Object.keys(requestBody).length > 0 ? JSON.stringify(requestBody) : undefined
-    });
+      const requestBody: any = {};
 
-    const responseText = await response.text();
-
-    if (response.ok) {
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        data = { raw: responseText };
+      // OVO tidak perlu amount parameter
+      if (channelCode !== 'ID_OVO') {
+        requestBody.amount = amount;
       }
 
-      console.log('[E-Wallet Simulate] ✅ Xendit simulation successful');
-      return { success: true, data };
-    } else {
-      console.log('[E-Wallet Simulate] ⚠️ Xendit simulation failed:', response.status);
-      
-      // FIX: Jika 404, return success false tapi bukan error critical
+      const endpoint = `${BASE_URL}/ewallets/charges/${chargeId}/simulate_payment`;
+
+      console.log('[E-Wallet Simulate] Endpoint:', endpoint);
+      console.log('[E-Wallet Simulate] Request body:', JSON.stringify(requestBody));
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json',
+          'api-version': '2021-01-25',
+        },
+        body: Object.keys(requestBody).length > 0 ? JSON.stringify(requestBody) : undefined
+      });
+
+      const responseText = await response.text();
+      console.log('[E-Wallet Simulate] Response status:', response.status);
+      console.log('[E-Wallet Simulate] Response body:', responseText);
+
+      if (response.ok) {
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          data = { raw: responseText };
+        }
+
+        console.log('[E-Wallet Simulate] ✅ SUCCESS - Xendit simulation completed');
+        return { success: true, data, isTestMode: true };
+      }
+
+      // Handle specific error cases
       if (response.status === 404) {
-        console.log('[E-Wallet Simulate] 404 - Simulation endpoint not available (production mode)');
-        return { 
-          success: false, 
-          error: 'SIMULATION_NOT_AVAILABLE' 
+        console.log('[E-Wallet Simulate] ⚠️ 404 - Simulation endpoint not available');
+        console.log('[E-Wallet Simulate] This usually means you are in PRODUCTION mode');
+        console.log('[E-Wallet Simulate] Simulation is only available in TEST mode');
+        return {
+          success: false,
+          error: 'PRODUCTION_MODE',
+          isTestMode: false
         };
       }
 
-      return { success: false, error: responseText };
+      if (response.status === 400) {
+        console.log('[E-Wallet Simulate] ⚠️ 400 - Bad request');
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch (e) {
+          errorData = { message: responseText };
+        }
+        console.log('[E-Wallet Simulate] Error details:', errorData);
+
+        // Jangan retry untuk bad request
+        return {
+          success: false,
+          error: errorData.message || 'Bad request',
+          isTestMode: true
+        };
+      }
+
+      // Retry untuk error lainnya
+      if (attempt < maxRetries) {
+        console.log(`[E-Wallet Simulate] Retrying in 1 second...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${responseText}`,
+        isTestMode: true
+      };
+
+    } catch (error: any) {
+      console.error(`[E-Wallet Simulate] Exception on attempt ${attempt}:`, error.message);
+
+      if (attempt < maxRetries) {
+        console.log(`[E-Wallet Simulate] Retrying in 1 second...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        isTestMode: true
+      };
     }
-  } catch (error: any) {
-    console.error('[E-Wallet Simulate] Exception:', error.message);
-    return { success: false, error: error.message };
   }
+
+  return {
+    success: false,
+    error: 'Max retries reached',
+    isTestMode: true
+  };
 }
 
-async function simulateXenditVAPayment(externalId: string, amount: number): Promise<boolean> {
-  try {
-    const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
+async function simulateXenditVAPayment(
+  externalId: string,
+  amount: number,
+  maxRetries: number = 3
+): Promise<{ success: boolean; data?: any; error?: string; isTestMode?: boolean }> {
+  console.log('\n[VA Simulate] Starting simulation...');
+  console.log('[VA Simulate] External ID:', externalId);
+  console.log('[VA Simulate] Amount:', amount);
 
-    const response = await fetch(`${BASE_URL}/callback_virtual_accounts/external_id=${externalId}/simulate_payment`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ amount })
-    });
+  const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
-    if (response.ok) {
-      console.log('[Xendit Simulate VA] Success');
-      return true;
-    } else {
-      console.log('[Xendit Simulate VA] Failed:', response.status);
-      return false;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[VA Simulate] Attempt ${attempt}/${maxRetries}`);
+
+      const endpoint = `${BASE_URL}/callback_virtual_accounts/external_id=${externalId}/simulate_payment`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ amount })
+      });
+
+      const responseText = await response.text();
+      console.log('[VA Simulate] Response status:', response.status);
+      console.log('[VA Simulate] Response body:', responseText);
+
+      if (response.ok) {
+        console.log('[VA Simulate] ✅ SUCCESS');
+        return { success: true, isTestMode: true };
+      }
+
+      if (response.status === 404) {
+        return { success: false, error: 'PRODUCTION_MODE', isTestMode: false };
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return { success: false, error: responseText, isTestMode: true };
+
+    } catch (error: any) {
+      console.error(`[VA Simulate] Exception on attempt ${attempt}:`, error.message);
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return { success: false, error: error.message, isTestMode: true };
     }
-  } catch (error) {
-    console.error('[Xendit Simulate VA] Exception:', error);
-    return false;
   }
+
+  return { success: false, error: 'Max retries reached', isTestMode: true };
 }
 
-async function simulateXenditQRISPayment(qrId: string, amount: number): Promise<boolean> {
-  try {
-    const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
+async function simulateXenditQRISPayment(
+  qrId: string,
+  amount: number,
+  maxRetries: number = 3
+): Promise<{ success: boolean; data?: any; error?: string; isTestMode?: boolean }> {
+  console.log('\n[QRIS Simulate] Starting simulation...');
+  console.log('[QRIS Simulate] QR ID:', qrId);
+  console.log('[QRIS Simulate] Amount:', amount);
 
-    const response = await fetch(`${BASE_URL}/qr_codes/${qrId}/payments/simulate`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ amount })
-    });
+  const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
-    if (response.ok) {
-      console.log('[Xendit Simulate QRIS] Success');
-      return true;
-    } else {
-      console.log('[Xendit Simulate QRIS] Failed:', response.status);
-      return false;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[QRIS Simulate] Attempt ${attempt}/${maxRetries}`);
+
+      const endpoint = `${BASE_URL}/qr_codes/${qrId}/payments/simulate`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ amount })
+      });
+
+      const responseText = await response.text();
+      console.log('[QRIS Simulate] Response status:', response.status);
+      console.log('[QRIS Simulate] Response body:', responseText);
+
+      if (response.ok) {
+        console.log('[QRIS Simulate] ✅ SUCCESS');
+        return { success: true, isTestMode: true };
+      }
+
+      if (response.status === 404) {
+        return { success: false, error: 'PRODUCTION_MODE', isTestMode: false };
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return { success: false, error: responseText, isTestMode: true };
+
+    } catch (error: any) {
+      console.error(`[QRIS Simulate] Exception on attempt ${attempt}:`, error.message);
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return { success: false, error: error.message, isTestMode: true };
     }
-  } catch (error) {
-    console.error('[Xendit Simulate QRIS] Exception:', error);
-    return false;
   }
+
+  return { success: false, error: 'Max retries reached', isTestMode: true };
 }
 
-async function simulateXenditRetailPayment(paymentCodeId: string, amount: number): Promise<boolean> {
-  try {
-    const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
+async function simulateXenditRetailPayment(
+  paymentCodeId: string,
+  amount: number,
+  maxRetries: number = 3
+): Promise<{ success: boolean; data?: any; error?: string; isTestMode?: boolean }> {
+  console.log('\n[Retail Simulate] Starting simulation...');
+  console.log('[Retail Simulate] Payment Code ID:', paymentCodeId);
+  console.log('[Retail Simulate] Amount:', amount);
 
-    const response = await fetch(`${BASE_URL}/fixed_payment_code/${paymentCodeId}/simulate_payment`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ transfer_amount: amount })
-    });
+  const authString = Buffer.from(XENDIT_SECRET_KEY + ':').toString('base64');
 
-    if (response.ok) {
-      console.log('[Xendit Simulate Retail] Success');
-      return true;
-    } else {
-      console.log('[Xendit Simulate Retail] Failed:', response.status);
-      return false;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Retail Simulate] Attempt ${attempt}/${maxRetries}`);
+
+      const endpoint = `${BASE_URL}/fixed_payment_code/${paymentCodeId}/simulate_payment`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transfer_amount: amount })
+      });
+
+      const responseText = await response.text();
+      console.log('[Retail Simulate] Response status:', response.status);
+      console.log('[Retail Simulate] Response body:', responseText);
+
+      if (response.ok) {
+        console.log('[Retail Simulate] ✅ SUCCESS');
+        return { success: true, isTestMode: true };
+      }
+
+      if (response.status === 404) {
+        return { success: false, error: 'PRODUCTION_MODE', isTestMode: false };
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return { success: false, error: responseText, isTestMode: true };
+
+    } catch (error: any) {
+      console.error(`[Retail Simulate] Exception on attempt ${attempt}:`, error.message);
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      return { success: false, error: error.message, isTestMode: true };
     }
-  } catch (error) {
-    console.error('[Xendit Simulate Retail] Exception:', error);
-    return false;
   }
+
+  return { success: false, error: 'Max retries reached', isTestMode: true };
 }
 
 // ==========================================
@@ -232,42 +398,70 @@ export async function POST(request: NextRequest) {
       const targetStatus = (simulateStatus || 'PAID').toUpperCase();
 
       if (targetStatus === 'PAID') {
-        let xenditSimulated = false;
         const additionalMetadata = (additionalService.payment_metadata as any) || {};
         const xenditId = additionalMetadata.xendit_id;
         const additionalPaymentType = additionalMetadata.payment_type;
         const channelCode = additionalMetadata.channel_code;
         const additionalAmount = additionalService.total_price + (additionalService.service_fee || 10000) + (additionalService.transaction_fee || 0);
 
-        // FIX: Try Xendit simulation, fallback to local update if failed
+        let xenditSimulationResult: any = { success: false, isTestMode: true };
+
+        // Try Xendit simulation
         if (xenditId) {
           console.log('[Simulate] Attempting Xendit simulation for additional service...');
-          
+
           switch (additionalPaymentType) {
-            case 'ewallet': {
-              const result = await simulateXenditEWalletPayment(xenditId, additionalAmount, channelCode);
-              xenditSimulated = result.success;
-              
-              if (!result.success) {
-                console.log('[Simulate] E-Wallet simulation unavailable, proceeding with local update');
-              }
+            case 'ewallet':
+              xenditSimulationResult = await simulateXenditEWalletPayment(xenditId, additionalAmount, channelCode);
               break;
-            }
             case 'va':
-              xenditSimulated = await simulateXenditVAPayment(orderId, additionalAmount);
+              xenditSimulationResult = await simulateXenditVAPayment(orderId, additionalAmount);
               break;
             case 'qris':
-              xenditSimulated = await simulateXenditQRISPayment(xenditId, additionalAmount);
+              xenditSimulationResult = await simulateXenditQRISPayment(xenditId, additionalAmount);
               break;
             case 'retail':
-              xenditSimulated = await simulateXenditRetailPayment(xenditId, additionalAmount);
+              xenditSimulationResult = await simulateXenditRetailPayment(xenditId, additionalAmount);
               break;
           }
+
+          console.log('[Simulate] Xendit simulation result:', xenditSimulationResult);
         }
 
-        // FIX: ALWAYS update database regardless of Xendit simulation result
-        console.log('[Simulate] Updating additional service to PAID in database...');
-        
+        // Check if we're in production mode
+        if (xenditSimulationResult.error === 'PRODUCTION_MODE') {
+          return NextResponse.json({
+            success: false,
+            error: 'Production Mode Detected',
+            message: '⚠️ Anda menggunakan Production API Key. Simulasi pembayaran hanya tersedia di Test Mode.\n\n' +
+              'Solusi:\n' +
+              '1. Gunakan Test Mode API Key untuk simulasi, ATAU\n' +
+              '2. Lakukan pembayaran real untuk menguji di Production Mode\n\n' +
+              'Catatan: Database lokal TIDAK akan diupdate karena simulasi gagal.',
+            isTestMode: false,
+            xenditSimulated: false
+          }, { status: 400 });
+        }
+
+        // If simulation failed but in test mode, show error
+        if (!xenditSimulationResult.success && xenditSimulationResult.isTestMode) {
+          return NextResponse.json({
+            success: false,
+            error: 'Simulation Failed',
+            message: `❌ Simulasi Xendit gagal: ${xenditSimulationResult.error}\n\n` +
+              'Kemungkinan penyebab:\n' +
+              '1. Charge ID tidak valid atau sudah expired\n' +
+              '2. Xendit API sedang bermasalah\n' +
+              '3. Parameter simulasi tidak sesuai\n\n' +
+              'Database lokal TIDAK akan diupdate.',
+            xenditSimulated: false,
+            xenditError: xenditSimulationResult.error
+          }, { status: 400 });
+        }
+
+        // SUCCESS - Update database
+        console.log('[Simulate] ✅ Xendit simulation SUCCESS - Updating database...');
+
         const updatedAdditionalService = await prisma.additionalServiceRequest.update({
           where: { request_id: additionalServiceId },
           data: {
@@ -278,8 +472,8 @@ export async function POST(request: NextRequest) {
               simulated: true,
               simulated_at: new Date().toISOString(),
               simulated_status: 'PAID',
-              xendit_simulated: xenditSimulated,
-              simulation_method: xenditSimulated ? 'xendit_api' : 'local_only'
+              xendit_simulated: true,
+              xendit_simulation_data: xenditSimulationResult.data || null
             }
           }
         });
@@ -303,7 +497,7 @@ export async function POST(request: NextRequest) {
 
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
-          data: { 
+          data: {
             total: newTotal,
             payment_metadata: {
               ...(booking.payment_metadata as any) || {},
@@ -318,7 +512,7 @@ export async function POST(request: NextRequest) {
           data: {
             user_id: booking.user.user_id,
             title: '✅ Pembayaran Layanan Tambahan Berhasil',
-            message: `Pembayaran untuk layanan tambahan "${additionalService.description}" telah berhasil. Total: Rp ${additionalService.total_price.toLocaleString('id-ID')}`,
+            message: `Pembayaran untuk layanan tambahan "${additionalService.description}" telah berhasil disimulasikan. Total: Rp ${additionalService.total_price.toLocaleString('id-ID')}`,
             type: 'payment',
             order_id: booking.booking_id
           }
@@ -328,18 +522,18 @@ export async function POST(request: NextRequest) {
         await prisma.bookingHistory.create({
           data: {
             booking_id: booking.booking_id,
-            status: xenditSimulated ? 'Pembayaran Layanan Tambahan Berhasil (Xendit)' : 'Pembayaran Layanan Tambahan Berhasil (Local)',
+            status: 'Pembayaran Layanan Tambahan Berhasil (Simulasi Xendit)',
             reason: `Pembayaran untuk layanan tambahan: ${additionalService.description}`
           }
         });
 
-        console.log('[Simulate] ✅ Additional service payment completed');
-        console.log('[Simulate] Xendit simulated:', xenditSimulated);
+        console.log('[Simulate] ✅ Additional service payment completed with Xendit simulation');
 
         return NextResponse.json({
           success: true,
-          message: 'Pembayaran layanan tambahan berhasil disimulasikan',
-          xenditSimulated,
+          message: '✅ Pembayaran berhasil disimulasikan di Xendit dan database lokal!',
+          xenditSimulated: true,
+          isTestMode: true,
           additionalServicePaid: true,
           additionalService: {
             id: updatedAdditionalService.request_id,
@@ -381,7 +575,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (targetStatus === 'PAID') {
-      let xenditSimulated = false;
       const xenditPaymentType = currentMetadata.payment_type;
       const xenditId = currentMetadata.xendit_id;
       const channelCode = currentMetadata.channel_code;
@@ -390,44 +583,71 @@ export async function POST(request: NextRequest) {
       console.log('[Simulate] Xendit ID:', xenditId);
       console.log('[Simulate] Booking total:', booking.total);
 
-      // FIX: Try Xendit simulation, fallback to local update if failed
+      let xenditSimulationResult: any = { success: false, isTestMode: true };
+
+      // Try Xendit simulation
       if (xenditId) {
-        console.log('[Simulate] Attempting Xendit simulation...');
+        console.log('[Simulate] Attempting Xendit simulation for main payment...');
 
         switch (xenditPaymentType) {
-          case 'ewallet': {
-            const result = await simulateXenditEWalletPayment(xenditId, booking.total, channelCode);
-            xenditSimulated = result.success;
-            
-            if (!result.success) {
-              console.log('[Simulate] E-Wallet simulation unavailable, proceeding with local update');
-            }
+          case 'ewallet':
+            xenditSimulationResult = await simulateXenditEWalletPayment(xenditId, booking.total, channelCode);
             break;
-          }
           case 'va':
-            xenditSimulated = await simulateXenditVAPayment(orderId, booking.total);
+            xenditSimulationResult = await simulateXenditVAPayment(orderId, booking.total);
             break;
           case 'qris':
-            xenditSimulated = await simulateXenditQRISPayment(xenditId, booking.total);
+            xenditSimulationResult = await simulateXenditQRISPayment(xenditId, booking.total);
             break;
           case 'retail':
-            xenditSimulated = await simulateXenditRetailPayment(xenditId, booking.total);
+            xenditSimulationResult = await simulateXenditRetailPayment(xenditId, booking.total);
             break;
           default:
             console.log('[Simulate] Unknown payment type:', xenditPaymentType);
         }
 
-        // FIX: Jangan wait for webhook, langsung update database
-        if (xenditSimulated) {
-          console.log('[Simulate] ✅ Xendit simulation successful');
-          console.log('[Simulate] Note: Webhook may also update the booking');
-        } else {
-          console.log('[Simulate] ⚠️ Xendit simulation not available, using local update only');
-        }
+        console.log('[Simulate] Xendit simulation result:', xenditSimulationResult);
       }
 
-      // FIX: ALWAYS update local database regardless of Xendit simulation result
-      console.log('[Simulate] Updating booking to PAID in database...');
+      // Check if we're in production mode
+      if (xenditSimulationResult.error === 'PRODUCTION_MODE') {
+        return NextResponse.json({
+          success: false,
+          error: 'Production Mode Detected',
+          message: '⚠️ Anda menggunakan Production API Key. Simulasi pembayaran hanya tersedia di Test Mode.\n\n' +
+            'Solusi:\n' +
+            '1. Gunakan Test Mode API Key untuk simulasi, ATAU\n' +
+            '2. Lakukan pembayaran real untuk menguji di Production Mode, ATAU\n' +
+            '3. Gunakan webhook simulator di Xendit Dashboard\n\n' +
+            'Catatan: Database lokal TIDAK akan diupdate karena simulasi gagal.',
+          isTestMode: false,
+          xenditSimulated: false,
+          helpUrl: 'https://dashboard.xendit.co/settings/developers#webhooks'
+        }, { status: 400 });
+      }
+
+      // If simulation failed but in test mode, show error
+      if (!xenditSimulationResult.success && xenditSimulationResult.isTestMode) {
+        return NextResponse.json({
+          success: false,
+          error: 'Simulation Failed',
+          message: `❌ Simulasi Xendit gagal: ${xenditSimulationResult.error}\n\n` +
+            'Kemungkinan penyebab:\n' +
+            '1. Charge ID tidak valid atau sudah expired\n' +
+            '2. Xendit API sedang bermasalah\n' +
+            '3. Parameter simulasi tidak sesuai\n\n' +
+            'Solusi:\n' +
+            '1. Coba buat pembayaran baru\n' +
+            '2. Periksa Xendit Dashboard untuk status charge\n' +
+            '3. Gunakan webhook simulator di Xendit Dashboard\n\n' +
+            'Database lokal TIDAK akan diupdate.',
+          xenditSimulated: false,
+          xenditError: xenditSimulationResult.error
+        }, { status: 400 });
+      }
+
+      // SUCCESS - Update database
+      console.log('[Simulate] ✅ Xendit simulation SUCCESS - Updating database...');
 
       const paidAdditionalServices = await prisma.additionalServiceRequest.findMany({
         where: {
@@ -449,15 +669,15 @@ export async function POST(request: NextRequest) {
         where: { booking_id: booking.booking_id },
         data: {
           payment_status: 'PAID',
-          status: 'CONFIRMED', // FIX: Update status to CONFIRMED (diproses)
+          status: 'CONFIRMED',
           total: newTotal,
           payment_metadata: {
             ...currentMetadata,
             simulated: true,
             simulated_at: new Date().toISOString(),
             simulated_status: 'PAID',
-            xendit_simulated: xenditSimulated,
-            simulation_method: xenditSimulated ? 'xendit_api' : 'local_only'
+            xendit_simulated: true,
+            xendit_simulation_data: xenditSimulationResult.data || null
           }
         }
       });
@@ -470,7 +690,7 @@ export async function POST(request: NextRequest) {
         data: {
           user_id: booking.user.user_id,
           title: '✅ Pembayaran Berhasil',
-          message: `Pembayaran untuk pesanan #${orderId} telah berhasil via ${paymentMethodName}. Total: Rp ${newTotal.toLocaleString('id-ID')}. Pesanan Anda sedang diproses oleh ${booking.vendor.name}.`,
+          message: `Pembayaran untuk pesanan #${orderId} telah berhasil disimulasikan via ${paymentMethodName}. Total: Rp ${newTotal.toLocaleString('id-ID')}. Pesanan Anda sedang diproses oleh ${booking.vendor.name}.`,
           type: 'payment',
           order_id: booking.booking_id,
         }
@@ -480,29 +700,29 @@ export async function POST(request: NextRequest) {
       await prisma.bookingHistory.create({
         data: {
           booking_id: booking.booking_id,
-          status: 'Pembayaran Berhasil (Simulasi)',
-          reason: `Pembayaran via ${paymentMethodName} telah dikonfirmasi (mode testing)`
+          status: 'Pembayaran Berhasil (Simulasi Xendit)',
+          reason: `Pembayaran via ${paymentMethodName} telah dikonfirmasi melalui simulasi Xendit`
         }
       });
 
       console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-      console.log('║           PAYMENT SIMULATION SUCCESSFUL - PAID                   ║');
-      console.log('║ Method:', xenditSimulated ? 'Xendit + Local' : 'Local Only');
-      console.log('║ Status: CONFIRMED (Diproses)');
-      console.log('║ Total:', newTotal);
+      console.log('║           PAYMENT SIMULATION SUCCESSFUL                          ║');
+      console.log('║ Method: Xendit API Simulation                                    ║');
+      console.log('║ Status: CONFIRMED (Diproses)                                     ║');
+      console.log('║ Total:', newTotal.toString().padEnd(55), '║');
       console.log('╚══════════════════════════════════════════════════════════════════╝\n');
 
       return NextResponse.json({
         success: true,
-        message: 'Pembayaran berhasil disimulasikan',
-        xenditSimulated,
-        simulationMethod: xenditSimulated ? 'xendit_api' : 'local_only',
+        message: '✅ Pembayaran berhasil disimulasikan di Xendit dan database lokal!',
+        xenditSimulated: true,
+        isTestMode: true,
         booking: {
           orderId: updatedBooking.booking_number,
           paymentStatus: updatedBooking.payment_status,
           paymentMethod: updatedBooking.payment_method,
           paymentMethodName: paymentMethodName,
-          status: updatedBooking.status, // FIX: Return CONFIRMED status
+          status: updatedBooking.status,
           total: updatedBooking.total,
           paidAdditionalServicesCount: paidAdditionalServices.length,
           paidAdditionalServicesTotal: totalAdditionalPaid
@@ -530,7 +750,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       message: 'Xendit Payment Simulation Endpoint',
       usage: 'POST with { orderId, simulateStatus?: "PAID" | "FAILED" }',
-      note: 'This endpoint simulates payment with fallback to local update if Xendit simulation unavailable'
+      note: 'This endpoint simulates payment through Xendit API. Requires Test Mode API Key.',
+      testMode: {
+        info: 'To use simulation, you must use Test Mode API Key',
+        howTo: 'Get your test API key from Xendit Dashboard > Settings > Developers',
+        limitations: 'Production API keys do not support simulation endpoints'
+      }
     });
   }
 
@@ -570,7 +795,6 @@ export async function GET(request: NextRequest) {
         isSimulated: metadata?.simulated || false,
         simulatedAt: metadata?.simulated_at || null,
         xenditSimulated: metadata?.xendit_simulated || false,
-        simulationMethod: metadata?.simulation_method || null,
         xenditId: metadata?.xendit_id || null,
         paymentType: metadata?.payment_type || null,
         channelCode: metadata?.channel_code || null,
