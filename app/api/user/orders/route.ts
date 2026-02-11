@@ -341,13 +341,12 @@ export async function PUT(request: NextRequest) {
 
         const newTotal = booking.subtotal + booking.service_fee + (transactionFee || 0) + totalAdditionalPaid;
 
-        // ✅ Update booking dengan payment_method yang benar
         await prisma.booking.update({
           where: { booking_id: booking.booking_id },
           data: {
-            payment_method: paymentMethod, // ✅ Simpan payment method
-            transaction_fee: transactionFee || 0, // ✅ Simpan transaction fee
-            total: newTotal // ✅ Update total
+            payment_method: paymentMethod,
+            transaction_fee: transactionFee || 0,
+            total: newTotal
           }
         });
 
@@ -373,7 +372,6 @@ export async function PUT(request: NextRequest) {
         console.log('[Pay] Processing payment for booking:', booking.booking_id);
         console.log('[Pay] Payment method:', booking.payment_method);
 
-        // Check if payment method exists
         if (!booking.payment_method || booking.payment_method === 'Belum Dibayar') {
           return NextResponse.json(
             { error: 'Bad Request', message: 'Silakan pilih metode pembayaran terlebih dahulu' },
@@ -394,7 +392,6 @@ export async function PUT(request: NextRequest) {
           }
         });
 
-        // Notification message berbeda untuk tunai vs non-tunai
         const isCashPayment = booking.payment_method.toLowerCase() === 'tunai' || 
                              booking.payment_method.toLowerCase() === 'cash';
 
@@ -472,6 +469,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // ✅ FIX: Check unpaid additional services OUTSIDE transaction
         const unpaidAdditionalServices = await prisma.additionalServiceRequest.findMany({
           where: {
             booking_id: booking.booking_id,
@@ -487,6 +485,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // ✅ FIX: Check existing review OUTSIDE transaction
         const existingReview = await prisma.review.findUnique({
           where: { booking_id: booking.booking_id }
         });
@@ -498,7 +497,9 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // ✅ FIX: Use transaction with increased timeout (15 seconds)
         const result = await prisma.$transaction(async (tx) => {
+          // Step 1: Update booking status
           const updateData: any = {
             status: 'COMPLETED',
             completed_at: new Date(),
@@ -517,6 +518,7 @@ export async function PUT(request: NextRequest) {
             data: updateData
           });
 
+          // Step 2: Create booking history - "Pekerjaan Selesai"
           await tx.bookingHistory.create({
             data: {
               booking_id: booking.booking_id,
@@ -525,6 +527,7 @@ export async function PUT(request: NextRequest) {
             }
           });
 
+          // Step 3: If rating provided, create review
           if (rating && rating > 0) {
             await tx.review.create({
               data: {
@@ -535,8 +538,19 @@ export async function PUT(request: NextRequest) {
                 comment: comment || null
               }
             });
+          }
 
-            const allReviews = await tx.review.findMany({
+          return updatedBooking;
+        }, {
+          timeout: 15000,  // ✅ FIX: Increase timeout to 15 seconds
+          maxWait: 10000,  // ✅ FIX: Max wait 10 seconds for transaction slot
+        });
+
+        // ✅ FIX: Move vendor rating update and history OUTSIDE transaction to avoid timeout
+        if (rating && rating > 0) {
+          try {
+            // Update vendor average rating
+            const allReviews = await prisma.review.findMany({
               where: { vendor_id: booking.vendor_id },
               select: { rating: true }
             });
@@ -545,35 +559,46 @@ export async function PUT(request: NextRequest) {
               const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
               const newAverageRating = totalRating / allReviews.length;
 
-              await tx.vendor.update({
+              await prisma.vendor.update({
                 where: { vendor_id: booking.vendor_id },
                 data: {
                   rating: newAverageRating,
+                  review_count: allReviews.length,
                 }
               });
             }
 
-            await tx.bookingHistory.create({
+            // Create booking history for rating
+            await prisma.bookingHistory.create({
               data: {
                 booking_id: booking.booking_id,
                 status: 'Rating dan Ulasan Diberikan',
                 reason: null
               }
             });
+          } catch (ratingError) {
+            // Log error but don't fail the completion
+            console.error('[Complete Order] Error updating vendor rating (non-critical):', ratingError);
           }
+        }
 
-          return updatedBooking;
-        });
+        // ✅ FIX: Move notification OUTSIDE transaction
+        try {
+          await prisma.userNotification.create({
+            data: {
+              user_id: userId,
+              title: 'Pesanan Selesai',
+              message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
+              type: 'completion',
+              order_id: booking.booking_id
+            }
+          });
+        } catch (notifError) {
+          // Log error but don't fail the completion
+          console.error('[Complete Order] Error creating notification (non-critical):', notifError);
+        }
 
-        await prisma.userNotification.create({
-          data: {
-            user_id: userId,
-            title: 'Pesanan Selesai',
-            message: `Pesanan #${orderId} telah dikonfirmasi selesai${rating ? ` dengan rating ${rating} bintang` : ''}. Terima kasih telah menggunakan layanan kami!`,
-            type: 'completion',
-            order_id: booking.booking_id
-          }
-        });
+        console.log(`[Complete Order] Successfully completed booking ${booking.booking_id}`);
 
         return NextResponse.json({
           success: true,

@@ -109,7 +109,50 @@ export async function GET(request: NextRequest) {
 
     console.log('[Mitra Reviews API] Found reviews:', reviews.length)
 
-    return NextResponse.json(reviews)
+    // ✅ FIX: Format reviews to include is_anonymous and rating_photos from booking
+    const formattedReviews = reviews.map(review => {
+      const isAnonymous = review.booking?.is_anonymous === true
+      const ratingPhotos = review.booking?.rating_photos || []
+
+      console.log('[Mitra Reviews API] Review formatting:', {
+        reviewId: review.review_id,
+        isAnonymous,
+        photosCount: ratingPhotos.length,
+        userName: review.user.name,
+        displayName: isAnonymous ? 'Anonymous' : review.user.name,
+      })
+
+      return {
+        ...review,
+        // ✅ Override user info if anonymous
+        user: isAnonymous
+          ? {
+              name: 'Anonymous',
+              email: '',
+              avatar: null,
+            }
+          : review.user,
+        // ✅ Override booking user info if anonymous
+        booking: review.booking
+          ? {
+              ...review.booking,
+              user: isAnonymous
+                ? {
+                    name: 'Anonymous',
+                    email: '',
+                    avatar: null,
+                  }
+                : review.booking.user,
+            }
+          : review.booking,
+        // ✅ Add explicit fields for frontend convenience
+        isAnonymous: isAnonymous,
+        ratingPhotos: ratingPhotos,
+        rating_photos: ratingPhotos,
+      }
+    })
+
+    return NextResponse.json(formattedReviews)
   } catch (error) {
     console.error('[Mitra Reviews API] Error:', error)
     return NextResponse.json(

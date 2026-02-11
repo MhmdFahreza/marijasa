@@ -23,12 +23,11 @@ function parseReviewComment(comment: string | null) {
   let mitraLikes: string[] = []
 
   try {
-    // ✅ Step 1: Extract main comment (sebelum metadata pertama)
+    // Step 1: Extract main comment (sebelum metadata pertama)
     const firstMetadataIndex = comment.search(/\|(PHOTOS|RESPONSE|LIKES|ANONYMOUS)\|/)
     if (firstMetadataIndex !== -1) {
       mainComment = comment.substring(0, firstMetadataIndex).trim()
     } else {
-      // No metadata, return comment as is
       return {
         mainComment: comment.trim(),
         photos: [],
@@ -39,7 +38,7 @@ function parseReviewComment(comment: string | null) {
       }
     }
 
-    // ✅ Step 2: Extract photos using regex
+    // Step 2: Extract photos using regex
     if (comment.includes('|PHOTOS|')) {
       const photoMatch = comment.match(/\|PHOTOS\|(.*?)(?=\|(RESPONSE|LIKES|ANONYMOUS)\||$)/)
       if (photoMatch && photoMatch[1]) {
@@ -51,7 +50,7 @@ function parseReviewComment(comment: string | null) {
       }
     }
 
-    // ✅ Step 3: Extract response using regex
+    // Step 3: Extract response using regex
     if (comment.includes('|RESPONSE|')) {
       const responseMatch = comment.match(/\|RESPONSE\|(.*?)(?=\|(LIKES|ANONYMOUS)\||$)/)
       if (responseMatch && responseMatch[1]) {
@@ -71,7 +70,7 @@ function parseReviewComment(comment: string | null) {
       }
     }
 
-    // ✅ Step 4: Extract likes
+    // Step 4: Extract likes
     if (comment.includes('|LIKES|')) {
       const likesMatch = comment.match(/\|LIKES\|(.*?)(?=\|ANONYMOUS\||$)/)
       if (likesMatch && likesMatch[1]) {
@@ -85,14 +84,13 @@ function parseReviewComment(comment: string | null) {
       }
     }
 
-    // ✅ Step 5: Check anonymous flag
+    // Step 5: Check anonymous flag
     if (comment.includes('|ANONYMOUS|')) {
       isAnonymous = true
     }
 
   } catch (error) {
     console.error('[Vendor Detail] Error parsing review metadata:', error)
-    // Return safe defaults on error
     return {
       mainComment: comment.split('|')[0].trim(),
       photos: [],
@@ -139,6 +137,13 @@ export async function GET(
                 name: true,
                 email: true,
                 avatar: true,
+              },
+            },
+            // ✅ FIX: Include booking to get is_anonymous and rating_photos
+            booking: {
+              select: {
+                is_anonymous: true,
+                rating_photos: true,
               },
             },
           },
@@ -206,33 +211,41 @@ export async function GET(
       reviews: vendor.reviews.map(review => {
         const metadata = parseReviewComment(review.comment)
         
-        // ✅ Check if vendor liked this review
+        // ✅ FIX: Prioritas is_anonymous dari booking (sumber utama), fallback ke metadata comment
+        const isAnonymous = review.booking?.is_anonymous === true || metadata.isAnonymous
+        
+        // ✅ FIX: Prioritas rating_photos dari booking (sumber utama), fallback ke metadata comment
+        const bookingPhotos = review.booking?.rating_photos || []
+        const photos = bookingPhotos.length > 0 ? bookingPhotos : (metadata.photos || [])
+        
+        // Check if vendor liked this review
         const vendorLiked = metadata.mitraLikes.includes(vendor.vendor_id)
         
-        // ✅ Debug logging
         console.log('[Vendor Detail API] Parsing review:', {
-          original: review.comment?.substring(0, 100),
-          parsed: metadata.mainComment?.substring(0, 100),
-          hasMetadata: review.comment?.includes('|'),
-          response: !!metadata.response,
-          photos: metadata.photos?.length || 0,
-          helpfulCount: metadata.helpfulCount,
-          vendorLiked
+          reviewId: review.review_id,
+          bookingIsAnonymous: review.booking?.is_anonymous,
+          metadataIsAnonymous: metadata.isAnonymous,
+          finalIsAnonymous: isAnonymous,
+          bookingPhotosCount: bookingPhotos.length,
+          metadataPhotosCount: metadata.photos?.length || 0,
+          finalPhotosCount: photos.length,
+          userName: review.user.name,
+          displayName: isAnonymous ? 'Anonymous' : review.user.name,
         })
         
         return {
           id: review.review_id,
-          userName: metadata.isAnonymous ? 'Anonymous' : review.user.name,
-          userEmail: review.user.email,
-          userAvatar: metadata.isAnonymous ? null : review.user.avatar,
+          userName: isAnonymous ? 'Anonymous' : review.user.name,
+          userEmail: isAnonymous ? '' : review.user.email,
+          userAvatar: isAnonymous ? null : review.user.avatar,
           rating: review.rating,
-          comment: metadata.mainComment, // ✅ HANYA mainComment yang ditampilkan
-          photos: metadata.photos,
+          comment: metadata.mainComment,
+          photos: photos,
           response: metadata.response,
-          isAnonymous: metadata.isAnonymous,
+          isAnonymous: isAnonymous,
           helpfulCount: metadata.helpfulCount,
           mitraLikes: metadata.mitraLikes,
-          vendorLiked, // ✅ NEW: Flag untuk UI
+          vendorLiked,
           date: review.created_at.toISOString(),
         }
       }),
