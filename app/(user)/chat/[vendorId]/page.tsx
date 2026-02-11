@@ -37,6 +37,7 @@ import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import EmojiPicker3D from "@/app/components/ui/emoji-picker-3d";
 import CameraModal from "@/app/components/ui/camera-modal";
+import MediaPopup from "@/app/components/ui/media-popup";
 import CallModal from "@/app/components/ui/call-modal";
 import IncomingCallListener from "@/app/components/ui/incoming-call-listener";
 import * as chatService from "@/app/components/lib/services/chatService";
@@ -418,26 +419,6 @@ const VoiceMessagePlayer = ({ msg, isUser }: { msg: Message; isUser: boolean }) 
 };
 
 // ============================================
-// Media Popup
-// ============================================
-const MediaPopup = ({ isOpen, onClose, onTakePhoto, onSelectImage }: { isOpen: boolean; onClose: () => void; onTakePhoto: () => void; onSelectImage: () => void }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed bottom-24 left-4 z-50 bg-white rounded-2xl shadow-2xl border p-2 w-48">
-      <button onClick={onTakePhoto} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 rounded-lg w-full">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center"><Camera className="h-5 w-5 text-white" /></div>
-        <div className="text-left"><p className="font-medium text-gray-800">Ambil Foto</p><p className="text-xs text-gray-500">Gunakan kamera</p></div>
-      </button>
-      <div className="h-px bg-gray-200 my-1" />
-      <button onClick={onSelectImage} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 rounded-lg w-full">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center"><ImageIcon className="h-5 w-5 text-white" /></div>
-        <div className="text-left"><p className="font-medium text-gray-800">Gambar & Video</p><p className="text-xs text-gray-500">Pilih dari galeri</p></div>
-      </button>
-    </div>
-  );
-};
-
-// ============================================
 // Media Message with Lightbox
 // ============================================
 const MediaMessage = ({
@@ -577,6 +558,7 @@ export default function UserChatPage() {
   const hasMarkedAsReadRef = useRef(false);
   const presenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const peerPresenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const paperclipRef = useRef<HTMLButtonElement>(null);
 
   const vendorName = currentSession?.mitraName || "Vendor";
   const vendorAvatar = currentSession?.mitraAvatar || "/store.svg";
@@ -1033,16 +1015,91 @@ export default function UserChatPage() {
               </div>
 
               <form onSubmit={handleSendMessage} className="p-4 border-t flex-shrink-0">
-                <div className="max-w-3xl mx-auto flex items-center gap-2">
-                  <Button type="button" variant="ghost" size="icon" onClick={() => { setShowMediaPopup(!showMediaPopup); setShowEmojiPicker(false); setShowVoiceRecorder(false); }} className="rounded-full"><Paperclip className={`h-5 w-5 ${showMediaPopup ? 'text-green-500' : ''}`} /></Button>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowVoiceRecorder(false); setShowMediaPopup(false); }} className="rounded-full"><Smile className={`h-5 w-5 ${showEmojiPicker ? 'text-orange-500' : ''}`} /></Button>
-                  <div className="flex-1 relative">
-                    <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Ketik pesan..." className="rounded-full px-4 py-5 pr-12" disabled={isSending} />
-                    <Button type="button" variant="ghost" size="icon" onClick={() => { setShowVoiceRecorder(!showVoiceRecorder); setShowEmojiPicker(false); setShowMediaPopup(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full"><Mic className={`h-5 w-5 ${showVoiceRecorder ? 'text-red-500' : ''}`} /></Button>
+                <div className="max-w-3xl mx-auto relative">
+                  {/* Media Popup - positioned relative to paperclip button */}
+                  {showMediaPopup && (
+                    <div className="absolute bottom-full mb-2 left-0">
+                      <MediaPopup
+                        isOpen={showMediaPopup}
+                        onClose={() => setShowMediaPopup(false)}
+                        onTakePhoto={() => {
+                          setShowCameraModal(true);
+                          setShowMediaPopup(false);
+                        }}
+                        onSelectImage={() => {
+                          fileInputRef.current?.click();
+                          setShowMediaPopup(false);
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      ref={paperclipRef}
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => { 
+                        setShowMediaPopup(!showMediaPopup); 
+                        setShowEmojiPicker(false); 
+                        setShowVoiceRecorder(false); 
+                      }} 
+                      className="rounded-full"
+                    >
+                      <Paperclip className={`h-5 w-5 ${showMediaPopup ? 'text-green-500' : ''}`} />
+                    </Button>
+                    
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => { 
+                        setShowEmojiPicker(!showEmojiPicker); 
+                        setShowVoiceRecorder(false); 
+                        setShowMediaPopup(false); 
+                      }} 
+                      className="rounded-full"
+                    >
+                      <Smile className={`h-5 w-5 ${showEmojiPicker ? 'text-orange-500' : ''}`} />
+                    </Button>
+                    
+                    <div className="flex-1 relative">
+                      <Input 
+                        value={newMessage} 
+                        onChange={e => setNewMessage(e.target.value)} 
+                        placeholder="Ketik pesan..." 
+                        className="rounded-full px-4 py-5 pr-12" 
+                        disabled={isSending} 
+                      />
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => { 
+                          setShowVoiceRecorder(!showVoiceRecorder); 
+                          setShowEmojiPicker(false); 
+                          setShowMediaPopup(false); 
+                        }} 
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full"
+                      >
+                        <Mic className={`h-5 w-5 ${showVoiceRecorder ? 'text-red-500' : ''}`} />
+                      </Button>
+                    </div>
+                    
+                    <Button 
+                      type="submit" 
+                      size="icon" 
+                      disabled={!newMessage.trim() || isSending} 
+                      className={`rounded-full shadow-lg h-10 w-10 ${newMessage.trim() && !isSending ? 'bg-gradient-to-r from-green-500 to-green-600' : 'bg-gray-300'}`}
+                    >
+                      {isSending ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Send className="h-5 w-5" />
+                      )}
+                    </Button>
                   </div>
-                  <Button type="submit" size="icon" disabled={!newMessage.trim() || isSending} className={`rounded-full shadow-lg h-10 w-10 ${newMessage.trim() && !isSending ? 'bg-gradient-to-r from-green-500 to-green-600' : 'bg-gray-300'}`}>
-                    {isSending ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-5 w-5" />}
-                  </Button>
                 </div>
               </form>
             </>
@@ -1053,7 +1110,6 @@ export default function UserChatPage() {
       <EmojiPicker3D isOpen={showEmojiPicker} onEmojiSelect={handleEmojiSelect} onClose={() => setShowEmojiPicker(false)} />
       {showVoiceRecorder && <VoiceRecorder onSend={handleSendVoiceMessage} onCancel={() => setShowVoiceRecorder(false)} />}
       <CameraModal isOpen={showCameraModal} onClose={() => setShowCameraModal(false)} onCapture={handleCameraCapture} />
-      <MediaPopup isOpen={showMediaPopup} onClose={() => setShowMediaPopup(false)} onTakePhoto={() => { setShowCameraModal(true); setShowMediaPopup(false); }} onSelectImage={() => { fileInputRef.current?.click(); setShowMediaPopup(false); }} />
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileSelect} />
     </div>
   );
