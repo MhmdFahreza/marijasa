@@ -1,4 +1,4 @@
-// app/components/ui/FilterBar.tsx - WITH LOADING INDICATOR
+// app/components/ui/FilterBar.tsx 
 "use client";
 
 import { useMemo, useState, useCallback, memo, useEffect, useRef } from "react";

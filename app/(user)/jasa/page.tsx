@@ -1,4 +1,4 @@
-// app/jasa/page.tsx - FIXED WITH SUSPENSE BOUNDARY
+// app/jasa/page.tsx 
 import { Suspense } from "react";
 import JasaPageContent from "@/app/components/ui/JasaPageContent";
 import { LoaderTwo } from "@/app/components/transition/loader";

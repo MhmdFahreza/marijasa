@@ -1,4 +1,4 @@
-// app/api/vendors/route.ts - FIXED WITH isFavorite STATUS
+// app/api/vendors/route.ts 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import prisma from "@/app/components/lib/prisma";
@@ -319,6 +319,107 @@ function calculateMatchScore(vendor: any, categorySlug: string): number {
 const MINIMUM_CATEGORY_SCORE = 25;
 const MINIMUM_SEARCH_SCORE = 20;
 
+// ✅ Shuffle array menggunakan Fisher-Yates algorithm
+// Menggunakan daily seed agar urutan konsisten per hari tapi berubah setiap hari
+function shuffleWithDailySeed<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  
+  // Buat seed berdasarkan tanggal hari ini (berubah setiap hari)
+  const today = new Date();
+  const dateString = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+  let seed = 0;
+  for (let i = 0; i < dateString.length; i++) {
+    seed = ((seed << 5) - seed) + dateString.charCodeAt(i);
+    seed = seed & seed; // Convert to 32-bit integer
+  }
+  
+  // Seeded random number generator (mulhash)
+  const seededRandom = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+  
+  // Fisher-Yates shuffle dengan seeded random
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(seededRandom() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  
+  return shuffled;
+}
+
+// ✅ Shuffle yang mempertimbangkan kategori (distribusi merata)
+// Memastikan vendor dari kategori yang sama tidak berurutan
+function shuffleWithCategoryDistribution<T extends { category?: string | null }>(vendors: T[]): T[] {
+  if (vendors.length <= 1) return vendors;
+
+  // Kelompokkan vendor berdasarkan kategori
+  const categoryGroups: Record<string, T[]> = {};
+  const noCategory: T[] = [];
+
+  for (const vendor of vendors) {
+    const cat = vendor.category || '_uncategorized';
+    if (cat === '_uncategorized') {
+      noCategory.push(vendor);
+    } else {
+      if (!categoryGroups[cat]) categoryGroups[cat] = [];
+      categoryGroups[cat].push(vendor);
+    }
+  }
+
+  // Shuffle tiap grup internal menggunakan daily seed
+  const categories = Object.keys(categoryGroups);
+  for (const cat of categories) {
+    categoryGroups[cat] = shuffleWithDailySeed(categoryGroups[cat]);
+  }
+  const shuffledNoCategory = shuffleWithDailySeed(noCategory);
+
+  // Shuffle urutan kategori juga
+  const shuffledCategories = shuffleWithDailySeed(categories);
+
+  // Interleave: ambil vendor bergantian dari tiap kategori (round-robin)
+  const result: T[] = [];
+  const iterators: Record<string, number> = {};
+  for (const cat of shuffledCategories) {
+    iterators[cat] = 0;
+  }
+  let noCatIndex = 0;
+
+  // Hitung total vendor di semua kategori
+  const totalCategorized = categories.reduce((sum, cat) => sum + categoryGroups[cat].length, 0);
+  const total = totalCategorized + shuffledNoCategory.length;
+
+  let round = 0;
+  while (result.length < total) {
+    let addedThisRound = false;
+
+    // Tambah satu vendor dari setiap kategori per round
+    for (const cat of shuffledCategories) {
+      if (iterators[cat] < categoryGroups[cat].length) {
+        result.push(categoryGroups[cat][iterators[cat]]);
+        iterators[cat]++;
+        addedThisRound = true;
+      }
+    }
+
+    // Selipkan vendor tanpa kategori secara merata
+    if (noCatIndex < shuffledNoCategory.length) {
+      result.push(shuffledNoCategory[noCatIndex]);
+      noCatIndex++;
+      addedThisRound = true;
+    }
+
+    round++;
+
+    // Safety break untuk menghindari infinite loop
+    if (!addedThisRound) break;
+  }
+
+  console.log(`[Vendors API] Shuffle result - ${result.length} vendors distributed across ${categories.length} categories`);
+  
+  return result;
+}
+
 // ✅ Helper function to get current user ID
 async function getCurrentUserId(request: NextRequest): Promise<string | null> {
   // Try NextAuth session first
@@ -474,6 +575,15 @@ export async function GET(request: NextRequest) {
       console.log(`[Vendors API] Category filter result: ${filteredVendors.length} vendors`);
     }
 
+    // ✅ SHUFFLE: Jika tidak ada filter kategori dan tidak ada search,
+    // acak urutan vendor agar kategori yang sama tidak berurutan
+    const isUnfilteredList = !category && !search;
+    
+    if (isUnfilteredList && filteredVendors.length > 1) {
+      console.log('[Vendors API] No category/search filter - applying category-distributed shuffle');
+      filteredVendors = shuffleWithCategoryDistribution(filteredVendors);
+    }
+
     // ✅ Format vendors with isFavorite status
     const formattedVendors = filteredVendors.map(vendor => {
       const activeServicesCount = vendor.services.filter(s => s.is_active === true).length;
@@ -523,7 +633,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    console.log('[Vendors API] Returning', formattedVendors.length, 'vendors');
+    console.log('[Vendors API] Returning', formattedVendors.length, 'vendors', isUnfilteredList ? '(shuffled)' : '(sorted)');
 
     return NextResponse.json(
       {
