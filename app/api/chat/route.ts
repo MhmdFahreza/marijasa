@@ -9,9 +9,6 @@ const groq = new Groq({
 
 // Model untuk text-only
 const TEXT_MODELS = [
-  "meta-llama/llama-guard-4-12b",
-  "moonshotai/kimi-k2-instruct",
-  "llama-3.1-70b-versatile",
   "mixtral-8x7b-32768",
 ];
 
