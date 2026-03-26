@@ -9,12 +9,12 @@ const groq = new Groq({
 
 // Model untuk text-only
 const TEXT_MODELS = [
-  "mixtral-8x7b-32768",
+  "",
 ];
 
 // Model untuk vision (image + text)
 const VISION_MODELS = [
-  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "",
 ];
 
 async function getTopVendors() {
