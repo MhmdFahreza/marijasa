@@ -219,7 +219,7 @@ Didistribusikan di bawah lisensi **MIT**. Lihat `LICENSE` untuk informasi lebih 
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=100&section=footer" width="100%"/>
 
-**Dibuat dengan ❤️ oleh tim Marijasa**
+**Dibuat dengan ❤️ oleh Muhammad Fahreza**
 
 ⭐ Jangan lupa beri bintang jika project ini membantu kamu!
 
