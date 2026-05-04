@@ -1,16 +1,16 @@
 <div align="center">
 
 <!-- Banner -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=200&section=header&text=Marijasa&fontSize=80&fontColor=fff&animation=twinkling&fontAlignY=35&desc=Platform%20Penyedia%20Jasa%20Tukang%20%26%20Teknisi%20Rumah%20Tangga&descAlignY=60&descSize=18" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&amp;color=gradient&amp;customColorList=6,11,20&amp;height=200&amp;section=header&amp;text=Marijasa&amp;fontSize=80&amp;fontColor=fff&amp;animation=twinkling&amp;fontAlignY=35&amp;desc=Platform%20Penyedia%20Jasa%20Tukang%20%26%20Teknisi%20Rumah%20Tangga&amp;descAlignY=60&amp;descSize=18" width="100%"/>
 
 <!-- Badges -->
 <p>
-  <img src="https://img.shields.io/badge/Next.js-15-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" />
-  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
-  <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" />
-  <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
-  <img src="https://img.shields.io/badge/Redis-Cache-DC382D?style=for-the-badge&logo=redis&logoColor=white" />
-  <img src="https://img.shields.io/badge/shadcn%2Fui-UI%20Library-000000?style=for-the-badge&logo=shadcnui&logoColor=white" />
+  <img src="https://img.shields.io/badge/Next.js-15-000000?style=for-the-badge&amp;logo=nextdotjs&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&amp;logo=typescript&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=for-the-badge&amp;logo=supabase&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&amp;logo=prisma&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/Redis-Cache-DC382D?style=for-the-badge&amp;logo=redis&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/shadcn%2Fui-UI%20Library-000000?style=for-the-badge&amp;logo=shadcnui&amp;logoColor=white" />
 </p>
 
 <p>
@@ -20,7 +20,7 @@
 
 **🔧 Temukan Tukang & Teknisi Terpercaya — Kapan Saja, Di Mana Saja**
 
-[🚀 Demo Live](#) · [📖 Dokumentasi](#) · [🐛 Laporkan Bug](../../issues) · [✨ Request Fitur](../../issues)
+[🚀 Demo Live](https://www.marijasa.my.id/) · [📖 Dokumentasi](#) · [🐛 Laporkan Bug](../../issues) · [✨ Request Fitur](../../issues)
 
 </div>
 
@@ -48,6 +48,8 @@
 Pengguna → Deskripsikan Masalah → Chatbot AI Bantu Diagnosa → Temukan Teknisi → Beres! 🎉
 ```
 
+🌐 **Website:** [www.marijasa.my.id](https://www.marijasa.my.id/)
+
 ---
 
 ## ✨ Fitur Unggulan
@@ -60,13 +62,13 @@ Pengguna → Deskripsikan Masalah → Chatbot AI Bantu Diagnosa → Temukan Tekn
     </td>
     <td width="50%">
       <h3>🔍 Cari Teknisi Terdekat</h3>
-      <p>Temukan tukang & teknisi profesional di sekitar Anda dengan mudah berdasarkan lokasi, rating, dan spesialisasi.</p>
+      <p>Temukan tukang &amp; teknisi profesional di sekitar Anda dengan mudah berdasarkan lokasi, rating, dan spesialisasi.</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
       <h3>🔐 Autentikasi Aman</h3>
-      <p>Sistem login & register yang aman menggunakan Supabase Auth, lengkap dengan verifikasi email dan OAuth.</p>
+      <p>Sistem login &amp; register yang aman menggunakan Supabase Auth, lengkap dengan verifikasi email dan OAuth.</p>
     </td>
     <td width="50%">
       <h3>⚡ Performa Tinggi</h3>
@@ -75,7 +77,7 @@ Pengguna → Deskripsikan Masalah → Chatbot AI Bantu Diagnosa → Temukan Tekn
   </tr>
   <tr>
     <td width="50%">
-      <h3>🎨 UI Modern & Responsif</h3>
+      <h3>🎨 UI Modern &amp; Responsif</h3>
       <p>Antarmuka yang elegan dan responsif dibangun dengan shadcn/ui — nyaman diakses dari HP maupun desktop.</p>
     </td>
     <td width="50%">
@@ -167,7 +169,7 @@ marijasa/
 ├── 📂 public/               # Aset statis (gambar, ikon, dll)
 ├── 📂 scripts/              # Script utilitas
 ├── 📄 components.json       # Konfigurasi shadcn/ui
-├── 📄 middleware.ts          # Middleware autentikasi & routing
+├── 📄 middleware.ts         # Middleware autentikasi & routing
 ├── 📄 next.config.ts        # Konfigurasi Next.js
 └── 📄 package.json
 ```
@@ -217,9 +219,11 @@ Didistribusikan di bawah lisensi **MIT**. Lihat `LICENSE` untuk informasi lebih 
 
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=100&section=footer" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&amp;color=gradient&amp;customColorList=6,11,20&amp;height=100&amp;section=footer" width="100%"/>
 
 **Dibuat dengan ❤️ oleh Muhammad Fahreza**
+
+🌐 [marijasa.my.id](https://www.marijasa.my.id/)
 
 ⭐ Jangan lupa beri bintang jika project ini membantu kamu!
 
